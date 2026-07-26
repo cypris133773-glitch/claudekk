@@ -14,6 +14,7 @@ import { Game } from '../src/game/game.js';
 import { CLASSES, CLASS_BY_ID } from '../src/data/classes.js';
 import { PERMANENT } from '../src/data/permanent.js';
 import { forwardVec } from '../src/core/math.js';
+import { LAYOUT_NAMES } from '../src/world/world.js';
 
 const FIXED = 1 / 60;
 const MAX_WAVE = 80;
@@ -100,13 +101,13 @@ function botInput(game) {
   return state;
 }
 
-function simulateRun(classId, { forge = 0, talentPoints = 0 } = {}) {
+function simulateRun(classId, { forge = 0, talentPoints = 0, layout } = {}) {
   const cls = CLASS_BY_ID[classId];
   const profile = stubProfile(forge);
   if (talentPoints > 0) autoSpendTalents(profile, cls, talentPoints);
 
   const game = new Game(stubRenderer, stubAudio, profile);
-  game.startRun(cls);
+  game.startRun(cls, layout === undefined ? {} : { layout });
 
   let steps = 0;
   const maxSteps = MAX_SECONDS * 60;
@@ -164,6 +165,12 @@ if (forgeIdx >= 0) {
   forge = Number(args[forgeIdx + 1]) || 3;
   args.splice(forgeIdx, 2);
 }
+let layout;
+const layoutIdx = args.indexOf('--layout');
+if (layoutIdx >= 0) {
+  layout = Number(args[layoutIdx + 1]) || 0;
+  args.splice(layoutIdx, 2);
+}
 const only = args.find((a) => CLASS_BY_ID[a]);
 const runs = Number(args.find((a) => /^\d+$/.test(a))) || 5;
 const targets = only ? [only] : CLASSES.map((c) => c.id);
@@ -174,7 +181,9 @@ const median = (xs) => {
 };
 
 console.log(`\nBLOCKFRAY balance simulation — ${runs} run(s) per class`
-  + (forge ? `, Forge level ${forge}` : ', no permanent upgrades') + '\n');
+  + (forge ? `, Forge level ${forge}` : ', no permanent upgrades')
+  + (layout === undefined ? ', mixed layouts' : `, ${LAYOUT_NAMES[layout % LAYOUT_NAMES.length]} layout`)
+  + '\n');
 console.log('class     median  best  worst   kills   min   peak  upg');
 console.log('-'.repeat(58));
 
@@ -184,7 +193,9 @@ for (const id of targets) {
   for (let i = 0; i < runs; i++) {
     // Talent points scale with the best wave reached so far, like the real game.
     const best = results.length ? Math.max(...results.map((r) => r.wave)) : 0;
-    results.push(simulateRun(id, { forge, talentPoints: best + Math.floor(best / 5) * 2 }));
+    results.push(simulateRun(id, {
+      forge, layout, talentPoints: best + Math.floor(best / 5) * 2,
+    }));
   }
   const waves = results.map((r) => r.wave);
   const row = [

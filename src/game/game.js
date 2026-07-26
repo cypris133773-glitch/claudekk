@@ -1,6 +1,6 @@
 // Game core: owns the world, entities, combat resolution and the wave loop.
 
-import { createArena } from '../world/world.js';
+import { createArena, LAYOUT_COUNT, LAYOUT_NAMES } from '../world/world.js';
 import { BLOCKS } from '../world/blocks.js';
 import { Player, buildMods } from './player.js';
 import { Mob, MOB_TYPES } from './mobs.js';
@@ -51,7 +51,8 @@ export class Game {
   // Lifecycle
   // -------------------------------------------------------------------------
 
-  startRun(classDef) {
+  /** `opts.layout` forces an arena layout; used by the balance harness. */
+  startRun(classDef, opts = {}) {
     this.reset();
     this.cls = classDef;
     const cd = this.profile.classData(classDef.id);
@@ -60,7 +61,10 @@ export class Game {
     this.baseMods = () => buildMods(classDef, cd.talents, perm, this.runUpgrades);
 
     this.theme = (Math.random() * 4) | 0;
-    this.world = createArena(this.theme, 1 + ((Math.random() * 9000) | 0));
+    this.layout = opts.layout !== undefined
+      ? opts.layout % LAYOUT_COUNT
+      : (Math.random() * LAYOUT_COUNT) | 0;
+    this.world = createArena(this.theme, 1 + ((Math.random() * 9000) | 0), this.layout);
     this.r.setWorld(this.world);
     this.r.skyTint = [[0.55, 0.66, 0.82], [0.78, 0.68, 0.48], [0.16, 0.13, 0.20], [0.44, 0.60, 0.70]][this.theme];
 
@@ -78,6 +82,7 @@ export class Game {
       if (pick) this.applyUpgrade(pick);
     }
 
+    this.notify(LAYOUT_NAMES[this.layout] + ' Arena', 3);
     this.beginIntermission(2.0);
     this.audio.startMusic();
   }

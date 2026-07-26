@@ -29,6 +29,15 @@ locally.
 climbing (`src/game/waves.js`). Every 5th wave is a boss, and past wave 20 you
 start facing multiple. Elites appear from wave 6 and get more common.
 
+**Three arenas, four palettes**, rolled per run, so the ground you fight on
+changes too:
+
+| Arena | Plays like |
+| --- | --- |
+| **Fortress** | Close quarters. Central dais, four corner towers, cover pillars, lava spokes. |
+| **Crucible** | A molten moat around a raised centre, crossed by four bridges. Hold a chokepoint. |
+| **Spires** | Open ground, tall spires and elevated platforms. High ground is worth taking. |
+
 **Clear a wave, pick an upgrade.** Three cards drawn from 28 options,
 weighted by rarity. They stack, so a run builds toward something.
 
@@ -103,7 +112,7 @@ src/
     renderer.js       camera, world draw, blocky entity draw, projection
   world/
     blocks.js         block table
-    world.js          arena generation, meshing with ambient occlusion, collision
+    world.js          arena layouts, meshing with ambient occlusion, collision
   game/
     entity.js         physics, status effects, humanoid model
     player.js         derived stats, resources, buffs, basic attack, view model
@@ -134,8 +143,13 @@ crashes and soft-locks that manual play would take hours to find.
 ```bash
 npm run sim                  # every class, 5 runs each
 node tools/balance-sim.js mage 20
-node tools/balance-sim.js --forge 5   # simulate a progressed account
+node tools/balance-sim.js --forge 5    # simulate a progressed account
+node tools/balance-sim.js --layout 1   # pin one arena
 ```
+
+A run that fails to terminate is reported with the position and state of
+everything still alive — that is how the arena soft-locks were found. CI runs
+this on every push and fails the build if any simulated run cannot end.
 
 The bot is deliberately mediocre — it never dodges telegraphs and kites badly
 — so treat its numbers as a floor, not a target. Current baseline, median wave
