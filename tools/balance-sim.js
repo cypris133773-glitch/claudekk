@@ -112,9 +112,12 @@ function simulateRun(classId, { forge = 0, talentPoints = 0, layout } = {}) {
   let steps = 0;
   const maxSteps = MAX_SECONDS * 60;
   let peakMobs = 0;
+  let lastAdvance = 0;
+  let lastWave = 0;
 
   while (game.running && steps < maxSteps && game.wave <= MAX_WAVE) {
     game.update(FIXED, botInput(game));
+    if (game.wave !== lastWave) { lastWave = game.wave; lastAdvance = steps; }
     // The real game blocks on the upgrade screen; take a card and continue.
     if (game.pendingUpgrades) {
       const pick = game.pendingUpgrades[(Math.random() * game.pendingUpgrades.length) | 0];
@@ -125,9 +128,13 @@ function simulateRun(classId, { forge = 0, talentPoints = 0, layout } = {}) {
   }
 
   const reached = game.wave;
-  const timedOut = steps >= maxSteps;
-  // A timeout means the run could not end — usually a mob the player can
-  // never reach. Capture enough state to find it.
+  const ranOut = steps >= maxSteps;
+  // Running out of budget is not the same as being stuck. A strong build can
+  // legitimately still be clearing waves when the clock expires; a genuine
+  // soft-lock has made no progress for minutes. Only the latter is a bug, and
+  // conflating them would fail CI on good runs.
+  const STALL_STEPS = 3 * 60 * 60;              // 3 simulated minutes
+  const timedOut = ranOut && (steps - lastAdvance) > STALL_STEPS;
   const stall = timedOut ? {
     waveState: game.director.state,
     queued: game.director.remaining,
@@ -152,6 +159,8 @@ function simulateRun(classId, { forge = 0, talentPoints = 0, layout } = {}) {
     upgrades: game.runUpgrades.reduce((s, u) => s + (u.stacks || 1), 0),
     timedOut,
     stall,
+    ranOut,
+    stalledFor: +((steps - lastAdvance) / 3600).toFixed(1),
     cappedOut: reached > MAX_WAVE,
   };
 }
@@ -217,9 +226,15 @@ const allWaves = all.flatMap((a) => a.waves);
 console.log(`overall median wave ${median(allWaves)}, `
   + `spread ${Math.min(...allWaves)}–${Math.max(...allWaves)}`);
 
+const slow = all.flatMap((a) => a.results).filter((r) => r.ranOut && !r.timedOut);
+if (slow.length) {
+  console.log(`\n${slow.length} run(s) were still progressing when the clock ran out `
+    + `(deepest wave ${Math.max(...slow.map((r) => r.wave))}). Not a stall.`);
+}
+
 const stalled = all.flatMap((a) => a.results).filter((r) => r.timedOut);
 if (stalled.length) {
-  console.log(`\n⚠ ${stalled.length} run(s) hit the time limit — the run could not end.`);
+  console.log(`\n⚠ ${stalled.length} run(s) could not end — no wave progress for minutes.`);
   for (const r of stalled.slice(0, 3)) {
     console.log(`  ${r.classId}: wave ${r.wave} (${r.stall.waveState}, `
       + `${r.stall.queued} queued), player hp ${r.stall.playerHp} at `

@@ -51,13 +51,33 @@ export const MOB_TYPES = {
     height: 2.0, width: 0.6, behavior: 'blinker',
     skin: { head: hex('#3a2050'), body: hex('#221338'), arm: hex('#4a2a66'), leg: hex('#221338'), face: T.FACE_BOSS, emissive: 0.18 },
   },
+  // --- Bosses. One is drawn per boss wave, rotating so the fight changes. ---
   colossus: {
     name: 'Colossus', weight: 0, minWave: 5, cost: 0, boss: true,
     hp: 520, damage: 28, speed: 2.5, range: 4.0, attackSpeed: 0.55, souls: 90,
     height: 4.2, width: 1.5, behavior: 'boss', knockResist: 1,
+    tagline: 'Slow, enormous, hits like a landslide.',
     skin: { head: hex('#9a3f2f'), body: hex('#6d2a20'), arm: hex('#9a3f2f'), leg: hex('#4d1d16'), face: T.FACE_BOSS, hat: hex('#c9a227'), emissive: 0.12 },
   },
+  warden: {
+    name: 'Warden', weight: 0, minWave: 10, cost: 0, boss: true,
+    hp: 430, damage: 22, speed: 3.4, range: 30, attackSpeed: 0.8, souls: 100,
+    height: 3.4, width: 1.0, behavior: 'boss_warden', knockResist: 1,
+    tagline: 'Keeps its distance, burns the ground you stand on.',
+    projectile: { speed: 26, gravity: 2, color: '#7ef0ff', size: 0.3 },
+    skin: { head: hex('#2f6f9a'), body: hex('#1d4a6d'), arm: hex('#2f6f9a'), leg: hex('#153549'), face: T.FACE_BOSS, hat: hex('#7ef0ff'), emissive: 0.22 },
+  },
+  broodmother: {
+    name: 'Broodmother', weight: 0, minWave: 15, cost: 0, boss: true,
+    hp: 620, damage: 24, speed: 3.0, range: 3.2, attackSpeed: 0.7, souls: 110,
+    height: 2.8, width: 1.4, behavior: 'boss_brood', knockResist: 0.9,
+    tagline: 'Never fights alone. Kill it before the swarm buries you.',
+    skin: { head: hex('#4a2a5e'), body: hex('#33203f'), arm: hex('#5e3575'), leg: hex('#241629'), face: T.FACE_CRAWLER, emissive: 0.14 },
+  },
 };
+
+/** Boss ids in the order they are introduced. */
+export const BOSS_IDS = ['colossus', 'warden', 'broodmother'];
 
 export class Mob extends Entity {
   constructor(typeId, wave, x, y, z, scaling) {
@@ -128,6 +148,8 @@ export class Mob extends Entity {
       case 'slammer': this.aiSlammer(dt, game, target, dist, nx, nz, speed); break;
       case 'blinker': this.aiBlinker(dt, game, target, dist, nx, nz, speed); break;
       case 'boss': this.aiBoss(dt, game, target, dist, nx, nz, speed); break;
+      case 'boss_warden': this.aiWarden(dt, game, target, dist, nx, nz, speed); break;
+      case 'boss_brood': this.aiBrood(dt, game, target, dist, nx, nz, speed); break;
       default: this.aiMelee(dt, game, target, dist, nx, nz, speed);
     }
 
@@ -148,9 +170,21 @@ export class Mob extends Entity {
    */
   checkStuck(dt, game, dist) {
     const target = game.player;
-    // A ranged mob only counts as engaged if it can actually land a shot —
-    // sitting at nominal range behind a wall is exactly the stuck case.
-    const engaged = this.def.behavior === 'ranged'
+
+    // Last-resort failsafe, keyed on damage rather than geometry. Whatever the
+    // cause — wedged terrain, a pit that eats projectiles, a range the player
+    // will not close — a survivor that has taken no damage for a long time
+    // while gating the next wave is relocated into the player's lap. Distance
+    // heuristics cannot cover every cause; "cannot be hurt" covers all of them.
+    if (game.director.state === 'clearing' && this.age - this.lastDamagedAge > 25) {
+      this.relocateNear(game, target);
+      return;
+    }
+
+    // Anything that fights at range only counts as engaged if it can actually
+    // land a shot — sitting at nominal range behind a wall is the stuck case.
+    const ranged = this.def.behavior === 'ranged' || this.def.behavior === 'boss_warden';
+    const engaged = ranged
       ? dist < this.def.range
         && game.world.lineOfSight(this.x, this.eyeY, this.z, target.x, target.centerY, target.z)
       : dist <= this.def.range + 1.5;
@@ -171,11 +205,18 @@ export class Mob extends Entity {
     if (this.strikes < 3) return;         // 12s of no progress
 
     this.strikes = 0;
-    const pt = game.world.pickSpawn(game.player.x, game.player.z, 9);
+    this.relocateNear(game, target);
+  }
+
+  /** Teleport onto a fresh spawn point near the player. */
+  relocateNear(game, target) {
+    const pt = game.world.pickSpawn(target.x, target.z, 9);
     game.burst(this.x, this.centerY, this.z, 8, '#6a2fb5');
     this.x = pt.x; this.y = pt.y + 0.2; this.z = pt.z;
     this.vx = this.vy = this.vz = 0;
     this.windowDist = undefined;
+    this.strikes = 0;
+    this.lastDamagedAge = this.age;
     game.burst(this.x, this.centerY, this.z, 8, '#6a2fb5');
   }
 
@@ -350,6 +391,144 @@ export class Mob extends Entity {
         });
       }
     }
+    this.aiMelee(dt, game, target, dist, nx, nz, speed);
+  }
+
+  /**
+   * Warden — a zoning boss. It holds range, fires spreads, and burns the
+   * ground under you, so standing still loses. Punishes pure melee builds,
+   * which is exactly what the Colossus rewards.
+   */
+  aiWarden(dt, game, target, dist, nx, nz, speed) {
+    const ideal = 13;
+    if (dist > ideal + 4) this.moveToward(nx, nz, speed);
+    else if (dist < ideal - 4) this.moveToward(-nx, -nz, speed);
+    else this.strafe(nx, nz, speed * 0.8, this.id % 2 ? 1 : -1);
+
+    const enraged = this.hp / this.maxHp < 0.4;
+
+    // Volley of projectiles in a fan.
+    if (this.attackTimer <= 0 && dist < this.def.range) {
+      this.attackTimer = enraged ? 2.0 : 3.2;
+      this.swing = 1;
+      const shots = enraged ? 7 : 5;
+      for (let i = 0; i < shots; i++) {
+        const spread = (i - (shots - 1) / 2) * 0.14;
+        const dx = nx * Math.cos(spread) - nz * Math.sin(spread);
+        const dz = nx * Math.sin(spread) + nz * Math.cos(spread);
+        game.fireProjectile({
+          owner: this, team: TEAM.ENEMY,
+          x: this.x, y: this.eyeY, z: this.z,
+          dir: [dx, 0.06, dz], damage: this.damageAmount * 0.6,
+          ...this.def.projectile,
+        });
+      }
+      game.sfx('shoot');
+    }
+
+    // Scorch the ground where the player is standing.
+    this.slamTimer -= dt;
+    if (this.slamTimer <= 0) {
+      this.slamTimer = enraged ? rand(5, 3.5) : rand(8, 6);
+      const pools = enraged ? 3 : 2;
+      for (let i = 0; i < pools; i++) {
+        const px = target.x + rand(5, -5);
+        const pz = target.z + rand(5, -5);
+        const py = game.world.groundAt(px, pz, target.y + 3);
+        game.telegraph(px, py, pz, 4.2, 1.1, () => {
+          game.spawnZone(px, py, pz, {
+            radius: 4.2, dps: this.damageAmount * 0.55, duration: 6,
+            team: TEAM.ENEMY, source: this, color: '#7ef0ff', slow: 0.25,
+          });
+        }, '#7ef0ff');
+      }
+      game.sfx('cast');
+    }
+
+    // Refuse to be cornered by melee.
+    this.blinkTimer -= dt;
+    if (dist < 6 && this.blinkTimer <= 0) {
+      this.blinkTimer = 4;
+      game.spawnZone(this.x, this.y, this.z, {
+        radius: 3.4, dps: this.damageAmount * 0.5, duration: 4,
+        team: TEAM.ENEMY, source: this, color: '#7ef0ff',
+      });
+      const pt = game.world.pickSpawn(target.x, target.z, 14);
+      game.burst(this.x, this.centerY, this.z, 18, '#7ef0ff');
+      this.x = pt.x; this.y = pt.y; this.z = pt.z;
+      this.vx = this.vz = 0;
+      game.burst(this.x, this.centerY, this.z, 18, '#7ef0ff');
+      game.sfx('blink');
+    }
+  }
+
+  /**
+   * Broodmother — a swarm boss. Constant adds mean single-target builds
+   * drown; it rewards anything with area damage.
+   */
+  aiBrood(dt, game, target, dist, nx, nz, speed) {
+    const enraged = this.hp / this.maxHp < 0.5;
+
+    // Charge: telegraphed, then a committed lunge.
+    if (this.state === 'charge') {
+      this.chargeTime -= dt;
+      this.vx = this.chargeVX;
+      this.vz = this.chargeVZ;
+      if (dist < 2.6 && this.attackTimer <= 0) {
+        this.attackTimer = 0.6;
+        this.meleeHit(game, target, 1.5, 10);
+      }
+      if (this.chargeTime <= 0 || this.hitWallX || this.hitWallZ) this.state = 'chase';
+      return;
+    }
+
+    this.blinkTimer -= dt;
+    if (this.blinkTimer <= 0 && dist > 6 && dist < 22) {
+      this.blinkTimer = rand(9, 6);
+      const cx = nx, cz = nz;
+      game.telegraph(this.x, this.y, this.z, 3.0, 0.7, () => {
+        if (this.dead) return;
+        this.state = 'charge';
+        this.chargeTime = 1.1;
+        this.chargeVX = cx * speed * 4.2;
+        this.chargeVZ = cz * speed * 4.2;
+        game.sfx('charge');
+      }, '#b06cff');
+    }
+
+    // Spawn broods. Capped against the wave's concurrency so a long fight
+    // cannot bury the arena in crawlers.
+    this.slamTimer -= dt;
+    if (this.slamTimer <= 0) {
+      this.slamTimer = enraged ? rand(5, 3.5) : rand(8, 6);
+      if (game.mobs.length < 26) {
+        const count = enraged ? 4 : 3;
+        game.sfx('roar');
+        for (let i = 0; i < count; i++) {
+          const a = (i / count) * Math.PI * 2 + this.age;
+          game.spawnMob('crawler', this.x + Math.cos(a) * 2.5, this.y + 1, this.z + Math.sin(a) * 2.5);
+        }
+        game.burst(this.x, this.y + 0.6, this.z, 14, '#b06cff');
+      }
+    }
+
+    // Poison spray when you are in its face.
+    if (dist < 7 && this.attackTimer <= 0) {
+      this.attackTimer = 3.0;
+      this.swing = 1;
+      for (let i = 0; i < 5; i++) {
+        const spread = (i - 2) * 0.2;
+        const dx = nx * Math.cos(spread) - nz * Math.sin(spread);
+        const dz = nx * Math.sin(spread) + nz * Math.cos(spread);
+        game.fireProjectile({
+          owner: this, team: TEAM.ENEMY,
+          x: this.x, y: this.centerY, z: this.z,
+          dir: [dx, 0.12, dz], speed: 16, gravity: 8,
+          damage: this.damageAmount * 0.4, color: '#8ce06a', size: 0.26,
+        });
+      }
+    }
+
     this.aiMelee(dt, game, target, dist, nx, nz, speed);
   }
 

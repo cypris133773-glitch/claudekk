@@ -5,7 +5,7 @@ import { BLOCKS } from '../world/blocks.js';
 import { Player, buildMods } from './player.js';
 import { Mob, MOB_TYPES } from './mobs.js';
 import { Fiend } from './pets.js';
-import { Projectile, Particle, Telegraph, Shockwave, FloatText, hexToRgb } from './effects.js';
+import { Projectile, Particle, Telegraph, Shockwave, Zone, FloatText, hexToRgb } from './effects.js';
 import { TEAM } from './entity.js';
 import { WaveDirector, waveScaling, waveClearBonus, isBossWave } from './waves.js';
 import { rollUpgrades } from '../data/upgrades.js';
@@ -28,6 +28,7 @@ export class Game {
     this.particles = [];
     this.telegraphs = [];
     this.shockwaves = [];
+    this.zones = [];
     this.floaters = [];
     this.beams = [];
     this.pets = [];
@@ -450,6 +451,11 @@ export class Game {
     }
   }
 
+  /** Leave a lingering hazard on the ground. */
+  spawnZone(x, y, z, opts) {
+    this.zones.push(new Zone(x, y, z, opts));
+  }
+
   telegraph(x, y, z, radius, delay, onComplete, color) {
     this.telegraphs.push(new Telegraph(x, y, z, radius, delay, onComplete, color));
   }
@@ -505,6 +511,7 @@ export class Game {
     for (const p of this.particles) p.update(dt);
     for (const t of this.telegraphs) t.update(dt);
     for (const s of this.shockwaves) s.update(dt);
+    for (const z of this.zones) z.update(dt, this);
     for (const f of this.floaters) f.update(dt);
     for (const b of this.beams) b.life -= dt;
     for (const n of this.notifications) n.life -= dt;
@@ -521,6 +528,7 @@ export class Game {
     this.particles = this.particles.filter((p) => !p.dead);
     this.telegraphs = this.telegraphs.filter((t) => !t.dead);
     this.shockwaves = this.shockwaves.filter((s) => !s.dead);
+    this.zones = this.zones.filter((z) => !z.dead);
     this.floaters = this.floaters.filter((f) => !f.dead);
     this.beams = this.beams.filter((b) => b.life > 0);
     this.notifications = this.notifications.filter((n) => n.life > 0);
@@ -605,6 +613,7 @@ export class Game {
     for (const p of this.pets) p.draw(this.r);
     for (const p of this.projectiles) p.draw(this.r);
     for (const t of this.telegraphs) t.draw(this.r);
+    for (const z of this.zones) z.draw(this.r);
     for (const s of this.shockwaves) s.draw(this.r);
     for (const p of this.particles) p.draw(this.r);
     this.drawBeams();

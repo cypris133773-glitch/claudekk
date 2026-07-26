@@ -34,6 +34,7 @@ export class Entity {
     this.knockResist = 0;
     this.lifetime = Infinity;
     this.age = 0;
+    this.lastDamagedAge = 0;
   }
 
   get eyeY() { return this.y + this.height * 0.9; }
@@ -55,6 +56,7 @@ export class Entity {
     if (dmg <= 0) return 0;
     this.hp -= dmg;
     this.hurtFlash = 0.22;
+    this.lastDamagedAge = this.age;
     if (opts.knockback && this.knockResist < 1) {
       const k = opts.knockback * (1 - this.knockResist);
       this.vx += (opts.kx || 0) * k;

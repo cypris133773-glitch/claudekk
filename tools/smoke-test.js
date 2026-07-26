@@ -4,8 +4,11 @@
 import { CLASSES, CLASS_BY_ID, TALENT_BY_ID } from '../src/data/classes.js';
 import { UPGRADES, RARITY, rollUpgrades } from '../src/data/upgrades.js';
 import { PERMANENT, upgradeCost, permanentMods, talentPointsForBestWave } from '../src/data/permanent.js';
-import { waveScaling, waveBudget, buildWaveQueue, isBossWave, waveClearBonus } from '../src/game/waves.js';
-import { MOB_TYPES } from '../src/game/mobs.js';
+import {
+  waveScaling, waveBudget, buildWaveQueue, isBossWave, waveClearBonus,
+  bossForWave, BOSS_EVERY,
+} from '../src/game/waves.js';
+import { MOB_TYPES, BOSS_IDS, rollMobType } from '../src/game/mobs.js';
 import { clamp, angleDelta, perspective, mat4, forwardVec } from '../src/core/math.js';
 
 let passed = 0;
@@ -192,6 +195,38 @@ check('wave queues are non-empty and only use unlocked mobs', () => {
     }
     if (isBossWave(w)) {
       assert(q.some((e) => e.boss), `boss wave ${w} has no boss`);
+    }
+  }
+});
+
+check('boss waves rotate through the unlocked roster', () => {
+  const seen = new Set();
+  for (let w = BOSS_EVERY; w <= 60; w += BOSS_EVERY) {
+    const id = bossForWave(w);
+    const def = MOB_TYPES[id];
+    assert(def && def.boss, `wave ${w} picked non-boss "${id}"`);
+    assert(w >= def.minWave, `wave ${w} picked ${id}, gated at ${def.minWave}`);
+    seen.add(id);
+  }
+  assert(bossForWave(BOSS_EVERY) === 'colossus', 'first boss should be the Colossus');
+  assert(seen.size === BOSS_IDS.length,
+    `only ${seen.size} of ${BOSS_IDS.length} bosses ever appear`);
+});
+
+check('every boss has a distinct behavior and is never randomly spawned', () => {
+  const behaviors = new Set();
+  for (const id of BOSS_IDS) {
+    const def = MOB_TYPES[id];
+    assert(def.boss, `${id} not flagged as a boss`);
+    assert(def.weight === 0, `${id} would spawn as a regular enemy`);
+    assert(!behaviors.has(def.behavior), `${id} reuses behavior "${def.behavior}"`);
+    behaviors.add(def.behavior);
+    assert(def.souls >= 80, `${id} awards only ${def.souls} souls`);
+  }
+  // Regular waves must never roll a boss.
+  for (let w = 1; w <= 60; w++) {
+    for (let i = 0; i < 40; i++) {
+      assert(!MOB_TYPES[rollMobType(w)].boss, `rollMobType returned a boss at wave ${w}`);
     }
   }
 });

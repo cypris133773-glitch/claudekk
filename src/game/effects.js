@@ -192,6 +192,65 @@ export class Shockwave {
   }
 }
 
+/**
+ * A lingering damage area — burning ground, poison, and similar. Ticks on a
+ * fixed cadence rather than every frame so damage does not scale with frame
+ * rate, and so the numbers that pop are readable.
+ */
+export class Zone {
+  constructor(x, y, z, opts) {
+    this.x = x; this.y = y; this.z = z;
+    this.radius = opts.radius;
+    this.dps = opts.dps;
+    this.team = opts.team;
+    this.source = opts.source || null;
+    this.color = hexToRgb(opts.color || '#ff8a3c');
+    this.life = opts.duration;
+    this.maxLife = opts.duration;
+    this.slow = opts.slow || 0;
+    this.tick = 0;
+    this.dead = false;
+  }
+
+  update(dt, game) {
+    this.life -= dt;
+    if (this.life <= 0) { this.dead = true; return; }
+    this.tick -= dt;
+    if (this.tick > 0) return;
+    this.tick = 0.4;
+
+    const targets = this.team === TEAM.PLAYER ? game.mobs : game.allies();
+    for (const e of targets) {
+      if (e.dead) continue;
+      if (Math.hypot(e.x - this.x, e.z - this.z) > this.radius) continue;
+      if (Math.abs(e.centerY - this.y) > 3.5) continue;
+      if (this.team === TEAM.PLAYER) game.dealDamage(this.source, e, this.dps * 0.4, { silent: true });
+      else game.damageEntity(this.source, e, this.dps * 0.4, { melee: false });
+      if (this.slow) e.applySlow(this.slow, 0.6);
+    }
+  }
+
+  draw(r) {
+    const fade = Math.min(1, this.life / 0.6);
+    const segs = Math.max(10, Math.round(this.radius * 4));
+    for (let i = 0; i < segs; i++) {
+      const a = (i / segs) * Math.PI * 2 + this.life * 0.6;
+      const wobble = 0.85 + Math.sin(this.life * 4 + i) * 0.15;
+      const rr = this.radius * wobble;
+      const bob = Math.sin(this.life * 6 + i * 0.7) * 0.12;
+      r.drawBox(this.x + Math.cos(a) * rr, this.y + 0.12 + bob, this.z + Math.sin(a) * rr,
+        0.36, 0.10, 0.36, { tile: T.BLANK, color: this.color, emissive: 0.95, alpha: 0.75 * fade });
+    }
+    // A sparse inner scatter so the middle of the area reads as dangerous too.
+    for (let i = 0; i < segs / 2; i++) {
+      const a = (i / (segs / 2)) * Math.PI * 2 - this.life;
+      const rr = this.radius * (0.25 + (i % 3) * 0.22);
+      r.drawBox(this.x + Math.cos(a) * rr, this.y + 0.1, this.z + Math.sin(a) * rr,
+        0.22, 0.06, 0.22, { tile: T.BLANK, color: this.color, emissive: 0.9, alpha: 0.5 * fade });
+    }
+  }
+}
+
 /** Damage number that floats up in screen space (drawn by the HUD). */
 export class FloatText {
   constructor(x, y, z, text, color, crit = false) {

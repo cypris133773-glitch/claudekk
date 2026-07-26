@@ -1,6 +1,6 @@
 // Endless wave director: scaling, spawn budgets, boss cadence.
 
-import { MOB_TYPES, rollMobType } from './mobs.js';
+import { MOB_TYPES, BOSS_IDS, rollMobType } from './mobs.js';
 
 export const BOSS_EVERY = 5;
 
@@ -42,6 +42,19 @@ export function eliteChance(wave) {
 }
 
 /**
+ * Which boss headlines a given boss wave. The first is always the Colossus so
+ * the fight is learned before the roster opens up; after that they rotate, and
+ * each is gated behind its own minWave so they arrive as an escalation rather
+ * than all at once.
+ */
+export function bossForWave(wave) {
+  const unlocked = BOSS_IDS.filter((id) => wave >= MOB_TYPES[id].minWave);
+  if (!unlocked.length) return BOSS_IDS[0];
+  const index = Math.floor(wave / BOSS_EVERY) - 1;
+  return unlocked[index % unlocked.length];
+}
+
+/**
  * Build the spawn queue for a wave: a list of { typeId, elite } entries.
  */
 export function buildWaveQueue(wave) {
@@ -51,7 +64,14 @@ export function buildWaveQueue(wave) {
 
   if (isBossWave(wave)) {
     const bosses = 1 + Math.floor((wave - BOSS_EVERY) / (BOSS_EVERY * 4));
-    for (let i = 0; i < bosses; i++) queue.push({ typeId: 'colossus', elite: false, boss: true });
+    const headline = bossForWave(wave);
+    const unlocked = BOSS_IDS.filter((id) => wave >= MOB_TYPES[id].minWave);
+    for (let i = 0; i < bosses; i++) {
+      // Extra bosses on deep waves are different types, so a double boss is a
+      // combination of mechanics rather than the same fight twice.
+      const typeId = i === 0 ? headline : unlocked[(unlocked.indexOf(headline) + i) % unlocked.length];
+      queue.push({ typeId, elite: false, boss: true });
+    }
     budget = Math.round(budget * 0.6);
   }
 

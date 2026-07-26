@@ -21,7 +21,7 @@ export const CLASSES = [
     color: '#c8563c',
     accent: '#ffb27a',
     resource: RESOURCE.RAGE,
-    base: { hp: 140, armor: 0.22, speed: 5.2, attackDamage: 26, attackSpeed: 1.55, attackRange: 3.4, critChance: 0.08, critMult: 1.9 },
+    base: { hp: 150, armor: 0.26, speed: 5.2, attackDamage: 26, attackSpeed: 1.55, attackRange: 3.4, critChance: 0.08, critMult: 1.9 },
     weapon: { type: 'sword', tile: 'METAL', color: '#d8dbe2', length: 1.1 },
     difficulty: 1,
     skills: [
@@ -291,7 +291,7 @@ export const CLASSES = [
       {
         id: 'holynova', name: 'Holy Nova', kind: 'aoe_self', cost: 34, cooldown: 8, icon: '☀',
         desc: 'Detonate light around you: heavy damage and it heals you per enemy hit.',
-        power: { radius: 8, damage: 55, healPerHit: 7, knockback: 4, color: '#fff1c0' },
+        power: { radius: 8, damage: 55, healPerHit: 4, knockback: 4, color: '#fff1c0' },
       },
     ],
     talents: [
