@@ -1,0 +1,36 @@
+# Runs on every push and pull request so branches get a signal before merge.
+name: CI
+
+# A branch with an open pull request would otherwise run this twice, once for
+# the push and once for the pull_request event, so pushes are limited to main.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Logic tests
+        run: npm test
+
+      # A soft-lock or crash deep in a run is the failure mode that matters
+      # most in an endless game, so exercise real runs of every class.
+      - name: Balance simulation (smoke)
+        run: node tools/balance-sim.js 2
+
+      - name: Check for stalled runs
+        run: |
+          node tools/balance-sim.js 2 > sim.txt 2>&1
+          cat sim.txt
+          if grep -q "could not end" sim.txt; then
+            echo "::error::A simulated run failed to terminate — likely a soft-lock."
+            exit 1
+          fi
