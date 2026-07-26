@@ -8,6 +8,7 @@ export class Audio {
     this.musicGain = null;
     this.musicTimer = null;
     this.started = false;
+    this.blocked = false;
     this.samples = new Map();
   }
 
@@ -18,21 +19,51 @@ export class Audio {
     'hurt', 'death', 'levelup', 'wave', 'buy', 'ui', 'deny',
   ];
 
-  /** Must be called from a user gesture (browsers block audio otherwise). */
+  /**
+   * Must be called from a user gesture (browsers block audio otherwise).
+   * Called from startRun, so a throw here would mean pressing PLAY does
+   * nothing at all — the game must stay playable in silence instead.
+   */
   ensure() {
-    if (this.ctx) {
-      if (this.ctx.state === 'suspended') this.ctx.resume();
+    if (this.ctx) { this.resume(); return; }
+    if (this.blocked) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) { this.blocked = true; return; }
+    try {
+      // Construction throws where there is no audio output device, where an
+      // embedder's permissions policy refuses it, and once a page has hit the
+      // browser's limit on live contexts. Only publish a fully wired graph:
+      // every play path assumes master and musicGain exist when ctx does.
+      const ctx = new AC();
+      const master = ctx.createGain();
+      master.gain.value = this.settings.sfxVolume;
+      master.connect(ctx.destination);
+      const musicGain = ctx.createGain();
+      musicGain.gain.value = this.settings.musicVolume * 0.25;
+      musicGain.connect(ctx.destination);
+      this.ctx = ctx;
+      this.master = master;
+      this.musicGain = musicGain;
+    } catch (err) {
+      this.blocked = true;
+      this.ctx = this.master = this.musicGain = null;
+      console.warn('Audio unavailable; playing silent.', err);
       return;
     }
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return;
-    this.ctx = new AC();
-    this.master = this.ctx.createGain();
-    this.master.gain.value = this.settings.sfxVolume;
-    this.master.connect(this.ctx.destination);
-    this.musicGain = this.ctx.createGain();
-    this.musicGain.gain.value = this.settings.musicVolume * 0.25;
-    this.musicGain.connect(this.ctx.destination);
+    this.resume();
+  }
+
+  /**
+   * Nudge a suspended context. resume() rejects when the calling gesture was
+   * not trusted and throws on a context the OS has already closed; either way
+   * the next gesture tries again, so a failure is not worth reporting.
+   */
+  resume() {
+    if (!this.ctx || this.ctx.state !== 'suspended') return;
+    try {
+      const p = this.ctx.resume();
+      if (p && p.catch) p.catch(() => {});
+    } catch { /* closed or refused — stays silent */ }
   }
 
   applySettings() {
@@ -93,7 +124,10 @@ export class Audio {
       try {
         const res = await fetch(`${base}/${name}.${ext}`);
         if (!res.ok) return;
+        // Safari's older callback form of decodeAudioData returns nothing at
+        // all rather than a promise, so an awaited undefined is not a sample.
         const buf = await this.ctx.decodeAudioData(await res.arrayBuffer());
+        if (!buf) return;
         this.samples.set(name, buf);
         loaded++;
       } catch {
@@ -118,7 +152,17 @@ export class Audio {
 
   play(name) {
     if (!this.ctx) return;
-    if (this.playSample(name)) return;
+    // Every node factory throws InvalidStateError on a context the platform
+    // has closed under us — iOS does exactly that on an audio interruption.
+    // Cues fire from the fixed-step update, so an escaping throw would cost
+    // the frame rather than the sound.
+    try {
+      if (this.playSample(name)) return;
+      this.playProcedural(name);
+    } catch { /* cue dropped; the run carries on */ }
+  }
+
+  playProcedural(name) {
     switch (name) {
       case 'swing': this.noise({ dur: 0.11, gain: 0.20, freq: 1500, sweep: -900 }); break;
       case 'whiff': this.noise({ dur: 0.09, gain: 0.09, freq: 800, sweep: -400 }); break;
@@ -183,22 +227,27 @@ export class Audio {
     let step = 0;
     const tick = () => {
       if (!this.ctx) return;
-      const t = this.ctx.currentTime;
-      const beat = step % 8;
-      const note = root * Math.pow(2, scale[(step * 3) % scale.length] / 12);
-      const osc = this.ctx.createOscillator();
-      const g = this.ctx.createGain();
-      osc.type = beat === 0 ? 'triangle' : 'sine';
-      osc.frequency.value = beat % 4 === 0 ? note / 2 : note;
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(beat === 0 ? 0.5 : 0.28, t + 0.05);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 1.5);
-      osc.connect(g); g.connect(this.musicGain);
-      osc.start(t); osc.stop(t + 1.6);
-      step++;
+      // A closed context would otherwise throw from this timer twice a second
+      // for the rest of the session. One failure ends the music for good.
+      try { this.musicNote(scale, root, step++); } catch { this.stopMusic(); }
     };
     tick();
     this.musicTimer = setInterval(tick, 900);
+  }
+
+  musicNote(scale, root, step) {
+    const t = this.ctx.currentTime;
+    const beat = step % 8;
+    const note = root * Math.pow(2, scale[(step * 3) % scale.length] / 12);
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = beat === 0 ? 'triangle' : 'sine';
+    osc.frequency.value = beat % 4 === 0 ? note / 2 : note;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(beat === 0 ? 0.5 : 0.28, t + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 1.5);
+    osc.connect(g); g.connect(this.musicGain);
+    osc.start(t); osc.stop(t + 1.6);
   }
 
   stopMusic() {

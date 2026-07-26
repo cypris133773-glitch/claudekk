@@ -37,6 +37,11 @@ canvas {
   inset: 0;
   width: 100%;
   height: 100%;
+  /* Mobile browsers size a fixed element to the *large* viewport, so with the
+     URL bar and toolbar showing the last ~80px of the canvas — exactly where
+     the touch controls live — sits behind browser chrome and can never be
+     tapped. dvh tracks the viewport that is actually visible. */
+  height: 100dvh;
   display: block;
   /* touch-action is not inherited, so it must be set here and not only on
      body. Without it Safari claims drags for panning and zooming and stops
@@ -51,9 +56,24 @@ canvas {
 #view { z-index: 1; image-rendering: pixelated; }
 #hud { z-index: 2; pointer-events: none; }
 
+/* The HUD is painted on a full-bleed canvas, which cannot use env() itself.
+   This zero-size probe resolves the insets into computed padding that the HUD
+   reads back, so canvas-drawn controls can dodge the notch and home bar. */
+#safe-probe {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  visibility: hidden;
+  pointer-events: none;
+  padding: var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l);
+}
+
 #ui {
   position: fixed;
   inset: 0;
+  height: 100dvh;
   z-index: 3;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -121,16 +141,19 @@ canvas {
 
 /* Landscape is the better view, so say so — but never block play. A
    full-screen gate here reads exactly like a black screen on a phone. */
+/* Anchored to the bottom, not the top: the top band is where the vitals bars
+   and the souls counter are drawn, and a centred pill there covered the
+   player's own health. */
 #rotate-hint {
   position: fixed;
   left: 50%;
   transform: translateX(-50%);
-  top: calc(8px + var(--safe-t));
+  bottom: calc(10px + var(--safe-b));
   z-index: 14;
   display: none;
   align-items: center;
-  gap: 10px;
-  padding: 8px 10px 8px 14px;
+  gap: 6px;
+  padding: 6px 6px 6px 14px;
   border-radius: 999px;
   background: rgba(16, 19, 28, 0.92);
   border: 1px solid var(--line);
@@ -143,26 +166,31 @@ canvas {
   background: none;
   border: none;
   color: var(--dim);
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1;
-  padding: 4px 6px;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  flex: none;
 }
 @media (orientation: portrait) and (pointer: coarse) {
   #rotate-hint:not(.hidden) { display: flex; }
 }
 
+/* 44px is the accessibility floor for a thumb; at 38 this was a miss more
+   often than a hit, and missing it drops a finger onto the look control. */
 #fullscreen-btn {
   position: fixed;
   z-index: 13;
   top: calc(8px + var(--safe-t));
   right: calc(8px + var(--safe-r));
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
   background: rgba(16, 19, 28, 0.7);
   border: 1px solid var(--line);
   color: var(--text);
-  font-size: 16px;
+  font-size: 18px;
   line-height: 1;
   display: none;
 }
@@ -702,14 +730,14 @@ input[type="range"]::-moz-range-thumb {
   z-index: 13;
   top: calc(8px + var(--safe-t));
   right: calc(8px + var(--safe-r));
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
   background: rgba(16, 19, 28, 0.7);
   border: 1px solid var(--line);
   color: var(--text);
-  font-size: 17px;
-  line-height: 36px;
+  font-size: 19px;
+  line-height: 42px;
   text-align: center;
   text-decoration: none;
   display: none;

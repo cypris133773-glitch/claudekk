@@ -31,12 +31,9 @@ export class Renderer {
   constructor(canvas) {
     this.canvas = canvas;
     this.gl = createContext(canvas);
-    const { prog, u } = createProgram(this.gl);
-    this.prog = prog;
-    this.u = u;
-    this.atlas = createAtlasTexture(this.gl);
-    this.cube = createMesh(this.gl, cubeVerts());
-    this.worldMesh = null;
+    this.contextLost = false;
+    this.buildGpuResources();
+    this.worldFloats = null;
     this.proj = mat4();
     this.view = mat4();
     this.viewProj = mat4();
@@ -48,7 +45,36 @@ export class Renderer {
     this.fogFar = 82;
     this.skyTint = [0.55, 0.66, 0.82];
 
+    // A GPU reset — backgrounding a tab on Android, an iOS memory warning, a
+    // driver timeout — takes the context away. Without preventDefault the
+    // browser will never restore it, and every draw afterwards is a silent
+    // no-op on a black screen. Everything the renderer owns lives on the GPU,
+    // so it is all rebuilt from scratch when the context comes back.
+    canvas.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();
+      this.contextLost = true;
+      console.warn('WebGL context lost; waiting for the browser to restore it.');
+    });
+    canvas.addEventListener('webglcontextrestored', () => {
+      try {
+        this.buildGpuResources();
+        if (this.worldFloats) this.worldMesh = createMesh(this.gl, this.worldFloats);
+        this.contextLost = false;
+      } catch (err) {
+        console.error('WebGL context restore failed.', err);
+      }
+    });
+  }
+
+  /** Everything that has to be re-uploaded after a context loss. */
+  buildGpuResources() {
     const gl = this.gl;
+    const { prog, u } = createProgram(gl);
+    this.prog = prog;
+    this.u = u;
+    this.atlas = createAtlasTexture(gl);
+    this.cube = createMesh(gl, cubeVerts());
+    this.worldMesh = null;
     gl.enable(gl.DEPTH_TEST);
     gl.enable(gl.CULL_FACE);
     gl.cullFace(gl.BACK);
@@ -62,13 +88,18 @@ export class Renderer {
       gl.deleteVertexArray(this.worldMesh.vao);
       gl.deleteBuffer(this.worldMesh.vbo);
     }
+    this.worldFloats = world.mesh;   // kept so a lost context can be rebuilt
     this.worldMesh = createMesh(gl, world.mesh);
   }
 
   resize() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2) * this.renderScale;
-    const w = Math.max(1, Math.floor(this.canvas.clientWidth * dpr));
-    const h = Math.max(1, Math.floor(this.canvas.clientHeight * dpr));
+    // Asking for a drawing buffer wider than the GL limit does not throw: the
+    // allocation just fails and the canvas goes black. A retina tablet at
+    // dpr 2 clears 4096 easily, so clamp rather than trust the device.
+    const max = this.maxDrawingBuffer();
+    const w = clamp(Math.floor(this.canvas.clientWidth * dpr), 1, max);
+    const h = clamp(Math.floor(this.canvas.clientHeight * dpr), 1, max);
     if (this.canvas.width !== w || this.canvas.height !== h) {
       this.canvas.width = w;
       this.canvas.height = h;
@@ -76,7 +107,19 @@ export class Renderer {
     this.aspect = w / h;
   }
 
+  maxDrawingBuffer() {
+    if (!this.maxDim) {
+      const gl = this.gl;
+      const dims = gl.getParameter(gl.MAX_VIEWPORT_DIMS) || [4096, 4096];
+      const rb = gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) || 4096;
+      const limit = Math.min(dims[0], dims[1], rb);
+      this.maxDim = Number.isFinite(limit) && limit >= 1024 ? limit : 4096;
+    }
+    return this.maxDim;
+  }
+
   beginFrame(camera, sky = this.skyTint) {
+    if (this.contextLost) return;
     const gl = this.gl;
     this.resize();
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
@@ -108,7 +151,7 @@ export class Renderer {
   }
 
   drawWorld() {
-    if (!this.worldMesh) return;
+    if (!this.worldMesh || this.contextLost) return;
     const gl = this.gl;
     gl.uniformMatrix4fv(this.u.uModel, false, this.identity);
     gl.uniform4f(this.u.uTint, 1, 1, 1, 1);
@@ -124,6 +167,7 @@ export class Renderer {
    * opts: { tile, color:[r,g,b], alpha, emissive, flash, yaw, pitch }
    */
   drawBox(x, y, z, sx, sy, sz, opts = {}) {
+    if (this.contextLost) return;
     const gl = this.gl;
     const tile = opts.tile === undefined ? T.SKIN : opts.tile;
     const [u0, v0, du, dv] = tileUV(tile);

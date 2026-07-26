@@ -236,28 +236,39 @@ export function tileUV(id) {
 }
 
 /**
- * Replace a single atlas tile with an image at runtime.
+ * Replace a single atlas tile with an image at runtime. Returns false if the
+ * host would not let it happen.
  * Used by the optional custom enemy head (see assets/README.md): drop a
  * square PNG at assets/enemy-head.png and it becomes the mob face tile.
  * The image is nearest-downsampled to 16x16 so it stays in the blocky style.
  */
 export function patchTile(gl, tex, tileId, image) {
-  const c = document.createElement('canvas');
-  c.width = TILE; c.height = TILE;
-  const ctx = c.getContext('2d');
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(image, 0, 0, TILE, TILE);
-  const tx = (tileId % TILES) * TILE;
-  const ty = Math.floor(tileId / TILES) * TILE;
-  gl.bindTexture(gl.TEXTURE_2D, tex);
-  gl.texSubImage2D(gl.TEXTURE_2D, 0, tx, ty, gl.RGBA, gl.UNSIGNED_BYTE, c);
+  try {
+    const c = document.createElement('canvas');
+    c.width = TILE; c.height = TILE;
+    const ctx = c.getContext('2d');
+    if (!ctx) return false;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(image, 0, 0, TILE, TILE);
+    const tx = (tileId % TILES) * TILE;
+    const ty = Math.floor(tileId / TILES) * TILE;
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    // An image from another origin taints the canvas, and uploading a tainted
+    // canvas throws SecurityError. Every URL is "another origin" to a
+    // sandboxed frame, which has no origin of its own. The generated tile
+    // underneath is a perfectly good face, so this is only ever a downgrade.
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, tx, ty, gl.RGBA, gl.UNSIGNED_BYTE, c);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Try to load an optional user-supplied texture; resolves false if absent. */
 export function tryLoadCustomHead(gl, tex, url = 'assets/enemy-head.png') {
   return new Promise((resolve) => {
     const img = new Image();
-    img.onload = () => { patchTile(gl, tex, T.CUSTOM_HEAD, img); resolve(true); };
+    img.onload = () => resolve(patchTile(gl, tex, T.CUSTOM_HEAD, img));
     img.onerror = () => resolve(false);
     img.src = url;
   });

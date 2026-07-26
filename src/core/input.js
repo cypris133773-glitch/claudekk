@@ -273,11 +273,34 @@ export class Input {
   //   A jump      X attack    RT attack
   //   LB/RB/Y/B   skills 1-4  Start        pause
 
+  /**
+   * Connected pads, or an empty list where the host will not hand them over.
+   * navigator.getGamepads() throws a SecurityError when the "gamepad"
+   * permissions-policy feature is disallowed, which is the default for any
+   * cross-origin or sandboxed iframe that was not given allow="gamepad". This
+   * is read at the top of every frame, so an unguarded call does not cost a
+   * controller, it costs the entire game loop. One refusal is permanent.
+   */
+  readGamepads() {
+    if (this.gamepadBlocked) return [];
+    if (!navigator.getGamepads) { this.gamepadBlocked = true; return []; }
+    try {
+      return navigator.getGamepads() || [];
+    } catch {
+      this.gamepadBlocked = true;
+      return [];
+    }
+  }
+
   /** Feed controller state into the same fields the other devices write. */
   pollGamepad(dt) {
-    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    const pads = this.readGamepads();
     let gp = null;
-    for (const p of pads) if (p && p.connected) { gp = p; break; }
+    // Indexed, not for-of: older WebKit hands back a GamepadList, not an array.
+    for (let i = 0; i < pads.length; i++) {
+      const p = pads[i];
+      if (p && p.connected && p.axes && p.buttons) { gp = p; break; }
+    }
     if (!gp) { this.gamepadActive = false; return false; }
 
     const dead = (v, d = 0.18) =>

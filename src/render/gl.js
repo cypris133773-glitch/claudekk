@@ -64,13 +64,24 @@ function compile(gl, type, src) {
   return sh;
 }
 
+/**
+ * getContext is specified to return null when it cannot make a context, but
+ * some engines throw instead, and a few refuse an attribute set they dislike
+ * (desynchronized on older Android WebViews) rather than ignoring the unknown
+ * keys. So: ask for the good one, then settle for any WebGL2 at all. Failing
+ * that this throws by design — main.js turns it into the "Cannot start" panel,
+ * which is the one capability the game genuinely cannot do without.
+ */
 export function createContext(canvas) {
-  const gl = canvas.getContext('webgl2', {
+  const attempt = (attrs) => {
+    try { return canvas.getContext('webgl2', attrs); } catch { return null; }
+  };
+  const gl = attempt({
     antialias: false,
     alpha: false,
     powerPreference: 'high-performance',
     desynchronized: true,
-  });
+  }) || attempt({ antialias: false, alpha: false }) || attempt(undefined);
   if (!gl) throw new Error('WebGL2 is not available on this device.');
   return gl;
 }

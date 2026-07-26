@@ -6,6 +6,10 @@ import { clamp } from '../core/math.js';
 
 const FONT = "700 %spx 'Segoe UI', system-ui, -apple-system, sans-serif";
 
+// Accessibility floor for a touch target, in CSS px. Every on-screen control
+// is sized so its *hit* circle clears this even on a 360px-wide phone.
+const MIN_TOUCH = 44;
+
 export class Hud {
   constructor(canvas, game, input, profile) {
     this.canvas = canvas;
@@ -14,6 +18,7 @@ export class Hud {
     this.input = input;
     this.profile = profile;
     this.touchMode = false;
+    this.safe = { t: 0, r: 0, b: 0, l: 0 };
   }
 
   resize() {
@@ -24,7 +29,33 @@ export class Hud {
       this.canvas.height = h * dpr;
     }
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // Insets only ever change with the viewport, and reading them forces a
+    // style recalc, so this must not happen on every frame.
+    if (w !== this.w || h !== this.h) this.safe = this.readSafeArea();
     this.w = w; this.h = h;
+  }
+
+  /** Notch / home-indicator insets, via the #safe-probe element in styles.css.
+   *  A canvas cannot read env() itself, and controls drawn under the home bar
+   *  are swallowed by the system swipe gesture rather than reaching the game. */
+  readSafeArea() {
+    let el = this.safeProbe;
+    if (!el || !el.isConnected) {
+      el = document.getElementById('safe-probe');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'safe-probe';
+        document.body.appendChild(el);
+      }
+      this.safeProbe = el;
+    }
+    const s = getComputedStyle(el);
+    return {
+      t: parseFloat(s.paddingTop) || 0,
+      r: parseFloat(s.paddingRight) || 0,
+      b: parseFloat(s.paddingBottom) || 0,
+      l: parseFloat(s.paddingLeft) || 0,
+    };
   }
 
   font(size) { this.ctx.font = FONT.replace('%s', size); }
@@ -51,7 +82,9 @@ export class Hud {
     c.lineWidth = 1;
     this.roundRect(x + 0.5, y + 0.5, w - 1, h - 1, h / 2); c.stroke();
     if (label) {
-      this.font(Math.round(h * 0.62));
+      // Floored: a proportional size makes the resource readout unreadable on
+      // the thinner bars.
+      this.font(Math.max(11, Math.round(h * 0.62)));
       c.fillStyle = 'rgba(255,255,255,0.95)';
       c.textAlign = 'center';
       c.textBaseline = 'middle';
@@ -117,77 +150,108 @@ export class Hud {
 
   drawVitals(p) {
     const c = this.ctx;
-    const pad = 16;
+    const s = this.safe;
+    const pad = 16 + s.l;
     // On desktop the bars sit bottom-left. On touch they go top-left instead:
     // the bottom of a phone screen belongs to the thumbs, and in portrait the
     // control cluster is tall enough to collide with anything down there.
     const w = this.touchMode
       ? Math.min(240, this.w * 0.46)
       : Math.min(340, this.w * 0.42);
-    const y = this.touchMode ? 14 : this.h - 78;
+    // The absorb sliver is drawn 12px above the health bar, so the block has
+    // to start clear of the notch by at least that much.
+    const y = this.touchMode ? s.t + 16 : this.h - 78 - s.b;
+    // Slightly chunkier on touch: these are read at arm's length, mid-fight.
+    const hpH = this.touchMode ? 22 : 20;
+    const resH = this.touchMode ? 16 : 14;
 
-    this.bar(pad, y, w, 20, p.hp / p.maxHp, '#e0473c', 'rgba(0,0,0,0.55)',
+    this.bar(pad, y, w, hpH, p.hp / p.maxHp, '#e0473c', 'rgba(0,0,0,0.55)',
       `${Math.ceil(p.hp)} / ${p.maxHp}`);
     if (p.absorb > 0) {
       this.bar(pad, y - 12, w * Math.min(1, p.absorb / p.maxHp), 8,
         1, 'rgba(180,220,255,0.9)', 'rgba(0,0,0,0.4)');
     }
     const rd = p.resourceDef;
-    this.bar(pad, y + 25, w, 14, p.resource / p.resourceMax, rd.color, 'rgba(0,0,0,0.55)',
-      `${Math.floor(p.resource)}`);
+    this.bar(pad, y + hpH + 5, w, resH, p.resource / p.resourceMax, rd.color,
+      'rgba(0,0,0,0.55)', `${Math.floor(p.resource)}`);
 
+    const labelY = y + hpH + resH + 8;
     this.font(12);
     c.textAlign = 'left';
     c.textBaseline = 'top';
     c.fillStyle = 'rgba(255,255,255,0.6)';
-    c.fillText(p.cls.name.toUpperCase() + ' · ' + rd.name, pad + 2, y + 43);
+    c.fillText(p.cls.name.toUpperCase() + ' · ' + rd.name, pad + 2, labelY);
+    // Everything else stacked down the left edge follows this cursor, so the
+    // blocks cannot drift into each other when a bar changes height.
+    this.leftColY = labelY + 18;
   }
 
   drawWaveInfo() {
     const c = this.ctx;
     const g = this.game;
     const d = g.director;
-    c.textAlign = 'center';
+    const s = this.safe;
     c.textBaseline = 'top';
-
-    // On touch the vitals occupy the top-left, so the wave callout drops below
-    // them rather than fighting for the same band on a narrow screen.
-    const top = this.touchMode ? 76 : 12;
-    this.font(this.w < 520 ? 22 : 26);
-    c.fillStyle = '#ffffff';
     c.shadowColor = 'rgba(0,0,0,0.7)';
     c.shadowBlur = 6;
-    if (d.state === 'intermission') {
-      c.fillText(`Wave ${g.wave + 1} in ${Math.ceil(d.intermission)}`, this.w / 2, top + 2);
+
+    if (this.touchMode) {
+      // A centred banner does not fit a phone: it lands on the buff row coming
+      // up the left edge and directly under the big wave popup, which is drawn
+      // centred too. One compact line in the left column collides with neither.
+      const x = 18 + s.l;
+      const y = this.leftColY;
+      this.font(16);
+      c.textAlign = 'left';
+      c.fillStyle = '#ffffff';
+      const head = d.state === 'intermission'
+        ? `WAVE ${g.wave + 1} IN ${Math.ceil(d.intermission)}`
+        : `WAVE ${g.wave}`;
+      c.fillText(head, x, y);
+      if (d.state !== 'intermission') {
+        const headW = c.measureText(head).width;
+        this.font(13);
+        c.fillStyle = 'rgba(255,255,255,0.72)';
+        c.fillText(`· ${g.mobs.length + d.remaining} left`, x + headW + 8, y + 3);
+      }
+      this.leftColY = y + 24;
     } else {
-      c.fillText(`WAVE ${g.wave}`, this.w / 2, top);
-      this.font(14);
-      c.fillStyle = 'rgba(255,255,255,0.75)';
-      const left = g.mobs.length + d.remaining;
-      c.fillText(`${left} enemies left`, this.w / 2, top + 30);
+      c.textAlign = 'center';
+      this.font(this.w < 520 ? 22 : 26);
+      c.fillStyle = '#ffffff';
+      if (d.state === 'intermission') {
+        c.fillText(`Wave ${g.wave + 1} in ${Math.ceil(d.intermission)}`, this.w / 2, 14);
+      } else {
+        c.fillText(`WAVE ${g.wave}`, this.w / 2, 12);
+        this.font(14);
+        c.fillStyle = 'rgba(255,255,255,0.75)';
+        c.fillText(`${g.mobs.length + d.remaining} enemies left`, this.w / 2, 42);
+      }
     }
     c.shadowBlur = 0;
 
-    // Souls counter, inset past the fullscreen button on touch layouts.
-    const rightEdge = this.w - (this.touchMode ? 56 : 16);
+    // Souls counter, inset clear of the 44px fullscreen/pop-out button.
+    const rightEdge = this.w - s.r - (this.touchMode ? 62 : 16);
+    const top = this.touchMode ? s.t + 16 : 16;
     this.font(15);
     c.textAlign = 'right';
     c.fillStyle = '#c9a6ff';
-    c.fillText('💠 ' + Math.round(g.soulsEarned), rightEdge, 16);
+    c.fillText('💠 ' + Math.round(g.soulsEarned), rightEdge, top);
     this.font(13);
     c.fillStyle = 'rgba(255,255,255,0.6)';
-    c.fillText(`${g.player.kills} kills`, rightEdge, 38);
+    c.fillText(`${g.player.kills} kills`, rightEdge, top + 22);
   }
 
   drawBuffs(p) {
     const c = this.ctx;
     // Sit below the vitals block, wherever that ended up.
-    let x = 16, y = this.touchMode ? 78 : 68;
+    const size = 34;
+    let x = 16 + this.safe.l;
+    let y = this.touchMode ? this.leftColY : 68;
     this.font(11);
     c.textAlign = 'center';
     c.textBaseline = 'middle';
     for (const b of p.buffs) {
-      const size = 34;
       c.fillStyle = 'rgba(0,0,0,0.5)';
       this.roundRect(x, y, size, size, 8); c.fill();
       c.strokeStyle = b.color || '#fff';
@@ -205,7 +269,8 @@ export class Hud {
       this.font(12);
       c.fillStyle = '#ffb27a';
       c.textAlign = 'left';
-      c.fillText('Rampage x' + p.rampageStacks, 16, y + 44);
+      c.fillText('Rampage x' + p.rampageStacks,
+        16 + this.safe.l, y + size + (p.buffs.length ? 12 : 0));
     }
   }
 
@@ -260,18 +325,24 @@ export class Hud {
       if (d > 34) continue;
       const s = r.project(m.x, m.y + m.height + 0.35, m.z);
       if (!s || s.x < -60 || s.x > this.w + 60) continue;
-      const w = clamp(340 / (s.depth + 4), 24, 90);
-      const h = m.def.boss ? 7 : 4;
+      // A 4px bar is invisible on a phone held at arm's length, so touch
+      // layouts get a taller bar and a wider floor.
+      const touch = this.touchMode;
+      const w = clamp(340 / (s.depth + 4), touch ? 32 : 24, 90);
+      const h = m.def.boss ? (touch ? 9 : 7) : (touch ? 6 : 4);
       const pct = m.hp / m.maxHp;
-      c.fillStyle = 'rgba(0,0,0,0.55)';
+      c.fillStyle = 'rgba(0,0,0,0.65)';
       c.fillRect(s.x - w / 2, s.y, w, h);
       c.fillStyle = m.def.boss ? '#ff5a3c' : (m.elite ? '#ffd24a' : '#77dd66');
       c.fillRect(s.x - w / 2 + 1, s.y + 1, (w - 2) * pct, h - 2);
       if (m.def.boss || m.elite) {
-        this.font(11);
+        this.font(touch ? 12 : 11);
         c.textAlign = 'center';
         c.fillStyle = m.def.boss ? '#ff9a7a' : '#ffd24a';
+        c.shadowColor = 'rgba(0,0,0,0.9)';
+        c.shadowBlur = 4;
         c.fillText((m.elite ? 'ELITE ' : '') + m.def.name, s.x, s.y - 8);
+        c.shadowBlur = 0;
       }
     }
   }
