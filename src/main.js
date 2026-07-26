@@ -10,6 +10,22 @@ import { Hud } from './ui/hud.js';
 import { Menus } from './ui/menus.js';
 import { clamp } from './core/math.js';
 
+// The viewport meta must exist or mobile browsers lay the page out at a
+// 980px virtual width and scale it down: the game renders huge, gets shrunk
+// to fit, and every touch target lands in the wrong place. index.html has the
+// tag, but an embed host supplies its own <head>, so set it from script — that
+// covers both cases and browsers re-evaluate the viewport when it changes.
+(function ensureViewport() {
+  let tag = document.querySelector('meta[name="viewport"]');
+  if (!tag) {
+    tag = document.createElement('meta');
+    tag.setAttribute('name', 'viewport');
+    document.head.appendChild(tag);
+  }
+  tag.setAttribute('content',
+    'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
+})();
+
 const glCanvas = document.getElementById('view');
 const hudCanvas = document.getElementById('hud');
 const uiRoot = document.getElementById('ui');
@@ -84,8 +100,14 @@ function requestLock() {
 // --- Fullscreen ------------------------------------------------------------
 
 const fullscreenBtn = document.getElementById('fullscreen-btn');
+const inIframe = window.self !== window.top;
+// An embed only gets fullscreen if the host iframe carries allow="fullscreen".
+// document.fullscreenEnabled is the reliable signal; the method exists either
+// way and simply rejects, which would look like the button doing nothing.
+const fullscreenAllowed = document.fullscreenEnabled !== false;
 const fullscreenSupported = !!(document.documentElement.requestFullscreen
   || document.documentElement.webkitRequestFullscreen);
+const fullscreenUsable = fullscreenSupported && fullscreenAllowed;
 
 function isFullscreen() {
   return !!(document.fullscreenElement || document.webkitFullscreenElement);
@@ -93,7 +115,7 @@ function isFullscreen() {
 
 /** Must be called straight from a user gesture or browsers reject it. */
 function enterFullscreen() {
-  if (!fullscreenSupported || isFullscreen()) return;
+  if (!fullscreenUsable || isFullscreen()) return;
   const el = document.documentElement;
   const req = el.requestFullscreen || el.webkitRequestFullscreen;
   try {
@@ -119,12 +141,43 @@ function syncFullscreenUi() {
 document.addEventListener('fullscreenchange', syncFullscreenUi);
 document.addEventListener('webkitfullscreenchange', syncFullscreenUi);
 
-if (fullscreenSupported) {
+if (fullscreenUsable) {
   document.body.classList.add('show-fullscreen-btn');
   fullscreenBtn.addEventListener('click', (e) => {
     e.preventDefault();
     if (isFullscreen()) exitFullscreen(); else enterFullscreen();
   });
+} else if (inIframe) {
+  // An embed without allow="fullscreen" can never go fullscreen from inside,
+  // so offer the only thing that actually works: the same page in its own
+  // tab, where fullscreen and pointer lock are available. A real anchor is
+  // used because window.open is blocked in a sandboxed frame.
+  const link = document.createElement('a');
+  link.id = 'popout-btn';
+  link.href = location.href;
+  link.target = '_blank';
+  link.rel = 'noopener';
+  link.title = 'Open in a new tab for fullscreen';
+  link.textContent = '⇱';
+  document.body.appendChild(link);
+  document.body.classList.add('show-popout-btn');
+} else {
+  fullscreenBtn.remove();
+}
+
+/** Brief centred message for things the player needs told immediately. */
+let toastTimer = null;
+function showToast(text, ms = 4000) {
+  let t = document.getElementById('toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'toast';
+    document.body.appendChild(t);
+  }
+  t.textContent = text;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), ms);
 }
 
 // --- Loading screen --------------------------------------------------------
@@ -147,7 +200,7 @@ const nextPaint = () => new Promise((r) => requestAnimationFrame(() => requestAn
 async function startRun(cls) {
   // Both of these need the user gesture that is still on the stack.
   audio.ensure();
-  if (isTouchDevice() && profile.settings.fullscreenOnPlay) enterFullscreen();
+  if (isTouchDevice() && profile.settings.fullscreenOnPlay && fullscreenUsable) enterFullscreen();
 
   // The hint has served its purpose once a run begins, and it sits where the
   // health bar goes.

@@ -127,7 +127,13 @@ if (FRAGMENT) {
   const body = bundled.match(/<body>([\s\S]*?)<\/body>/);
   if (!body) throw new Error('could not find <body> to extract');
   output = `${title}\n${style}\n${body[1].trim()}\n`;
-  if (/<!doctype|<html|<head|<body/i.test(output)) {
+  // Check the markup only. Inlined script and style bodies legitimately
+  // mention these tag names — in comments, strings and selectors — and are not
+  // markup, so blank them out before looking for a real skeleton tag.
+  const markupOnly = output
+    .replace(/<script[\s\S]*?<\/script>/gi, '<script></script>')
+    .replace(/<style[\s\S]*?<\/style>/gi, '<style></style>');
+  if (/<!doctype|<html[\s>]|<head[\s>]|<body[\s>]/i.test(markupOnly)) {
     throw new Error('fragment still contains document skeleton tags');
   }
 }
