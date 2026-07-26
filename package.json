@@ -8,7 +8,9 @@
     "start": "node tools/serve.js",
     "dev": "node tools/serve.js",
     "test": "node tools/smoke-test.js",
-    "sim": "node tools/balance-sim.js"
+    "sim": "node tools/balance-sim.js",
+    "build": "node tools/bundle.js",
+    "build:fragment": "node tools/bundle.js --fragment"
   },
   "engines": {
     "node": ">=18"

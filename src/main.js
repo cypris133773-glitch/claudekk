@@ -15,11 +15,20 @@ const hudCanvas = document.getElementById('hud');
 const uiRoot = document.getElementById('ui');
 const bootMsg = document.getElementById('boot');
 
-function fatal(message) {
+function fatal(message, detail) {
   bootMsg.classList.remove('hidden');
   bootMsg.innerHTML = `<h1>Cannot start</h1><p>${message}</p>
-    <p class="small">This game needs WebGL2. Try an up-to-date Chrome, Edge, Firefox or Safari.</p>`;
+    ${detail ? `<p class="small">${detail}</p>` : ''}
+    <p class="small">This game needs WebGL2. Try an up-to-date Chrome, Edge,
+    Firefox or Safari, and check that hardware acceleration is on.</p>`;
 }
+
+// Anything unhandled becomes a visible message. A silent black screen is the
+// worst possible failure mode — it gives the player nothing to report.
+window.addEventListener('error', (e) => {
+  if (!window.BLOCKFRAY || !window.BLOCKFRAY.game.running) return;
+  console.error(e.error || e.message);
+});
 
 let renderer;
 try {
@@ -72,10 +81,96 @@ function requestLock() {
   if (!isTouchDevice()) glCanvas.requestPointerLock?.();
 }
 
-function startRun(cls) {
+// --- Fullscreen ------------------------------------------------------------
+
+const fullscreenBtn = document.getElementById('fullscreen-btn');
+const fullscreenSupported = !!(document.documentElement.requestFullscreen
+  || document.documentElement.webkitRequestFullscreen);
+
+function isFullscreen() {
+  return !!(document.fullscreenElement || document.webkitFullscreenElement);
+}
+
+/** Must be called straight from a user gesture or browsers reject it. */
+function enterFullscreen() {
+  if (!fullscreenSupported || isFullscreen()) return;
+  const el = document.documentElement;
+  const req = el.requestFullscreen || el.webkitRequestFullscreen;
+  try {
+    const p = req.call(el, { navigationUI: 'hide' });
+    // Landscape is the better view; the lock is unsupported on iOS, so this
+    // is an attempt rather than a requirement and must not throw.
+    if (p && p.then) p.then(() => screen.orientation?.lock?.('landscape').catch(() => {})).catch(() => {});
+    else screen.orientation?.lock?.('landscape').catch(() => {});
+  } catch { /* user or browser said no; the game plays windowed either way */ }
+}
+
+function exitFullscreen() {
+  if (!isFullscreen()) return;
+  try {
+    screen.orientation?.unlock?.();
+    (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+  } catch { /* nothing to do */ }
+}
+
+function syncFullscreenUi() {
+  document.body.classList.toggle('is-fullscreen', isFullscreen());
+}
+document.addEventListener('fullscreenchange', syncFullscreenUi);
+document.addEventListener('webkitfullscreenchange', syncFullscreenUi);
+
+if (fullscreenSupported) {
+  document.body.classList.add('show-fullscreen-btn');
+  fullscreenBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (isFullscreen()) exitFullscreen(); else enterFullscreen();
+  });
+}
+
+// --- Loading screen --------------------------------------------------------
+
+const loadingEl = document.getElementById('loading');
+const loadingStep = document.getElementById('loading-step');
+const loadingFill = document.getElementById('loading-fill');
+
+function showLoading(step, pct) {
+  loadingStep.textContent = step;
+  loadingFill.style.width = pct + '%';
+  loadingEl.classList.remove('hidden');
+}
+
+function hideLoading() { loadingEl.classList.add('hidden'); }
+
+/** Yield twice so the browser actually paints before a blocking step. */
+const nextPaint = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+async function startRun(cls) {
+  // Both of these need the user gesture that is still on the stack.
   audio.ensure();
-  game.startRun(cls);
+  if (isTouchDevice() && profile.settings.fullscreenOnPlay) enterFullscreen();
+
+  // The hint has served its purpose once a run begins, and it sits where the
+  // health bar goes.
+  document.getElementById('rotate-hint').classList.add('hidden');
+
   menus.show(null);
+  showLoading('Carving the arena…', 15);
+  await nextPaint();
+
+  try {
+    // Generating and meshing the arena blocks for a moment on a phone; the
+    // loading screen above is already painted, so it reads as loading.
+    game.startRun(cls);
+  } catch (err) {
+    hideLoading();
+    fatal('The arena failed to build.', String(err && err.message ? err.message : err));
+    console.error(err);
+    return;
+  }
+
+  showLoading('Entering the arena…', 100);
+  await nextPaint();
+  hideLoading();
   input.setEnabled(true);
   requestLock();
 }
@@ -122,6 +217,17 @@ window.addEventListener('gamepaddisconnected', () => {
   input.gamepadActive = false;
   if (game.running && !game.paused) pauseRun();
 });
+
+// Landscape hint: informational only, dismissible, never blocks input.
+const rotateHint = document.getElementById('rotate-hint');
+if (isTouchDevice() && !localStorage.getItem('blockfray.rotateHintSeen')) {
+  rotateHint.classList.remove('hidden');
+  document.getElementById('rotate-dismiss').addEventListener('click', () => {
+    rotateHint.classList.add('hidden');
+    localStorage.setItem('blockfray.rotateHintSeen', '1');
+  });
+  setTimeout(() => rotateHint.classList.add('hidden'), 6000);
+}
 
 menus.show('title');
 
@@ -175,8 +281,14 @@ function frame(now) {
   }
 
   if (game.running || game.over) {
-    game.draw();
-    hud.draw(dt);
+    try {
+      game.draw();
+      hud.draw(dt);
+    } catch (err) {
+      game.running = false;
+      fatal('The game hit an error while drawing.', String(err && err.message ? err.message : err));
+      console.error(err);
+    }
   } else {
     // Menu backdrop: clear to a calm colour.
     const gl = renderer.gl;

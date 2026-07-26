@@ -427,6 +427,7 @@ export class Menus {
     toggle('Damage numbers', 'showDamage');
     toggle('Left-handed layout', 'leftHanded', 'Swaps the joystick and buttons');
     toggle('Hold to attack', 'autoAttack', 'Keep swinging while the button is held');
+    toggle('Fullscreen on play', 'fullscreenOnPlay', 'Go fullscreen when a run starts');
 
     p.appendChild(list);
     p.appendChild(el('p', 'footnote', 'Render scale below 100% boosts frame rate on phones.'));

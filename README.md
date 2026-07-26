@@ -13,13 +13,30 @@ npm test           # 24 logic checks, no browser needed
 npm run sim        # headless balance simulation
 ```
 
-**Play it:** <https://cypris133773-glitch.github.io/claudekk/>
+## Hosting
 
-It is a static site — no build, no server-side anything. Pushing to `main`
-publishes it via GitHub Actions; the workflow enables Pages itself, so there is
-no manual setup. Any static host works just as well: Netlify, Vercel,
-Cloudflare Pages or an S3 bucket. Opening `index.html` directly from disk will
-**not** work — ES modules require `http://`, so use `npm start` locally.
+It is a static site — no build step, no server-side anything — so any static
+host serves it as-is. Opening `index.html` straight off disk will **not** work:
+ES modules require `http://`, so use `npm start` locally.
+
+| Route | What it needs |
+| --- | --- |
+| **GitHub Pages** | Enable once under *Settings → Pages → Source → GitHub Actions*. Every push to `main` then deploys via `.github/workflows/pages.yml`. The workflow cannot enable Pages for you — creating a Pages site needs admin scope the default workflow token does not have. |
+| **Vercel** | Import the repository. `vercel.json` is included; framework preset "Other", no build command. |
+| **Netlify / Cloudflare Pages / S3** | Publish directory `.`, no build command. |
+| **Single file** | `npm run build` writes `dist/blockfray.html` — the whole game in one file with zero external requests. Drop it anywhere, including itch.io. |
+
+### Single-file build
+
+```bash
+npm run build              # dist/blockfray.html          (standalone document)
+npm run build:fragment     # dist/blockfray-fragment.html (no <html>/<body>)
+```
+
+`tools/bundle.js` inlines the CSS and flattens the module tree behind a small
+registry shim, with no bundler dependency. Everything the game draws and plays
+is generated in code, so the result makes no network requests at all — handy
+for itch.io, a desktop wrapper, or any host that will not serve directories.
 
 ---
 

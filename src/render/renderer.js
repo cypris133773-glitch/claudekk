@@ -83,7 +83,15 @@ export class Renderer {
     gl.clearColor(sky[0], sky[1], sky[2], 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-    perspective(this.proj, (camera.fov || this.fov) * Math.PI / 180, this.aspect, 0.06, 260);
+    // The configured FOV is vertical, which pinches the view badly on a
+    // portrait phone where the aspect ratio is below 1. There, treat it as a
+    // horizontal FOV instead and solve for the vertical one, so turning the
+    // phone changes the shape of the view rather than how much you can see.
+    let fovRad = (camera.fov || this.fov) * Math.PI / 180;
+    if (this.aspect < 1) {
+      fovRad = 2 * Math.atan(Math.tan(fovRad / 2) / Math.max(this.aspect, 0.35));
+    }
+    perspective(this.proj, fovRad, this.aspect, 0.06, 260);
     viewFromEuler(this.view, camera.x, camera.y, camera.z, camera.yaw, camera.pitch);
     multiply(this.viewProj, this.proj, this.view);
 

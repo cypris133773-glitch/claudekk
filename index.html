@@ -20,12 +20,20 @@
     <h1>BLOCKFRAY</h1>
     <p>Loading…</p>
   </div>
-  <div id="rotate-hint">
-    <div>
-      <p class="big">↻</p>
-      <p>Turn your phone sideways to play.</p>
+  <div id="loading" class="hidden">
+    <div class="load-inner">
+      <h2>BLOCKFRAY</h2>
+      <p id="loading-step">Carving the arena…</p>
+      <div class="load-bar"><i id="loading-fill"></i></div>
     </div>
   </div>
+  <!-- Landscape plays better, but this is only ever a dismissible hint: an
+       overlay that blocks the screen is indistinguishable from a crash. -->
+  <div id="rotate-hint" class="hidden">
+    <span>↻ Turn sideways for a wider view</span>
+    <button id="rotate-dismiss" aria-label="Dismiss">✕</button>
+  </div>
+  <button id="fullscreen-btn" title="Fullscreen" aria-label="Toggle fullscreen">⛶</button>
   <script type="module" src="src/main.js"></script>
 </body>
 </html>

@@ -31,6 +31,7 @@ function emptyProfile() {
       leftHanded: false,
       autoAttack: true,
       hapticFeedback: true,
+      fullscreenOnPlay: true,
     },
   };
 }

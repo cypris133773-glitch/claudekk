@@ -118,10 +118,13 @@ export class Hud {
   drawVitals(p) {
     const c = this.ctx;
     const pad = 16;
-    // On phones the bars sit bottom-left, clear of the right-hand button
-    // cluster and above the joystick zone.
-    const w = this.touchMode ? Math.min(260, this.w * 0.30) : Math.min(340, this.w * 0.42);
-    const y = this.h - 78;
+    // On desktop the bars sit bottom-left. On touch they go top-left instead:
+    // the bottom of a phone screen belongs to the thumbs, and in portrait the
+    // control cluster is tall enough to collide with anything down there.
+    const w = this.touchMode
+      ? Math.min(240, this.w * 0.46)
+      : Math.min(340, this.w * 0.42);
+    const y = this.touchMode ? 14 : this.h - 78;
 
     this.bar(pad, y, w, 20, p.hp / p.maxHp, '#e0473c', 'rgba(0,0,0,0.55)',
       `${Math.ceil(p.hp)} / ${p.maxHp}`);
@@ -147,34 +150,39 @@ export class Hud {
     c.textAlign = 'center';
     c.textBaseline = 'top';
 
-    this.font(26);
+    // On touch the vitals occupy the top-left, so the wave callout drops below
+    // them rather than fighting for the same band on a narrow screen.
+    const top = this.touchMode ? 76 : 12;
+    this.font(this.w < 520 ? 22 : 26);
     c.fillStyle = '#ffffff';
     c.shadowColor = 'rgba(0,0,0,0.7)';
     c.shadowBlur = 6;
     if (d.state === 'intermission') {
-      c.fillText(`Wave ${g.wave + 1} in ${Math.ceil(d.intermission)}`, this.w / 2, 14);
+      c.fillText(`Wave ${g.wave + 1} in ${Math.ceil(d.intermission)}`, this.w / 2, top + 2);
     } else {
-      c.fillText(`WAVE ${g.wave}`, this.w / 2, 12);
+      c.fillText(`WAVE ${g.wave}`, this.w / 2, top);
       this.font(14);
       c.fillStyle = 'rgba(255,255,255,0.75)';
       const left = g.mobs.length + d.remaining;
-      c.fillText(`${left} enemies left`, this.w / 2, 44);
+      c.fillText(`${left} enemies left`, this.w / 2, top + 30);
     }
     c.shadowBlur = 0;
 
-    // Souls counter
+    // Souls counter, inset past the fullscreen button on touch layouts.
+    const rightEdge = this.w - (this.touchMode ? 56 : 16);
     this.font(15);
     c.textAlign = 'right';
     c.fillStyle = '#c9a6ff';
-    c.fillText('💠 ' + Math.round(g.soulsEarned), this.w - 16, 16);
+    c.fillText('💠 ' + Math.round(g.soulsEarned), rightEdge, 16);
     this.font(13);
     c.fillStyle = 'rgba(255,255,255,0.6)';
-    c.fillText(`${g.player.kills} kills`, this.w - 16, 38);
+    c.fillText(`${g.player.kills} kills`, rightEdge, 38);
   }
 
   drawBuffs(p) {
     const c = this.ctx;
-    let x = 16, y = 68;
+    // Sit below the vitals block, wherever that ended up.
+    let x = 16, y = this.touchMode ? 78 : 68;
     this.font(11);
     c.textAlign = 'center';
     c.textBaseline = 'middle';
