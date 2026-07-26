@@ -4,6 +4,7 @@ import { createArena } from '../world/world.js';
 import { BLOCKS } from '../world/blocks.js';
 import { Player, buildMods } from './player.js';
 import { Mob, MOB_TYPES } from './mobs.js';
+import { Fiend } from './pets.js';
 import { Projectile, Particle, Telegraph, Shockwave, FloatText, hexToRgb } from './effects.js';
 import { TEAM } from './entity.js';
 import { WaveDirector, waveScaling, waveClearBonus, isBossWave } from './waves.js';
@@ -269,6 +270,8 @@ export class Game {
     if (isPlayer) {
       crit = source.rollCrit(opts.forceCrit);
       if (crit) dmg *= source.critMult;
+      // Shatter: frozen targets take extra damage.
+      if (source.mods.frozenDamage && target.freeze > 0) dmg *= 1 + source.mods.frozenDamage;
     } else if (opts.forceCrit) {
       crit = true;
       dmg *= 2;
@@ -280,6 +283,15 @@ export class Game {
     if (isPlayer) {
       source.damageDealt += dealt;
       if (source.lifesteal) source.heal(dealt * source.lifesteal);
+      // Deep Wounds: crits leave a bleed scaled off the hit that landed.
+      if (crit && source.mods.bleedPct && !opts.isDot && !target.dead) {
+        target.applyDot(dealt * source.mods.bleedPct / 3, 3, 'bleed', source);
+      }
+      // Rage-style resources build by landing hits.
+      if (!opts.isDot) {
+        const perHit = (source.resourceDef.onHitGain || 0) + (source.mods.onHitGain || 0);
+        if (perHit) source.gainResource(perHit);
+      }
       if (source.mods.critCdr && crit) {
         for (let i = 0; i < source.cooldowns.length; i++) {
           source.cooldowns[i] = Math.max(0, source.cooldowns[i] - source.mods.critCdr);
@@ -492,6 +504,8 @@ export class Game {
     for (const b of this.beams) b.life -= dt;
     for (const n of this.notifications) n.life -= dt;
 
+    this.updatePetRebirth(dt);
+
     // Retire dead things.
     this.mobs = this.mobs.filter((m) => {
       if (m.dead) { this.onEnemyKilled(m, null, {}); return false; }
@@ -507,6 +521,24 @@ export class Game {
     this.notifications = this.notifications.filter((n) => n.life > 0);
 
     this.updateWaves(dt);
+  }
+
+  /** Demonic Rebirth: a fiend killed in combat claws its way back, on a timer. */
+  updatePetRebirth(dt) {
+    this.petRebirthCd = Math.max(0, (this.petRebirthCd || 0) - dt);
+    if (!this.player.mods.petRebirth) return;
+    for (const pet of this.pets) {
+      if (!pet.dead || !pet.isPet || pet.rebirthChecked) continue;
+      pet.rebirthChecked = true;
+      if (pet.expired || this.petRebirthCd > 0) continue;
+      this.petRebirthCd = 30;
+      const sx = this.player.x + rand(2, -2), sz = this.player.z + rand(2, -2);
+      const sy = this.world.groundAt(sx, sz, this.player.y + 2);
+      this.pets.push(new Fiend(sx, sy, sz, { ...pet.spawnOpts, owner: this.player }));
+      this.burst(sx, sy + 0.8, sz, 16, '#a35cff');
+      this.notify('Fiend reborn');
+      this.audio.play('summon');
+    }
   }
 
   updateWaves(dt) {
@@ -533,7 +565,7 @@ export class Game {
       const bonus = waveClearBonus(this.wave);
       this.soulsEarned += bonus * (1 + (this.player.mods.soulGain || 0));
       this.notify(`Wave ${this.wave} cleared  +${bonus} souls`, 2.2);
-      this.player.heal(this.player.maxHp * 0.12);
+      this.player.heal(this.player.maxHp * 0.25);
       this.rerollsLeft = this.permMods.rerolls || 0;
       this.player.cheatDeathUsed = false;
       this.offerUpgrades();

@@ -13,6 +13,7 @@ export class Fiend extends Entity {
     this.owner = opts.owner;
     this.attackTimer = 0;
     this.isPet = true;
+    this.spawnOpts = opts;      // kept so Demonic Rebirth can rebuild it
   }
 
   update(dt, game) {

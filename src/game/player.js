@@ -59,6 +59,10 @@ export class Player extends Entity {
     this.onAbsorbBroken = () => {
       if (this.mods.rapture) this.gainResource(this.mods.rapture);
     };
+    // Siphon: damage-over-time effects you own feed you back.
+    this.onDotDamage = (dealt) => {
+      if (this.mods.dotLifesteal && dealt > 0) this.heal(dealt * this.mods.dotLifesteal);
+    };
   }
 
   /** Recompute derived stats; call after talents/upgrades change. */

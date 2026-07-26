@@ -17,43 +17,43 @@ const hex = (h) => [
 export const MOB_TYPES = {
   husk: {
     name: 'Husk', weight: 10, minWave: 1, cost: 1,
-    hp: 60, damage: 12, speed: 3.1, range: 2.0, attackSpeed: 1.1, souls: 3,
+    hp: 60, damage: 9, speed: 3.1, range: 2.0, attackSpeed: 0.85, souls: 3,
     height: 1.8, width: 0.6, behavior: 'melee',
     skin: { head: hex('#6a8f5a'), body: hex('#3f6f8f'), arm: hex('#6a8f5a'), leg: hex('#33517a'), face: T.FACE_HUSK },
   },
   crawler: {
     name: 'Crawler', weight: 7, minWave: 2, cost: 1,
-    hp: 42, damage: 9, speed: 5.4, range: 1.8, attackSpeed: 1.8, souls: 3,
+    hp: 42, damage: 7, speed: 5.4, range: 1.8, attackSpeed: 1.4, souls: 3,
     height: 1.2, width: 0.7, behavior: 'leaper',
     skin: { head: hex('#3b2b3f'), body: hex('#2a1e2e'), arm: hex('#4a3550'), leg: hex('#2a1e2e'), face: T.FACE_CRAWLER },
   },
   skele: {
     name: 'Bonecaster', weight: 6, minWave: 3, cost: 2,
-    hp: 50, damage: 14, speed: 2.9, range: 18, attackSpeed: 0.65, souls: 5,
+    hp: 50, damage: 10, speed: 2.9, range: 18, attackSpeed: 0.6, souls: 5,
     height: 1.8, width: 0.55, behavior: 'ranged', projectile: { speed: 22, gravity: 6, color: '#e8e4d0', size: 0.22 },
     skin: { head: hex('#e0dcc4'), body: hex('#cfcab0'), arm: hex('#e0dcc4'), leg: hex('#cfcab0'), face: T.FACE_SKELE, headTile: T.BONE, bodyTile: T.BONE },
   },
   bomber: {
     name: 'Bomber', weight: 5, minWave: 4, cost: 2,
-    hp: 45, damage: 46, speed: 4.0, range: 2.6, attackSpeed: 1, souls: 6,
+    hp: 45, damage: 32, speed: 4.0, range: 2.6, attackSpeed: 1, souls: 6,
     height: 1.6, width: 0.6, behavior: 'bomber', fuse: 1.15, blastRadius: 4.6,
     skin: { head: hex('#5fbf62'), body: hex('#4aa84d'), arm: hex('#4aa84d'), leg: hex('#3d8c40'), face: T.FACE_BOMBER },
   },
   brute: {
     name: 'Brute', weight: 4, minWave: 6, cost: 3,
-    hp: 190, damage: 26, speed: 2.6, range: 2.8, attackSpeed: 0.7, souls: 12,
+    hp: 190, damage: 19, speed: 2.6, range: 2.8, attackSpeed: 0.6, souls: 12,
     height: 2.6, width: 0.9, behavior: 'slammer', knockResist: 0.7,
     skin: { head: hex('#8a6a4a'), body: hex('#6f5138'), arm: hex('#8a6a4a'), leg: hex('#5a4330'), face: T.FACE_HUSK, hat: hex('#3a2c20') },
   },
   reaper: {
     name: 'Reaper', weight: 3, minWave: 9, cost: 4,
-    hp: 130, damage: 22, speed: 4.6, range: 2.4, attackSpeed: 1.4, souls: 15,
+    hp: 130, damage: 17, speed: 4.6, range: 2.4, attackSpeed: 1.1, souls: 15,
     height: 2.0, width: 0.6, behavior: 'blinker',
     skin: { head: hex('#3a2050'), body: hex('#221338'), arm: hex('#4a2a66'), leg: hex('#221338'), face: T.FACE_BOSS, emissive: 0.18 },
   },
   colossus: {
     name: 'Colossus', weight: 0, minWave: 5, cost: 0, boss: true,
-    hp: 900, damage: 38, speed: 2.5, range: 4.0, attackSpeed: 0.6, souls: 90,
+    hp: 520, damage: 28, speed: 2.5, range: 4.0, attackSpeed: 0.55, souls: 90,
     height: 4.2, width: 1.5, behavior: 'boss', knockResist: 1,
     skin: { head: hex('#9a3f2f'), body: hex('#6d2a20'), arm: hex('#9a3f2f'), leg: hex('#4d1d16'), face: T.FACE_BOSS, hat: hex('#c9a227'), emissive: 0.12 },
   },
@@ -77,6 +77,12 @@ export class Mob extends Entity {
     this.wave = wave;
     this.elite = false;
     this.id = (Math.random() * 100000) | 0;   // used for per-mob strafe direction
+    this.stuckTimer = 0;
+    this.strikes = 0;                         // consecutive windows with no progress
+    this.windowTimer = 0;
+    this.windowDist = undefined;
+    this.avoidTimer = 0;
+    this.avoidSign = 1;
   }
 
   makeElite() {
@@ -99,6 +105,8 @@ export class Mob extends Entity {
     // Lava hurts everyone.
     const inLava = game.blockDamageAt(this.x, this.y + 0.2, this.z);
     if (inLava) this.damage(inLava * dt, { source: null });
+
+    this.avoidTimer = Math.max(0, this.avoidTimer - dt);
 
     if (this.disabled) { this.vx *= 0.2; this.vz *= 0.2; return; }
 
@@ -125,6 +133,50 @@ export class Mob extends Entity {
 
     this.walkPhase += Math.hypot(this.vx, this.vz) * dt * 2.4;
     this.autoJump(world, nx, nz);
+    this.checkStuck(dt, game, dist);
+  }
+
+  /**
+   * Leash failsafe. Terrain can strand a mob where it will never reach the
+   * player — stuck on a tower, wedged in geometry, or across a lava channel it
+   * will not path around. The wave then never clears and the run softlocks.
+   *
+   * Progress is measured over a sliding window rather than instantaneously, so
+   * a mob that is genuinely closing the gap is never punished. The check only
+   * arms when a mob is far away or is one of the stragglers holding up the end
+   * of a wave, so ordinary combat and player kiting are unaffected.
+   */
+  checkStuck(dt, game, dist) {
+    const target = game.player;
+    // A ranged mob only counts as engaged if it can actually land a shot —
+    // sitting at nominal range behind a wall is exactly the stuck case.
+    const engaged = this.def.behavior === 'ranged'
+      ? dist < this.def.range
+        && game.world.lineOfSight(this.x, this.eyeY, this.z, target.x, target.centerY, target.z)
+      : dist <= this.def.range + 1.5;
+    if (engaged) {
+      this.strikes = 0;
+      this.windowDist = dist;
+      this.windowTimer = 0;
+      return;
+    }
+
+    this.windowTimer = (this.windowTimer || 0) + dt;
+    if (this.windowTimer < 4) return;
+    this.windowTimer = 0;
+
+    const improved = this.windowDist === undefined || dist < this.windowDist - 1.5;
+    this.windowDist = dist;
+    this.strikes = improved ? 0 : (this.strikes || 0) + 1;
+    if (this.strikes < 3) return;         // 12s of no progress
+
+    this.strikes = 0;
+    const pt = game.world.pickSpawn(game.player.x, game.player.z, 9);
+    game.burst(this.x, this.centerY, this.z, 8, '#6a2fb5');
+    this.x = pt.x; this.y = pt.y + 0.2; this.z = pt.z;
+    this.vx = this.vy = this.vz = 0;
+    this.windowDist = undefined;
+    game.burst(this.x, this.centerY, this.z, 8, '#6a2fb5');
   }
 
   /** Hop up a single block when walking into a ledge. */
@@ -137,9 +189,28 @@ export class Mob extends Entity {
     }
   }
 
+  /**
+   * Steer toward a direction, swinging wide around anything solid.
+   * The mobs have no pathfinder — they steer straight at their target — so
+   * without this they wedge against pillars and walls and never arrive.
+   * On a collision the mob commits to one side for a moment and slides along
+   * the obstruction until it is clear.
+   */
   moveToward(nx, nz, speed) {
-    this.vx += (nx * speed - this.vx) * 0.28;
-    this.vz += (nz * speed - this.vz) * 0.28;
+    if (this.hitWallX || this.hitWallZ) {
+      if (this.avoidTimer <= 0) this.avoidSign = this.id % 2 ? 1 : -1;
+      this.avoidTimer = 0.9;
+    }
+    let dx = nx, dz = nz;
+    if (this.avoidTimer > 0) {
+      // Rotate the desired heading ~70 degrees to the committed side.
+      const a = this.avoidSign * 1.22;
+      const c = Math.cos(a), s = Math.sin(a);
+      dx = nx * c - nz * s;
+      dz = nx * s + nz * c;
+    }
+    this.vx += (dx * speed - this.vx) * 0.28;
+    this.vz += (dz * speed - this.vz) * 0.28;
   }
 
   strafe(nx, nz, speed, sign) {
@@ -272,8 +343,8 @@ export class Mob extends Entity {
         }
       } else {
         this.swing = 1;
-        game.telegraph(target.x, target.y, target.z, 7.0, 1.0, () => {
-          game.explode(target.x, target.y + 0.4, target.z, 7.0, this.damageAmount * 1.8, {
+        game.telegraph(target.x, target.y, target.z, 7.0, 1.35, () => {
+          game.explode(target.x, target.y + 0.4, target.z, 7.0, this.damageAmount * 1.4, {
             team: TEAM.ENEMY, source: this, color: '#ff7a3c', knockback: 12,
           });
         });

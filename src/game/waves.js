@@ -4,12 +4,16 @@ import { MOB_TYPES, rollMobType } from './mobs.js';
 
 export const BOSS_EVERY = 5;
 
-/** Difficulty multipliers for a given wave. Endless, so this never caps. */
+/**
+ * Difficulty multipliers for a given wave. Endless, so this never caps.
+ * Health climbs faster than damage: later waves should mean longer, more
+ * dangerous fights rather than instant deaths.
+ */
 export function waveScaling(wave) {
   const w = wave - 1;
   return {
     hp: 1 + w * 0.16 + Math.pow(w, 1.42) * 0.012,
-    damage: 1 + w * 0.085 + Math.pow(w, 1.28) * 0.006,
+    damage: 1 + w * 0.065 + Math.pow(w, 1.30) * 0.005,
     speed: Math.min(1.55, 1 + w * 0.012),
     souls: 1 + w * 0.09,
   };
@@ -17,12 +21,16 @@ export function waveScaling(wave) {
 
 /** How many "cost points" of enemies this wave is worth. */
 export function waveBudget(wave) {
-  return Math.round(5 + wave * 2.4 + Math.pow(wave, 1.35) * 0.35);
+  return Math.round(4 + wave * 1.9 + Math.pow(wave, 1.35) * 0.30);
 }
 
-/** Enemies alive at once — keeps phones from melting on wave 60. */
-export function waveConcurrent(wave, cap = 34) {
-  return Math.min(cap, 6 + Math.floor(wave * 0.9));
+/**
+ * Enemies alive at once. This is the real difficulty dial early on — being
+ * surrounded is what kills new players — and it doubles as the performance
+ * ceiling that keeps phones smooth on deep waves.
+ */
+export function waveConcurrent(wave, cap = 30) {
+  return Math.min(cap, 4 + Math.floor(wave * 0.7));
 }
 
 export function isBossWave(wave) {

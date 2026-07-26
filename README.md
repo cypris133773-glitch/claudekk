@@ -9,8 +9,17 @@ WebGL2, ES modules, and textures and sounds generated in code.
 
 ```bash
 npm start          # http://localhost:8080
-npm test           # 23 logic checks, no browser needed
+npm test           # 24 logic checks, no browser needed
+npm run sim        # headless balance simulation
 ```
+
+**Playing on the web.** It is a static site — no build, no server-side
+anything. Push to `main` and the included GitHub Actions workflow publishes it
+to GitHub Pages (enable it once under *Settings → Pages → Source → GitHub
+Actions*). Any static host works just as well: drop the repository on Netlify,
+Vercel, Cloudflare Pages or an S3 bucket. Opening `index.html` directly from
+disk will **not** work — ES modules require `http://`, so use `npm start`
+locally.
 
 ---
 
@@ -108,7 +117,34 @@ src/
 tools/
   serve.js            dependency-free static server
   smoke-test.js       headless logic tests
+  balance-sim.js      headless bot-driven balance harness
 ```
+
+**Balance harness.** The game core never touches the DOM, so complete runs can
+be simulated in Node with a scripted bot — no browser, far faster than real
+time. This is how the difficulty curve is tuned, and it catches deep-run
+crashes and soft-locks that manual play would take hours to find.
+
+```bash
+npm run sim                  # every class, 5 runs each
+node tools/balance-sim.js mage 20
+node tools/balance-sim.js --forge 5   # simulate a progressed account
+```
+
+The bot is deliberately mediocre — it never dodges telegraphs and kites badly
+— so treat its numbers as a floor, not a target. Current baseline, median wave
+reached:
+
+| Forge level | Median wave |
+| --- | --- |
+| 0 (fresh account) | 5 |
+| 2 | 6.5 |
+| 5 | 12 |
+| 8 | 18.5 |
+
+That progression is the point: a fresh run stalls at the first boss, and
+permanent upgrades are what get you past it. If a change flattens that curve,
+the harness will show it.
 
 **Rendering.** One shader draws everything. The arena is meshed once into a
 single VBO with per-vertex ambient occlusion; entities are unit cubes with a

@@ -10,14 +10,18 @@ import { clamp, angleDelta, perspective, mat4, forwardVec } from '../src/core/ma
 
 let passed = 0;
 const failures = [];
+const pending = [];
 
+/** Register a check. Sync or async; all are awaited before the report. */
 function check(name, fn) {
-  try {
-    fn();
-    passed++;
-  } catch (err) {
-    failures.push(`${name}: ${err.message}`);
-  }
+  pending.push((async () => {
+    try {
+      await fn();
+      passed++;
+    } catch (err) {
+      failures.push(`${name}: ${err.message}`);
+    }
+  })());
 }
 
 const assert = (cond, msg) => { if (!cond) throw new Error(msg); };
@@ -207,6 +211,32 @@ check('mob definitions are complete', () => {
   }
 });
 
+// --- Effect wiring ---------------------------------------------------------
+// A talent or upgrade whose effect key no code path ever reads is a silent
+// no-op for the player. Catch that here rather than in a bug report.
+
+check('every declared effect key is consumed by game code', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+  const dataSrc = ['src/data/classes.js', 'src/data/upgrades.js', 'src/data/permanent.js']
+    .map((f) => fs.readFileSync(path.join(root, f), 'utf8')).join('\n');
+  const keys = new Set();
+  for (const m of dataSrc.matchAll(/effect:\s*\{([^}]*)\}/g)) {
+    for (const k of m[1].matchAll(/([A-Za-z_][A-Za-z0-9_]*)\s*:/g)) keys.add(k[1]);
+  }
+  assert(keys.size > 40, `only found ${keys.size} effect keys — parser broke?`);
+
+  const codeSrc = ['src/game/player.js', 'src/game/skills.js', 'src/game/game.js',
+    'src/game/pets.js', 'src/game/entity.js', 'src/game/mobs.js', 'src/ui/hud.js']
+    .map((f) => fs.readFileSync(path.join(root, f), 'utf8')).join('\n');
+
+  const dead = [...keys].filter((k) => !codeSrc.includes('.' + k));
+  assert(dead.length === 0, `effects declared but never read: ${dead.sort().join(', ')}`);
+});
+
 // --- Math ------------------------------------------------------------------
 
 check('clamp behaves', () => {
@@ -235,6 +265,8 @@ check('perspective matrix is well formed', () => {
 });
 
 // --- Report ----------------------------------------------------------------
+
+await Promise.all(pending);
 
 if (failures.length) {
   console.error(`\n✗ ${failures.length} failed, ${passed} passed\n`);

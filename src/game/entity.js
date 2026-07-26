@@ -129,7 +129,8 @@ export class Entity {
     this.vx *= f; this.vz *= f;
     if (this.lifetime !== Infinity) {
       this.lifetime -= dt;
-      if (this.lifetime <= 0) this.dead = true;
+      // `expired` distinguishes running out of duration from being killed.
+      if (this.lifetime <= 0) { this.dead = true; this.expired = true; }
     }
   }
 

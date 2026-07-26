@@ -54,16 +54,22 @@ export function castSkill(game, player, index) {
 
   switch (skill.kind) {
     case 'projectile': {
-      const count = skill.id === 'corruption' ? 1 : 1;
-      for (let i = 0; i < count; i++) {
-        game.fireProjectile({
-          owner: player, team: TEAM.PLAYER,
-          x: ex, y: ey - 0.2, z: ez, dir,
-          speed: p.speed, damage: p.damage, radius: p.radius, size: p.size,
-          color: p.color, gravity: p.gravity || 0, dot: p.dot, burn: p.burn,
-          lifesteal: p.lifesteal, skillId: skill.id,
-        });
+      let dot = p.dot;
+      // Shadow Weaving: Smite carries a shadow rot.
+      if (skill.id === 'smite' && player.mods.smiteDot) {
+        dot = {
+          dps: player.mods.smiteDot * (1 + (player.mods.dotDamage || 0)),
+          duration: 4 + (player.mods.dotDuration || 0),
+          type: 'shadow',
+        };
       }
+      game.fireProjectile({
+        owner: player, team: TEAM.PLAYER,
+        x: ex, y: ey - 0.2, z: ez, dir,
+        speed: p.speed, damage: p.damage, radius: p.radius, size: p.size,
+        color: p.color, gravity: p.gravity || 0, dot, burn: p.burn,
+        lifesteal: p.lifesteal, skillId: skill.id,
+      });
       game.sfx('cast');
       break;
     }

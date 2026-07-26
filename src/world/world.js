@@ -33,8 +33,19 @@ export class World {
     return x >= 0 && y >= 0 && z >= 0 && x < SX && y < SY && z < SZ;
   }
 
+  /**
+   * Blocks outside the array are not air. Anything below the world is bedrock
+   * and anything beyond the horizontal edges is solid, which seals the arena:
+   * without this a blink or a hard knockback can put an entity outside the
+   * map, where it stands on the implied bedrock and walks away forever.
+   * Above the world stays open so the sky renders.
+   */
   get(x, y, z) {
-    if (!this.inBounds(x, y, z)) return y < 0 ? B.STONE : AIR;
+    if (y < 0) return B.STONE;
+    // Sealed at every height, including above the world — leaving a gap here
+    // makes the barrier a walkable plateau that a blink can land on.
+    if (x < 0 || z < 0 || x >= SX || z >= SZ) return B.STONE;
+    if (y >= SY) return AIR;
     return this.data[this.idx(x, y, z)];
   }
 
@@ -133,12 +144,15 @@ export class World {
       this.fill(tx - 3, FLOOR_Y, tz - 3, tx + 3, FLOOR_Y + h - 1, tz + 3, P.wall);
       this.fill(tx - 2, FLOOR_Y + h, tz - 2, tx + 2, FLOOR_Y + h, tz + 2, P.trim);
       this.set(tx, FLOOR_Y + h + 1, tz, B.GLOW);
-      // Ramp toward the middle
-      const sx0 = Math.sign(-ox), sz0 = Math.sign(-oz);
+      // Staircase down toward the middle, running along X so every step
+      // occupies exactly one column on the axis of travel. A 3x3 footprint
+      // would bleed the tallest step sideways and turn the staircase into a
+      // plateau ending in a sheer face that nothing can climb.
+      const sx0 = Math.sign(-ox) || 1;
       for (let i = 0; i < h; i++) {
+        const step = h - 1 - i;
         const rx = tx + sx0 * (4 + i);
-        const rz = tz + sz0 * (4 + i);
-        this.fill(rx - 1, FLOOR_Y, rz - 1, rx + 1, FLOOR_Y + (h - 1 - i), rz + 1, P.wall);
+        this.fill(rx, FLOOR_Y, tz - 1, rx, FLOOR_Y + step, tz + 1, P.wall);
       }
       this.spawnPoints.push({ x: tx + 0.5, y: FLOOR_Y + h + 1, z: tz + 0.5 });
     }
@@ -310,8 +324,17 @@ export class World {
       if (step(0, ent.vx * sdt)) ent.hitWallX = true;
       if (step(2, ent.vz * sdt)) ent.hitWallZ = true;
     }
-    // Safety net: never let anything fall out of the world.
-    if (ent.y < -8) { ent.y = this.playerSpawn.y; ent.vy = 0; ent.outOfBounds = true; }
+    // Safety net. The sealed edges should make this unreachable, but a single
+    // escaped entity softlocks a wave, so recover rather than trust it.
+    const escaped = ent.y < -8 || ent.y > SY + 4
+      || ent.x < 1 || ent.z < 1 || ent.x > SX - 1 || ent.z > SZ - 1;
+    if (escaped) {
+      ent.x = this.playerSpawn.x;
+      ent.z = this.playerSpawn.z;
+      ent.y = this.groundAt(ent.x, ent.z, SY - 1);
+      ent.vx = ent.vy = ent.vz = 0;
+      ent.outOfBounds = true;
+    }
   }
 
   /** Ray march against solid blocks. Returns hit distance or `max` if clear. */
