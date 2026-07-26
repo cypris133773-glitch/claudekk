@@ -97,7 +97,10 @@ const menus = new Menus(uiRoot, {
 });
 
 function requestLock() {
-  if (!isTouchDevice()) glCanvas.requestPointerLock?.();
+  // Best effort only. If the browser refuses — an iframe without
+  // allow="pointer-lock", for instance — Input falls back to drag-to-look
+  // rather than leaving the mouse dead.
+  if (!isTouchDevice()) input.tryPointerLock();
 }
 
 // --- Fullscreen ------------------------------------------------------------
@@ -378,4 +381,4 @@ document.addEventListener('touchmove', (e) => {
 document.addEventListener('gesturestart', (e) => e.preventDefault());
 
 // Expose a tiny handle for debugging and for a future Steam/Electron wrapper.
-window.BLOCKFRAY = { game, profile, renderer, audio, menus };
+window.BLOCKFRAY = { game, profile, renderer, audio, menus, input };

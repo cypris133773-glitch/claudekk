@@ -29,6 +29,8 @@ export class Input {
     this.buttonHits = new Set();  // named virtual buttons pressed this frame
     this.heldButtons = new Set();
     this.enabled = false;
+    this.pointerLockBlocked = false;
+    this.dragLook = false;
     this._bind();
   }
 
@@ -71,38 +73,122 @@ export class Input {
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     window.addEventListener('blur', () => this.reset());
 
-    // --- Mouse / pointer lock -------------------------------------------
+    // --- Mouse -----------------------------------------------------------
+    // Pointer lock is the preferred desktop control, but it is unavailable in
+    // an iframe without allow="pointer-lock" and can be refused outright. When
+    // that happens the game falls back to drag-to-look: hold the left button
+    // and move. Without the fallback a refused lock means the player can never
+    // look or attack, because every click just retries the lock.
     c.addEventListener('mousedown', (e) => {
-      if (!this.enabled) return;
-      if (!this.pointerLocked && !isTouchDevice()) {
-        c.requestPointerLock?.();
-        return;
+      if (!this.enabled || isTouchDevice()) return;
+      if (!this.pointerLocked && !this.pointerLockBlocked) {
+        this.tryPointerLock();
+        // Still register the press, so a refused lock is not a dead click.
       }
-      if (e.button === 0) this.mouseDown = true;
+      if (e.button === 0) {
+        this.mouseDown = true;
+        this.dragLook = !this.pointerLocked;
+        this.dragX = e.clientX;
+        this.dragY = e.clientY;
+      }
       if (e.button === 2) this.state.sprint = true;
+      e.preventDefault();
     });
     window.addEventListener('mouseup', (e) => {
-      if (e.button === 0) this.mouseDown = false;
+      if (e.button === 0) { this.mouseDown = false; this.dragLook = false; }
       if (e.button === 2) this.state.sprint = false;
     });
     c.addEventListener('contextmenu', (e) => e.preventDefault());
     document.addEventListener('pointerlockchange', () => {
       this.pointerLocked = document.pointerLockElement === c;
+      if (this.pointerLocked) this.pointerLockBlocked = false;
       if (!this.pointerLocked && this.onPointerUnlock) this.onPointerUnlock();
     });
+    document.addEventListener('pointerlockerror', () => {
+      this.pointerLockBlocked = true;
+    });
     window.addEventListener('mousemove', (e) => {
-      if (!this.pointerLocked || !this.enabled) return;
+      if (!this.enabled) return;
       const s = this.settings.sensitivity;
-      this.state.lookX += e.movementX * 0.0022 * s;
-      this.state.lookY += e.movementY * 0.0022 * s * (this.settings.invertY ? -1 : 1);
+      const inv = this.settings.invertY ? -1 : 1;
+      if (this.pointerLocked) {
+        this.state.lookX += (e.movementX || 0) * 0.0022 * s;
+        this.state.lookY += (e.movementY || 0) * 0.0022 * s * inv;
+      } else if (this.dragLook) {
+        this.state.lookX += (e.clientX - this.dragX) * 0.004 * s;
+        this.state.lookY += (e.clientY - this.dragY) * 0.004 * s * inv;
+        this.dragX = e.clientX;
+        this.dragY = e.clientY;
+      }
     });
 
     // --- Touch -----------------------------------------------------------
-    const opts = { passive: false };
-    c.addEventListener('pointerdown', (e) => this._touchStart(e), opts);
-    c.addEventListener('pointermove', (e) => this._touchMove(e), opts);
-    c.addEventListener('pointerup', (e) => this._touchEnd(e), opts);
-    c.addEventListener('pointercancel', (e) => this._touchEnd(e), opts);
+    // Exactly one event model is used, chosen once here. Listening to both is
+    // a trap: pointerdown fires *before* touchstart, so the pointer path would
+    // claim a finger as the movement stick and the touch path would then
+    // register the same finger as the look control. The result is a dead
+    // joystick while looking still works.
+    //
+    // Touch Events are preferred where they exist — every mobile engine
+    // implements them consistently, while Pointer Events vary in pointerType
+    // reporting and capture behaviour. They are bound to the window so no
+    // overlay or stacking context can swallow them.
+    const opts = { passive: false, capture: true };
+    const useTouchEvents = 'ontouchstart' in window;
+    if (useTouchEvents) {
+      const forEachTouch = (e, fn) => {
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          const t = e.changedTouches[i];
+          fn(t.identifier, t.clientX, t.clientY);
+        }
+      };
+      window.addEventListener('touchstart', (e) => {
+        if (!this.enabled) return;
+        e.preventDefault();
+        forEachTouch(e, (id, x, y) => this._down(id, x, y));
+      }, opts);
+      window.addEventListener('touchmove', (e) => {
+        if (!this.enabled) return;
+        e.preventDefault();
+        forEachTouch(e, (id, x, y) => this._move(id, x, y));
+      }, opts);
+      const endTouch = (e) => {
+        if (!this.enabled) return;
+        forEachTouch(e, (id) => this._up(id));
+      };
+      window.addEventListener('touchend', endTouch, opts);
+      window.addEventListener('touchcancel', endTouch, opts);
+    } else {
+      // Pen and touch-capable devices without Touch Events.
+      c.addEventListener('pointerdown', (e) => {
+        if (!this.enabled || e.pointerType === 'mouse') return;
+        e.preventDefault();
+        this._down(e.pointerId, e.clientX, e.clientY);
+      }, { passive: false });
+      c.addEventListener('pointermove', (e) => {
+        if (!this.enabled || e.pointerType === 'mouse') return;
+        e.preventDefault();
+        this._move(e.pointerId, e.clientX, e.clientY);
+      }, { passive: false });
+      const endPointer = (e) => {
+        if (!this.enabled || e.pointerType === 'mouse') return;
+        this._up(e.pointerId);
+      };
+      c.addEventListener('pointerup', endPointer, { passive: false });
+      c.addEventListener('pointercancel', endPointer, { passive: false });
+    }
+  }
+
+  /** Request pointer lock, recording a refusal so the fallback can take over. */
+  tryPointerLock() {
+    const el = this.canvas;
+    if (!el.requestPointerLock) { this.pointerLockBlocked = true; return; }
+    try {
+      const p = el.requestPointerLock();
+      if (p && p.catch) p.catch(() => { this.pointerLockBlocked = true; });
+    } catch {
+      this.pointerLockBlocked = true;
+    }
   }
 
   /** Virtual on-screen buttons register their hit rects each frame. */
@@ -117,58 +203,55 @@ export class Input {
     return null;
   }
 
-  _touchStart(e) {
-    if (e.pointerType !== 'touch' || !this.enabled) return;
-    e.preventDefault();
-    const x = e.clientX, y = e.clientY;
+  /** A finger went down. Coordinates are viewport CSS pixels. */
+  _down(id, x, y) {
     const btn = this._hitButton(x, y);
     if (btn) {
-      this.touch.buttons.set(e.pointerId, btn);
+      this.touch.buttons.set(id, btn);
       this.heldButtons.add(btn);
       this.buttonHits.add(btn);
       return;
     }
-    const leftZone = this.settings.leftHanded ? x > window.innerWidth * 0.5 : x < window.innerWidth * 0.5;
+    // Split the screen down the middle: one side steers, the other looks.
+    const half = (this.canvas.clientWidth || window.innerWidth) * 0.5;
+    const leftZone = this.settings.leftHanded ? x > half : x < half;
     if (leftZone && this.touch.moveId === null) {
-      this.touch.moveId = e.pointerId;
+      this.touch.moveId = id;
       this.touch.moveOX = x; this.touch.moveOY = y;
       this.touch.moveX = x; this.touch.moveY = y;
     } else if (this.touch.lookId === null) {
-      this.touch.lookId = e.pointerId;
+      this.touch.lookId = id;
       this.touch.lookX = x; this.touch.lookY = y;
       this.touch.lookMoved = 0;
     }
   }
 
-  _touchMove(e) {
-    if (e.pointerType !== 'touch' || !this.enabled) return;
-    e.preventDefault();
-    if (e.pointerId === this.touch.moveId) {
-      this.touch.moveX = e.clientX; this.touch.moveY = e.clientY;
-    } else if (e.pointerId === this.touch.lookId) {
+  _move(id, x, y) {
+    if (id === this.touch.moveId) {
+      this.touch.moveX = x; this.touch.moveY = y;
+    } else if (id === this.touch.lookId) {
       const s = this.settings.touchSensitivity;
-      const dx = e.clientX - this.touch.lookX;
-      const dy = e.clientY - this.touch.lookY;
+      const dx = x - this.touch.lookX;
+      const dy = y - this.touch.lookY;
       this.state.lookX += dx * 0.0055 * s;
       this.state.lookY += dy * 0.0055 * s * (this.settings.invertY ? -1 : 1);
       this.touch.lookMoved += Math.hypot(dx, dy);
-      this.touch.lookX = e.clientX; this.touch.lookY = e.clientY;
+      this.touch.lookX = x; this.touch.lookY = y;
     }
   }
 
-  _touchEnd(e) {
-    if (e.pointerType !== 'touch') return;
-    if (this.touch.buttons.has(e.pointerId)) {
-      const name = this.touch.buttons.get(e.pointerId);
-      this.touch.buttons.delete(e.pointerId);
+  _up(id) {
+    if (this.touch.buttons.has(id)) {
+      const name = this.touch.buttons.get(id);
+      this.touch.buttons.delete(id);
       if (![...this.touch.buttons.values()].includes(name)) this.heldButtons.delete(name);
       return;
     }
-    if (e.pointerId === this.touch.moveId) {
+    if (id === this.touch.moveId) {
       this.touch.moveId = null;
       this.touch.moveX = this.touch.moveOX;
       this.touch.moveY = this.touch.moveOY;
-    } else if (e.pointerId === this.touch.lookId) {
+    } else if (id === this.touch.lookId) {
       this.touch.lookId = null;
     }
   }
