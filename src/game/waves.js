@@ -1,0 +1,113 @@
+// Endless wave director: scaling, spawn budgets, boss cadence.
+
+import { MOB_TYPES, rollMobType } from './mobs.js';
+
+export const BOSS_EVERY = 5;
+
+/** Difficulty multipliers for a given wave. Endless, so this never caps. */
+export function waveScaling(wave) {
+  const w = wave - 1;
+  return {
+    hp: 1 + w * 0.16 + Math.pow(w, 1.42) * 0.012,
+    damage: 1 + w * 0.085 + Math.pow(w, 1.28) * 0.006,
+    speed: Math.min(1.55, 1 + w * 0.012),
+    souls: 1 + w * 0.09,
+  };
+}
+
+/** How many "cost points" of enemies this wave is worth. */
+export function waveBudget(wave) {
+  return Math.round(5 + wave * 2.4 + Math.pow(wave, 1.35) * 0.35);
+}
+
+/** Enemies alive at once — keeps phones from melting on wave 60. */
+export function waveConcurrent(wave, cap = 34) {
+  return Math.min(cap, 6 + Math.floor(wave * 0.9));
+}
+
+export function isBossWave(wave) {
+  return wave % BOSS_EVERY === 0;
+}
+
+export function eliteChance(wave) {
+  return Math.min(0.35, Math.max(0, (wave - 6) * 0.018));
+}
+
+/**
+ * Build the spawn queue for a wave: a list of { typeId, elite } entries.
+ */
+export function buildWaveQueue(wave) {
+  const queue = [];
+  let budget = waveBudget(wave);
+  const chance = eliteChance(wave);
+
+  if (isBossWave(wave)) {
+    const bosses = 1 + Math.floor((wave - BOSS_EVERY) / (BOSS_EVERY * 4));
+    for (let i = 0; i < bosses; i++) queue.push({ typeId: 'colossus', elite: false, boss: true });
+    budget = Math.round(budget * 0.6);
+  }
+
+  let guard = 0;
+  while (budget > 0 && guard++ < 500) {
+    const typeId = rollMobType(wave);
+    const cost = MOB_TYPES[typeId].cost || 1;
+    if (cost > budget && queue.length) break;
+    const elite = Math.random() < chance;
+    queue.push({ typeId, elite });
+    budget -= cost * (elite ? 2 : 1);
+  }
+  // Shuffle so the tough stuff is not always last.
+  for (let i = queue.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    [queue[i], queue[j]] = [queue[j], queue[i]];
+  }
+  return queue;
+}
+
+/** Seconds between spawns; ramps up with wave number. */
+export function spawnInterval(wave) {
+  return Math.max(0.22, 1.05 - wave * 0.028);
+}
+
+/** Souls awarded for clearing a wave outright. */
+export function waveClearBonus(wave) {
+  return Math.round(12 + wave * 4.5 + (isBossWave(wave) ? 60 : 0));
+}
+
+export class WaveDirector {
+  constructor() {
+    this.wave = 0;
+    this.queue = [];
+    this.spawnTimer = 0;
+    this.state = 'intermission';   // 'intermission' | 'spawning' | 'clearing'
+    this.intermission = 0;
+    this.spawnedThisWave = 0;
+  }
+
+  startWave(wave) {
+    this.wave = wave;
+    this.queue = buildWaveQueue(wave);
+    this.total = this.queue.length;
+    this.spawnedThisWave = 0;
+    this.spawnTimer = 0.6;
+    this.state = 'spawning';
+  }
+
+  /** Returns an array of spawn descriptors to create this frame. */
+  update(dt, aliveCount) {
+    const out = [];
+    if (this.state !== 'spawning') return out;
+    this.spawnTimer -= dt;
+    const limit = waveConcurrent(this.wave);
+    while (this.spawnTimer <= 0 && this.queue.length && aliveCount + out.length < limit) {
+      out.push(this.queue.shift());
+      this.spawnedThisWave++;
+      this.spawnTimer += spawnInterval(this.wave);
+    }
+    if (this.spawnTimer < 0) this.spawnTimer = 0;
+    if (!this.queue.length) this.state = 'clearing';
+    return out;
+  }
+
+  get remaining() { return this.queue.length; }
+}

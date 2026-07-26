@@ -1,0 +1,16 @@
+{
+  "name": "blockfray",
+  "version": "0.1.0",
+  "private": true,
+  "description": "BLOCKFRAY — an endless voxel arena brawler for phone and PC.",
+  "type": "module",
+  "scripts": {
+    "start": "node tools/serve.js",
+    "dev": "node tools/serve.js",
+    "test": "node tools/smoke-test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "SEE LICENSE IN LICENSE"
+}
