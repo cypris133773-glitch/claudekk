@@ -6,6 +6,34 @@ import { talentPointsForBestWave } from '../data/permanent.js';
 
 const KEY = 'blockfray.save.v1';
 
+/**
+ * localStorage that cannot throw. Merely *reading* the property raises a
+ * SecurityError in a sandboxed iframe without allow-same-origin, and in
+ * Safari's private mode writes can throw too. An unguarded access at startup
+ * aborts the whole module, so the game never boots and the page sits blank.
+ * Progress simply does not persist where storage is unavailable.
+ */
+export const storage = {
+  available() {
+    try {
+      const s = window.localStorage;
+      if (!s) return false;
+      const probe = '__blockfray_probe__';
+      s.setItem(probe, '1');
+      s.removeItem(probe);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  get(key) {
+    try { return window.localStorage.getItem(key); } catch { return null; }
+  },
+  set(key, value) {
+    try { window.localStorage.setItem(key, value); return true; } catch { return false; }
+  },
+};
+
 function emptyProfile() {
   const classes = {};
   for (const c of CLASSES) {
@@ -44,7 +72,7 @@ export class Profile {
 
   load() {
     try {
-      const raw = localStorage.getItem(KEY);
+      const raw = storage.get(KEY);
       if (!raw) return;
       const parsed = JSON.parse(raw);
       // Merge so new fields added in updates get sane defaults.
@@ -65,7 +93,7 @@ export class Profile {
 
   save() {
     try {
-      localStorage.setItem(KEY, JSON.stringify(this.data));
+      storage.set(KEY, JSON.stringify(this.data));
     } catch (err) {
       console.warn('Could not write save data.', err);
     }

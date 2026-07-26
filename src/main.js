@@ -4,7 +4,7 @@ import { Renderer } from './render/renderer.js';
 import { tryLoadCustomHead, T } from './render/atlas.js';
 import { Input, isTouchDevice } from './core/input.js';
 import { Audio } from './core/audio.js';
-import { Profile } from './core/save.js';
+import { Profile, storage } from './core/save.js';
 import { Game } from './game/game.js';
 import { Hud } from './ui/hud.js';
 import { Menus } from './ui/menus.js';
@@ -26,6 +26,9 @@ import { clamp } from './core/math.js';
     'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
 })();
 
+export const BUILD = '2026-07-26 12:49 UTC';
+console.info('BLOCKFRAY build', BUILD);
+
 const glCanvas = document.getElementById('view');
 const hudCanvas = document.getElementById('hud');
 const uiRoot = document.getElementById('ui');
@@ -44,6 +47,11 @@ function fatal(message, detail) {
 window.addEventListener('error', (e) => {
   window.__blockfrayError = String((e.error && e.error.message) || e.message || e);
   console.error(e.error || e.message);
+  // A throw during module evaluation leaves the page blank with no menu, which
+  // is indistinguishable from a crash. Surface it instead.
+  if (!window.BLOCKFRAY) {
+    fatal('The game failed to start.', window.__blockfrayError);
+  }
 });
 window.addEventListener('unhandledrejection', (e) => {
   window.__blockfrayError = 'unhandled promise: ' + String(e.reason);
@@ -87,6 +95,7 @@ const menus = new Menus(uiRoot, {
   profile,
   audio,
   game,
+  build: BUILD,
   startRun: (cls) => startRun(cls),
   resumeRun: () => resumeRun(),
   quitRun: () => quitRun(),
@@ -279,11 +288,11 @@ window.addEventListener('gamepaddisconnected', () => {
 
 // Landscape hint: informational only, dismissible, never blocks input.
 const rotateHint = document.getElementById('rotate-hint');
-if (isTouchDevice() && !localStorage.getItem('blockfray.rotateHintSeen')) {
+if (isTouchDevice() && !storage.get('blockfray.rotateHintSeen')) {
   rotateHint.classList.remove('hidden');
   document.getElementById('rotate-dismiss').addEventListener('click', () => {
     rotateHint.classList.add('hidden');
-    localStorage.setItem('blockfray.rotateHintSeen', '1');
+    storage.set('blockfray.rotateHintSeen', '1');
   });
   setTimeout(() => rotateHint.classList.add('hidden'), 6000);
 }

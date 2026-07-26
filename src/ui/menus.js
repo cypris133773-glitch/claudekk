@@ -5,6 +5,7 @@ import { CLASSES } from '../data/classes.js';
 import { PERMANENT, upgradeCost, talentPointsForBestWave } from '../data/permanent.js';
 import { RARITY } from '../data/upgrades.js';
 import { skillCost } from '../game/skills.js';
+import { storage } from '../core/save.js';
 
 const el = (tag, cls, html) => {
   const n = document.createElement(tag);
@@ -104,7 +105,8 @@ export class Menus {
     }
     wrap.appendChild(menu);
     wrap.appendChild(el('p', 'footnote',
-      'Original voxel art & audio, generated in code. Not affiliated with any other game.'));
+      'Original voxel art & audio, generated in code. Not affiliated with any other game.'
+      + `<br><span class="build">build ${this.ctx.build || 'dev'}</span>`));
     return wrap;
   }
 
@@ -537,6 +539,8 @@ export class Menus {
         ['Fullscreen allowed', String(document.fullscreenEnabled)],
         ['WebGL renderer', dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : 'hidden'],
         ['Game running', String(this.ctx.game.running)],
+        ['Build', this.ctx.build || 'dev'],
+        ['Storage', storage.available() ? 'available' : 'BLOCKED (progress will not save)'],
         ['Last error', window.__blockfrayError || 'none'],
         ['User agent', navigator.userAgent],
       ];

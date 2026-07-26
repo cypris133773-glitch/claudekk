@@ -760,3 +760,4 @@ body.show-popout-btn #popout-btn { display: block; }
 }
 .diag-row span { color: var(--dim); white-space: nowrap; }
 .diag-row b { text-align: right; word-break: break-word; font-weight: 600; }
+.footnote .build { color: rgba(255, 255, 255, 0.32); font-size: 11px; }
