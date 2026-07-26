@@ -108,9 +108,20 @@ function showResults() {
 }
 
 input.onPointerUnlock = () => {
-  // Losing pointer lock mid-fight means the player tabbed away — pause.
+  // Losing pointer lock mid-fight normally means the player tabbed away, but
+  // a controller player never holds pointer lock in the first place.
+  if (input.gamepadActive) return;
   if (game.running && !game.paused && !game.pendingUpgrades) pauseRun();
 };
+
+window.addEventListener('gamepadconnected', (e) => {
+  if (game.running) game.notify('Controller connected', 2);
+  console.info('Gamepad:', e.gamepad.id);
+});
+window.addEventListener('gamepaddisconnected', () => {
+  input.gamepadActive = false;
+  if (game.running && !game.paused) pauseRun();
+});
 
 menus.show('title');
 
@@ -128,7 +139,7 @@ function frame(now) {
   last = now;
   if (dt > 0.25) dt = 0.25;         // tab was hidden; do not simulate the gap
 
-  const state = input.poll();
+  const state = input.poll(dt);
 
   if (game.running && !game.paused) {
     // Look

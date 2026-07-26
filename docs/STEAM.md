@@ -40,6 +40,10 @@ npm create tauri-app@latest
 
 ## 2. Things the desktop build should change
 
+Gamepad support is already in — standard mapping, which covers Xbox,
+PlayStation, Switch Pro and the Steam Deck's built-in controls — so Deck
+compatibility is mostly a matter of testing rather than building.
+
 The web build is already close, but a paid desktop release wants:
 
 - **Save location.** `src/core/save.js` writes to `localStorage`. Swap the
@@ -47,11 +51,8 @@ The web build is already close, but a paid desktop release wants:
   cleared webview cache, and mirror them to Steam Cloud.
 - **Real fullscreen + a resolution setting.** The web build fills the window;
   desktop players expect borderless/exclusive options.
-- **Gamepad support.** The `Input` class already normalises everything into one
-  state object, so a controller path is one more producer feeding
-  `state.moveX/moveY/lookX/lookY` plus button mapping. Steam Deck verification
-  effectively requires it.
-- **Rebindable keys.** Currently hard-coded in `src/core/input.js`.
+- **Rebindable keys.** Currently hard-coded in `src/core/input.js`. Controller
+  buttons are likewise fixed to the standard mapping.
 - **Alt+F4 / window close** should end the run cleanly so souls are banked.
 
 ## 3. Steamworks integration

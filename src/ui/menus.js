@@ -459,6 +459,16 @@ export class Menus {
         </ul>
       </div>
       <div class="howto-col">
+        <h3>Controller</h3>
+        <ul>
+          <li><b>Left stick</b> move · <b>Right stick</b> look</li>
+          <li><b>A</b> jump · <b>X</b> or <b>RT</b> attack · <b>L3/LT</b> sprint</li>
+          <li><b>LB RB Y B</b> — skills 1–4</li>
+          <li><b>Start</b> — pause</li>
+          <li>Plug in and press anything; it takes over automatically.</li>
+        </ul>
+      </div>
+      <div class="howto-col">
         <h3>The loop</h3>
         <ul>
           <li>Waves never stop. Every 5th wave is a boss.</li>

@@ -183,9 +183,64 @@ export class Input {
     };
   }
 
+  // --- Gamepad ---------------------------------------------------------
+  // Standard-mapping layout, which covers Xbox, PlayStation, Switch Pro and
+  // the Steam Deck's built-in controls.
+  //   left stick  move        right stick  look
+  //   A jump      X attack    RT attack
+  //   LB/RB/Y/B   skills 1-4  Start        pause
+
+  /** Feed controller state into the same fields the other devices write. */
+  pollGamepad(dt) {
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    let gp = null;
+    for (const p of pads) if (p && p.connected) { gp = p; break; }
+    if (!gp) { this.gamepadActive = false; return false; }
+
+    const dead = (v, d = 0.18) =>
+      (Math.abs(v) < d ? 0 : (v - Math.sign(v) * d) / (1 - d));
+
+    const lx = dead(gp.axes[0] || 0);
+    const ly = dead(gp.axes[1] || 0);
+    const rx = dead(gp.axes[2] || 0, 0.14);
+    const ry = dead(gp.axes[3] || 0, 0.14);
+    const btn = (i) => !!(gp.buttons[i] && gp.buttons[i].pressed);
+
+    // Only take over once the player actually touches the controller, so a
+    // plugged-in pad does not fight the keyboard.
+    const touched = Math.abs(lx) + Math.abs(ly) + Math.abs(rx) + Math.abs(ry) > 0.05
+      || gp.buttons.some((b) => b && b.pressed);
+    if (touched) this.gamepadActive = true;
+    if (!this.gamepadActive) return false;
+
+    this.padMove = [lx, -ly];
+    // Squaring keeps small stick movements precise while leaving full speed
+    // at the edge — flick aiming with a stick is otherwise unusable.
+    const sens = 2.6 * this.settings.sensitivity;
+    this.state.lookX += rx * Math.abs(rx) * sens * dt;
+    this.state.lookY += ry * Math.abs(ry) * sens * dt * (this.settings.invertY ? -1 : 1);
+
+    const prev = this.padPrev || [];
+    const pressed = (i) => btn(i) && !prev[i];
+    const SKILL_BUTTONS = [4, 5, 3, 1];          // LB, RB, Y, B
+    for (let i = 0; i < 4; i++) {
+      if (pressed(SKILL_BUTTONS[i])) this.state.skills[i] = true;
+    }
+    if (pressed(9)) this.state.pause = true;      // Start
+
+    this.padJump = btn(0);                        // A
+    this.padAttack = btn(2) || btn(7);            // X or right trigger
+    this.padSprint = btn(10) || btn(6);           // L3 or left trigger
+    this.padPrev = gp.buttons.map((b) => !!(b && b.pressed));
+    return true;
+  }
+
   /** Collapse raw input into the state the player reads. Call once per frame. */
-  poll() {
+  poll(dt = 1 / 60) {
     const s = this.state;
+    this.padMove = null;
+    this.padJump = this.padAttack = this.padSprint = false;
+    if (this.enabled) this.pollGamepad(dt);
     // Keyboard movement
     let mx = 0, my = 0;
     if (this.keys.has('KeyW') || this.keys.has('ArrowUp')) my += 1;
@@ -202,13 +257,20 @@ export class Input {
       mx = dx * k;
       my = -dy * k;
     }
+    // A live controller stick wins over the keyboard's digital directions.
+    if (this.padMove && (this.padMove[0] || this.padMove[1])) {
+      mx = this.padMove[0];
+      my = this.padMove[1];
+    }
     s.moveX = clamp(mx, -1, 1);
     s.moveY = clamp(my, -1, 1);
 
-    s.jump = this.keys.has('Space') || this.heldButtons.has('jump') || this.buttonHits.has('jump');
+    s.jump = this.keys.has('Space') || this.heldButtons.has('jump')
+      || this.buttonHits.has('jump') || this.padJump;
     s.sprint = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') || s.sprint
-      || this.heldButtons.has('sprint');
-    s.attack = this.mouseDown || this.heldButtons.has('attack') || this.buttonHits.has('attack');
+      || this.heldButtons.has('sprint') || this.padSprint;
+    s.attack = this.mouseDown || this.heldButtons.has('attack')
+      || this.buttonHits.has('attack') || this.padAttack;
 
     for (let i = 0; i < 4; i++) {
       if (this.buttonHits.has('skill' + i)) s.skills[i] = true;

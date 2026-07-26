@@ -77,6 +77,12 @@ rings. Left-handed layout is a setting.
 **Keyboard & mouse.** `WASD` move, `Space` jump, `Shift` sprint, mouse look,
 left click attack, `1`–`4` (or `Q E R F`) skills, `Esc` pause.
 
+**Controller.** Standard mapping, so Xbox, PlayStation, Switch Pro and the
+Steam Deck all work: sticks to move and look, `A` jump, `X`/`RT` attack,
+`L3`/`LT` sprint, `LB RB Y B` for the four skills, `Start` to pause. Plug in
+and press anything — it takes over automatically and does not need pointer
+lock.
+
 ---
 
 ## How it is built
