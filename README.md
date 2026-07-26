@@ -13,13 +13,13 @@ npm test           # 24 logic checks, no browser needed
 npm run sim        # headless balance simulation
 ```
 
-**Playing on the web.** It is a static site — no build, no server-side
-anything. Push to `main` and the included GitHub Actions workflow publishes it
-to GitHub Pages (enable it once under *Settings → Pages → Source → GitHub
-Actions*). Any static host works just as well: drop the repository on Netlify,
-Vercel, Cloudflare Pages or an S3 bucket. Opening `index.html` directly from
-disk will **not** work — ES modules require `http://`, so use `npm start`
-locally.
+**Play it:** <https://cypris133773-glitch.github.io/claudekk/>
+
+It is a static site — no build, no server-side anything. Pushing to `main`
+publishes it via GitHub Actions; the workflow enables Pages itself, so there is
+no manual setup. Any static host works just as well: Netlify, Vercel,
+Cloudflare Pages or an S3 bucket. Opening `index.html` directly from disk will
+**not** work — ES modules require `http://`, so use `npm start` locally.
 
 ---
 

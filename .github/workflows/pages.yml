@@ -1,7 +1,7 @@
 # Publishes the game to GitHub Pages. It is a static site with no build step,
 # so the repository root is uploaded as-is.
 #
-# One-time setup: repository Settings → Pages → Source → "GitHub Actions".
+# The workflow enables Pages itself on first run, so no manual setup is needed.
 name: Deploy to GitHub Pages
 
 on:
@@ -36,7 +36,11 @@ jobs:
       - name: Logic tests
         run: npm test
 
+      # enablement creates the Pages site on first run, so no manual
+      # Settings -> Pages toggle is needed to go live.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: '.'
