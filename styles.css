@@ -38,6 +38,14 @@ canvas {
   width: 100%;
   height: 100%;
   display: block;
+  /* touch-action is not inherited, so it must be set here and not only on
+     body. Without it Safari claims drags for panning and zooming and stops
+     delivering pointermove, which kills the joystick and the look control —
+     the game renders but cannot be played. */
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 #view { z-index: 1; image-rendering: pixelated; }
@@ -707,3 +715,48 @@ input[type="range"]::-moz-range-thumb {
   display: none;
 }
 body.show-popout-btn #popout-btn { display: block; }
+
+/* Diagnostics */
+.diag-pad {
+  position: relative;
+  height: 150px;
+  border: 1px dashed rgba(255, 255, 255, 0.28);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  margin-bottom: 14px;
+  overflow: hidden;
+  touch-action: none;
+}
+.diag-pad em {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dim);
+  font-size: 13px;
+  font-style: normal;
+  pointer-events: none;
+}
+.diag-dot {
+  position: absolute;
+  top: -9px;
+  left: -9px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px rgba(110, 200, 255, 0.25);
+  pointer-events: none;
+}
+.diag-table { display: flex; flex-direction: column; gap: 4px; }
+.diag-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11.5px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--line);
+}
+.diag-row span { color: var(--dim); white-space: nowrap; }
+.diag-row b { text-align: right; word-break: break-word; font-weight: 600; }

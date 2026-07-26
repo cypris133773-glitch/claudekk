@@ -42,8 +42,11 @@ function fatal(message, detail) {
 // Anything unhandled becomes a visible message. A silent black screen is the
 // worst possible failure mode — it gives the player nothing to report.
 window.addEventListener('error', (e) => {
-  if (!window.BLOCKFRAY || !window.BLOCKFRAY.game.running) return;
+  window.__blockfrayError = String((e.error && e.error.message) || e.message || e);
   console.error(e.error || e.message);
+});
+window.addEventListener('unhandledrejection', (e) => {
+  window.__blockfrayError = 'unhandled promise: ' + String(e.reason);
 });
 
 let renderer;

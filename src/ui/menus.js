@@ -55,6 +55,7 @@ export class Menus {
       upgrade: () => this.buildUpgradeCards(),
       results: () => this.buildResults(),
       howto: () => this.buildHowTo(),
+      diag: () => this.buildDiagnostics(),
     }[name];
     if (builder) this.root.appendChild(builder());
   }
@@ -93,6 +94,7 @@ export class Menus {
       { label: 'RECORDS', hint: 'Career statistics', go: () => this.show('stats') },
       { label: 'SETTINGS', hint: 'Controls & display', go: () => this.show('settings') },
       { label: 'HOW TO PLAY', hint: 'Controls reference', go: () => this.show('howto') },
+      { label: 'DIAGNOSTICS', hint: 'If something is broken, screenshot this', go: () => this.show('diag') },
     ];
     for (const it of items) {
       const b = el('button', 'menu-btn' + (it.primary ? ' primary' : ''));
@@ -479,6 +481,75 @@ export class Menus {
           <li>Mind the lava channels. They hurt everything, including bosses.</li>
         </ul>
       </div>`));
+    wrap.appendChild(p);
+    return wrap;
+  }
+
+  /**
+   * Everything needed to diagnose "it doesn't work" from a single screenshot,
+   * plus a live touch pad. If the dot does not follow a finger, the device is
+   * not delivering pointer moves and nothing else matters.
+   */
+  buildDiagnostics() {
+    const wrap = el('div', 'screen');
+    wrap.appendChild(this.backBar('title'));
+    const p = this.panel('Diagnostics',
+      'Drag inside the box below, then screenshot this whole screen and send it.');
+
+    const pad = el('div', 'diag-pad', '<span class="diag-dot"></span><em>drag here</em>');
+    const dot = pad.querySelector('.diag-dot');
+    const counts = { down: 0, move: 0, up: 0, cancel: 0 };
+    let last = '—';
+    const onPad = (kind) => (e) => {
+      e.preventDefault();
+      counts[kind]++;
+      const r = pad.getBoundingClientRect();
+      const x = (e.clientX ?? 0) - r.left;
+      const y = (e.clientY ?? 0) - r.top;
+      last = `${e.pointerType || 'n/a'} ${Math.round(x)},${Math.round(y)}`;
+      dot.style.transform = `translate(${x}px, ${y}px)`;
+      refresh();
+    };
+    pad.addEventListener('pointerdown', onPad('down'), { passive: false });
+    pad.addEventListener('pointermove', onPad('move'), { passive: false });
+    pad.addEventListener('pointerup', onPad('up'), { passive: false });
+    pad.addEventListener('pointercancel', onPad('cancel'), { passive: false });
+    p.appendChild(pad);
+
+    const out = el('div', 'diag-table');
+    p.appendChild(out);
+
+    const gl = this.ctx.game.r.gl;
+    const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    const view = document.getElementById('view');
+
+    const refresh = () => {
+      const rows = [
+        ['Pointer events', `down ${counts.down} · move ${counts.move} · up ${counts.up} · cancel ${counts.cancel}`],
+        ['Last pointer', last],
+        ['Touch device', ('ontouchstart' in window) + ' / maxTouchPoints ' + navigator.maxTouchPoints],
+        ['Window', `${window.innerWidth} x ${window.innerHeight}`],
+        ['Canvas CSS', `${view.clientWidth} x ${view.clientHeight}`],
+        ['Canvas buffer', `${view.width} x ${view.height}`],
+        ['Device pixel ratio', String(window.devicePixelRatio)],
+        ['Viewport meta', document.querySelector('meta[name="viewport"]')?.content || 'MISSING'],
+        ['In iframe', String(window.self !== window.top)],
+        ['Fullscreen allowed', String(document.fullscreenEnabled)],
+        ['WebGL renderer', dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : 'hidden'],
+        ['Game running', String(this.ctx.game.running)],
+        ['Last error', window.__blockfrayError || 'none'],
+        ['User agent', navigator.userAgent],
+      ];
+      out.innerHTML = rows
+        .map(([k, v]) => `<div class="diag-row"><span>${k}</span><b>${v}</b></div>`)
+        .join('');
+    };
+    refresh();
+    this.diagTimer = setInterval(() => {
+      if (this.screen !== 'diag') { clearInterval(this.diagTimer); return; }
+      refresh();
+    }, 500);
+
     wrap.appendChild(p);
     return wrap;
   }
