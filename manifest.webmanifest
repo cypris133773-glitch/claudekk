@@ -1,7 +1,7 @@
 {
   "name": "BLOCKFRAY — Endless Voxel Arena",
   "short_name": "BLOCKFRAY",
-  "description": "An endless voxel arena brawler for phone and PC. Six classes, talent trees and permanent upgrades.",
+  "description": "An endless voxel arena brawler for phone and PC. Seven classes, deep talent trees, an armoury and permanent upgrades.",
   "start_url": "./index.html",
   "display": "fullscreen",
   "orientation": "landscape",

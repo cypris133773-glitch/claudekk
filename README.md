@@ -22,7 +22,7 @@ ES modules require `http://`, so use `npm start` locally.
 | Route | What it needs |
 | --- | --- |
 | **GitHub Pages** | Enable once under *Settings → Pages → Source → GitHub Actions*. Every push to `main` then deploys via `.github/workflows/pages.yml`. The workflow cannot enable Pages for you — creating a Pages site needs admin scope the default workflow token does not have. |
-| **Vercel** | Import the repository. `vercel.json` is included; framework preset "Other", no build command. |
+| **Vercel** | Import the repository. `vercel.json` sets `outputDirectory: "."` and no build command, because the game is served straight from the repo root. Without that Vercel looks for a `public/` directory, does not find one, and fails the build. |
 | **Netlify / Cloudflare Pages / S3** | Publish directory `.`, no build command. |
 | **Single file** | `npm run build` writes `dist/blockfray.html` — the whole game in one file with zero external requests. Drop it anywhere, including itch.io. |
 

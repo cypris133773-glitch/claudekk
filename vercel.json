@@ -1,6 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "cleanUrls": true,
+  "//": "There is no build step: the game is ES modules served straight from the repo root, exactly as GitHub Pages serves it. framework:null pins the project to 'Other' so no preset can reimpose its defaults, and outputDirectory:'.' says the site is the root. Without the latter Vercel looks for a 'public' directory, does not find one, and fails the build.",
+  "framework": null,
+  "outputDirectory": ".",
   "headers": [
     {
       "source": "/(.*)",

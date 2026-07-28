@@ -1,0 +1,9 @@
+# The deployed site is index.html plus the modules it loads. Everything below
+# is development-only: shipping it would put the test harnesses and the design
+# notes on a public URL for no benefit.
+.github/
+tools/
+docs/
+dist/
+node_modules/
+*.log
