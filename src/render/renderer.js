@@ -1,7 +1,7 @@
 // Renderer: draws the arena mesh plus every blocky entity/particle with a
 // single shader. Entities are built out of unit cubes, Minecraft-style.
 
-import { createContext, createProgram, createMesh } from './gl.js';
+import { createContext, createProgram, createSkyProgram, createMesh } from './gl.js';
 import { createAtlasTexture, tileUV, T } from './atlas.js';
 import { mat4, perspective, viewFromEuler, composeTRS, identity, multiply, clamp } from '../core/math.js';
 
@@ -27,6 +27,35 @@ function cubeVerts() {
 const SKY_TOP = [0.32, 0.50, 0.76];
 const SKY_BOT = [0.62, 0.72, 0.86];
 
+/**
+ * Per-theme lighting. `top` and `bottom` drive the sky gradient, `sun` is the
+ * warm light on up-facing surfaces and the glow around the sun disc, `sky`
+ * and `ground` are the hemispheric bounce the shader ramps between.
+ * Index order matches Game.theme.
+ */
+const THEMES = [
+  { // temperate noon
+    top: SKY_TOP, bottom: SKY_BOT,
+    sun: [0.30, 0.24, 0.14], sky: [0.80, 0.86, 1.00], ground: [0.42, 0.40, 0.44],
+    sunPos: [0.35, 0.62],
+  },
+  { // desert afternoon
+    top: [0.44, 0.56, 0.78], bottom: [0.90, 0.78, 0.56],
+    sun: [0.40, 0.28, 0.12], sky: [0.94, 0.88, 0.76], ground: [0.50, 0.42, 0.34],
+    sunPos: [-0.42, 0.48],
+  },
+  { // volcanic night
+    top: [0.05, 0.05, 0.10], bottom: [0.26, 0.10, 0.08],
+    sun: [0.34, 0.12, 0.03], sky: [0.34, 0.34, 0.48], ground: [0.30, 0.16, 0.14],
+    sunPos: [0.10, -0.30],
+  },
+  { // frozen dusk
+    top: [0.20, 0.30, 0.48], bottom: [0.62, 0.72, 0.84],
+    sun: [0.24, 0.22, 0.28], sky: [0.74, 0.84, 1.00], ground: [0.44, 0.48, 0.58],
+    sunPos: [0.55, 0.30],
+  },
+];
+
 export class Renderer {
   constructor(canvas) {
     this.canvas = canvas;
@@ -40,6 +69,11 @@ export class Renderer {
     this.model = mat4();
     this.identity = identity(mat4());
     this.renderScale = 1;
+    // Fancy adds the sky gradient, contact shadows and death debris. It is
+    // pure fill rate and draw calls, so it is the first thing to go when a
+    // device cannot hold frame rate.
+    this.fancy = true;
+    this.theme = THEMES[0];
     this.fov = 74;
     this.fogNear = 34;
     this.fogFar = 82;
@@ -72,6 +106,7 @@ export class Renderer {
     const { prog, u } = createProgram(gl);
     this.prog = prog;
     this.u = u;
+    this.sky = createSkyProgram(gl);
     this.atlas = createAtlasTexture(gl);
     this.cube = createMesh(gl, cubeVerts());
     this.worldMesh = null;
@@ -118,11 +153,48 @@ export class Renderer {
     return this.maxDim;
   }
 
+  /** Pick the lighting set for an arena theme. */
+  setTheme(index) {
+    this.theme = THEMES[((index | 0) % THEMES.length + THEMES.length) % THEMES.length];
+    this.skyTint = this.theme.bottom;
+  }
+
+  /**
+   * Vertical gradient plus a soft sun. Drawn *after* the opaque scene, not
+   * before it: at depth 1.0 with LEQUAL it lands only on pixels nothing else
+   * touched, so an arena that fills the view costs no sky fill at all. Drawn
+   * first it was a guaranteed full-screen overdraw every frame, which is most
+   * of a frame's budget on a weak mobile GPU.
+   */
+  drawSky() {
+    if (this.contextLost || !this.fancy) return;
+    const gl = this.gl;
+    const t = this.theme;
+    gl.depthMask(false);
+    gl.depthFunc(gl.LEQUAL);
+    gl.useProgram(this.sky.prog);
+    gl.bindVertexArray(this.sky.vao);
+    gl.uniform3fv(this.sky.u.uTop, t.top);
+    gl.uniform3fv(this.sky.u.uBottom, t.bottom);
+    gl.uniform3fv(this.sky.u.uSun, t.sun);
+    gl.uniform2fv(this.sky.u.uSunPos, t.sunPos);
+    gl.uniform1f(this.sky.u.uAspect, this.aspect || 1);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.depthFunc(gl.LESS);
+    gl.depthMask(true);
+    // Every other draw path assumes the world program is current.
+    gl.useProgram(this.prog);
+    gl.bindVertexArray(null);
+  }
+
   beginFrame(camera, sky = this.skyTint) {
     if (this.contextLost) return;
     const gl = this.gl;
     this.resize();
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+    // The sky pass covers every pixel, so clearing colour first would write
+    // the whole framebuffer twice — on a software rasteriser that alone cost
+    // a third of the frame rate.
     gl.clearColor(sky[0], sky[1], sky[2], 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
@@ -148,6 +220,18 @@ export class Renderer {
     gl.uniform1f(this.u.uFogNear, this.fogNear);
     gl.uniform1f(this.u.uFogFar, this.fogFar);
     gl.uniform1f(this.u.uFlash, 0);
+    gl.uniform1f(this.u.uCutoff, 0.35);
+    if (this.fancy) {
+      gl.uniform3fv(this.u.uSunColor, this.theme.sun);
+      gl.uniform3fv(this.u.uSkyColor, this.theme.sky);
+      gl.uniform3fv(this.u.uGroundColor, this.theme.ground);
+    } else {
+      // Neutral values collapse the hemispheric ramp back to the flat baked
+      // face shading, with no branch in the fragment shader.
+      gl.uniform3f(this.u.uSunColor, 0, 0, 0);
+      gl.uniform3f(this.u.uSkyColor, 1, 1, 1);
+      gl.uniform3f(this.u.uGroundColor, 1, 1, 1);
+    }
   }
 
   drawWorld() {
@@ -182,6 +266,25 @@ export class Renderer {
     gl.bindVertexArray(this.cube.vao);
     gl.drawArrays(gl.TRIANGLES, 0, this.cube.count);
     if (opts.flash) gl.uniform1f(this.u.uFlash, 0);
+  }
+
+  /**
+   * Soft contact shadow on the ground beneath an entity. Voxel characters
+   * float without one: nothing else in the scene tells you whether a mob is
+   * standing on the floor or hovering a block above it.
+   */
+  drawShadow(x, y, z, radius, alpha = 0.42) {
+    if (this.contextLost || !this.fancy || alpha <= 0.01) return;
+    const gl = this.gl;
+    // The soft edge is entirely alpha, so the usual cutoff would carve the
+    // blob into a hard-edged disc.
+    gl.uniform1f(this.u.uCutoff, 0.004);
+    gl.depthMask(false);
+    this.drawBox(x, y + 0.03, z, radius * 2, 0.001, radius * 2, {
+      tile: T.SHADOW, color: [0, 0, 0], alpha, emissive: 1,
+    });
+    gl.depthMask(true);
+    gl.uniform1f(this.u.uCutoff, 0.35);
   }
 
   /**

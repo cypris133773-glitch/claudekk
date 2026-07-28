@@ -75,6 +75,7 @@ const hud = new Hud(hudCanvas, game, input, profile);
 
 hud.touchMode = isTouchDevice();
 renderer.renderScale = profile.settings.renderScale;
+renderer.fancy = profile.settings.fancyGraphics !== false;
 
 // Optional custom enemy head texture (see assets/README.md).
 tryLoadCustomHead(renderer.gl, renderer.atlas).then((ok) => {
@@ -109,6 +110,7 @@ const menus = new Menus(uiRoot, {
   quitRun: () => quitRun(),
   onSettingsChanged: () => {
     renderer.renderScale = profile.settings.renderScale;
+    renderer.fancy = profile.settings.fancyGraphics !== false;
     audio.applySettings();
   },
 });
@@ -317,11 +319,37 @@ let last = performance.now();
 let acc = 0;
 const FIXED = 1 / 60;
 
+/**
+ * Drop to the fast renderer if the device cannot hold a playable frame rate
+ * with the extras on. Phones vary by an order of magnitude and no static
+ * check predicts it; measuring for a few seconds of real play does. It only
+ * ever steps down, and only once, so it can never oscillate — and it leaves
+ * the setting visible so the player can turn it back on.
+ */
+const perf = { samples: 0, slow: 0, decided: false };
+function watchPerformance(dt) {
+  if (perf.decided || !renderer.fancy || !game.running || game.paused) return;
+  if (dt <= 0 || dt > 0.25) return;
+  perf.samples++;
+  if (dt > 1 / 34) perf.slow++;
+  if (perf.samples < 240) return;              // ~4s of play
+  perf.decided = true;
+  // Only step down when most frames missed, not on a couple of stutters.
+  if (perf.slow / perf.samples > 0.55) {
+    renderer.fancy = false;
+    profile.settings.fancyGraphics = false;
+    profile.save();
+    showToast('Switched to fast graphics to keep the frame rate up. '
+      + 'Settings → Fancy graphics turns it back on.', 5000);
+  }
+}
+
 function frame(now) {
   requestAnimationFrame(frame);
   let dt = (now - last) / 1000;
   last = now;
   if (dt > 0.25) dt = 0.25;         // tab was hidden; do not simulate the gap
+  watchPerformance(dt);
 
   const state = input.poll(dt);
 

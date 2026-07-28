@@ -407,7 +407,10 @@ check('every skill in every class pool casts without throwing', async () => {
   const { Game } = await import('../src/game/game.js');
   const { castSkill } = await import('../src/game/skills.js');
 
-  const stubRenderer = { setWorld() {}, skyTint: [0, 0, 0], project: () => null };
+  const stubRenderer = {
+    setWorld() {}, setTheme() {}, project: () => null,
+    skyTint: [0, 0, 0], fancy: false,
+  };
   const stubAudio = {
     play() {}, startMusic() {}, stopMusic() {}, setMusicIntensity() {}, ensure() {},
   };

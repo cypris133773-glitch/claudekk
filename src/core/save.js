@@ -65,6 +65,7 @@ function emptyProfile() {
       leftHanded: false,
       autoAttack: true,
       tapAttack: true,
+      fancyGraphics: true,
       hapticFeedback: true,
       fullscreenOnPlay: true,
     },

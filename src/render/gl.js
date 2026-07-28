@@ -38,20 +38,68 @@ uniform float uFogNear;
 uniform float uFogFar;
 uniform float uEmissive;
 uniform float uFlash;
+uniform float uCutoff;
+uniform vec3 uSunColor;
+uniform vec3 uSkyColor;
+uniform vec3 uGroundColor;
 
 out vec4 outColor;
 
 void main() {
   vec4 tex = texture(uAtlas, vUV);
-  if (tex.a < 0.35) discard;
+  if (tex.a < uCutoff) discard;
   vec3 rgb = tex.rgb * uTint.rgb;
-  float light = mix(vLight, 1.0, uEmissive);
-  rgb *= light;
+
+  // Hemispheric lighting. The mesh has no normals, but the baked per-face
+  // shade is a faithful proxy for one: 1.0 is an up face, 0.55 a down face,
+  // the sides in between. Ramping that through a warm sun and a cool sky
+  // bounce gives the flat voxel palette real directionality for the cost of
+  // two mixes, and costs no vertex bandwidth at all.
+  // Kept to mixes and multiplies: a pow() here runs once per covered pixel of
+  // the whole arena, and on a software rasteriser that alone was measurable.
+  float up = clamp((vLight - 0.55) * 2.2222, 0.0, 1.0);
+  vec3 lightCol = mix(uGroundColor, uSkyColor, up) + uSunColor * (up * up);
+  lightCol = mix(lightCol, vec3(1.0), uEmissive);
+  rgb *= lightCol * mix(vLight, 1.0, uEmissive);
+
   rgb = mix(rgb, vec3(1.0, 0.55, 0.55), uFlash);
   float fog = clamp((vDepth - uFogNear) / max(uFogFar - uFogNear, 0.001), 0.0, 1.0);
   fog *= (1.0 - uEmissive * 0.6);
   rgb = mix(rgb, uFogColor, fog);
   outColor = vec4(rgb, tex.a * uTint.a);
+}`;
+
+// Sky: one full-screen triangle with a vertical gradient and a soft sun
+// bloom. A flat clear colour is the single biggest thing that made the arena
+// read as a tech demo rather than a place.
+const SKY_VERT = `#version 300 es
+precision highp float;
+out vec2 vNdc;
+void main() {
+  vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+  vNdc = p * 2.0 - 1.0;
+  gl_Position = vec4(vNdc, 1.0, 1.0);
+}`;
+
+const SKY_FRAG = `#version 300 es
+precision highp float;
+in vec2 vNdc;
+uniform vec3 uTop;
+uniform vec3 uBottom;
+uniform vec3 uSun;
+uniform vec2 uSunPos;
+uniform float uAspect;
+out vec4 outColor;
+// Multiplies only — no pow, no exp. This shader runs on every pixel of open
+// sky, and the transcendentals it started with cost real frames on a software
+// rasteriser for a gradient nobody can tell apart from this one.
+void main() {
+  float t = clamp(vNdc.y * 0.5 + 0.5, 0.0, 1.0);
+  vec3 col = mix(uBottom, uTop, t * (0.65 + 0.35 * t));
+  vec2 d = vec2((vNdc.x - uSunPos.x) * uAspect, vNdc.y - uSunPos.y);
+  float glow = max(0.0, 1.0 - dot(d, d) * 1.6);
+  col += uSun * glow * glow * 0.55;
+  outColor = vec4(col, 1.0);
 }`;
 
 function compile(gl, type, src) {
@@ -96,10 +144,31 @@ export function createProgram(gl) {
   }
   const u = {};
   for (const name of ['uProj', 'uView', 'uModel', 'uAtlas', 'uTint', 'uFogColor',
-    'uFogNear', 'uFogFar', 'uEmissive', 'uUVOffset', 'uUVScale', 'uFlash']) {
+    'uFogNear', 'uFogFar', 'uEmissive', 'uUVOffset', 'uUVScale', 'uFlash',
+    'uCutoff', 'uSunColor', 'uSkyColor', 'uGroundColor']) {
     u[name] = gl.getUniformLocation(prog, name);
   }
   return { prog, u };
+}
+
+/** The sky gradient program. Draws with no buffers at all — three vertices
+ *  generated from gl_VertexID cover the screen. */
+export function createSkyProgram(gl) {
+  const prog = gl.createProgram();
+  gl.attachShader(prog, compile(gl, gl.VERTEX_SHADER, SKY_VERT));
+  gl.attachShader(prog, compile(gl, gl.FRAGMENT_SHADER, SKY_FRAG));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    throw new Error('Sky program link failed: ' + gl.getProgramInfoLog(prog));
+  }
+  const u = {};
+  for (const name of ['uTop', 'uBottom', 'uSun', 'uSunPos', 'uAspect']) {
+    u[name] = gl.getUniformLocation(prog, name);
+  }
+  // A VAO is still required in WebGL2 even when the program reads no
+  // attributes; drawing with none bound is an error on some drivers.
+  const vao = gl.createVertexArray();
+  return { prog, u, vao };
 }
 
 /** Vertex layout shared by every mesh: pos(3) uv(2) light(1) = 6 floats. */

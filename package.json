@@ -2,7 +2,7 @@
   "name": "blockfray",
   "version": "0.1.0",
   "private": true,
-  "description": "BLOCKFRAY — an endless voxel arena brawler for phone and PC.",
+  "description": "BLOCKFRAY \u2014 an endless voxel arena brawler for phone and PC.",
   "type": "module",
   "scripts": {
     "start": "node tools/serve.js",
@@ -10,7 +10,9 @@
     "test": "node tools/smoke-test.js",
     "sim": "node tools/balance-sim.js",
     "build": "node tools/bundle.js",
-    "build:fragment": "node tools/bundle.js --fragment"
+    "build:fragment": "node tools/bundle.js --fragment",
+    "test:menus": "node tools/menu-fit-test.mjs",
+    "test:play": "node tools/playability-test.mjs"
   },
   "engines": {
     "node": ">=18"

@@ -5,13 +5,14 @@ import { BLOCKS } from '../world/blocks.js';
 import { Player, buildMods } from './player.js';
 import { Mob, MOB_TYPES } from './mobs.js';
 import { Fiend } from './pets.js';
-import { Projectile, Particle, Telegraph, Shockwave, Zone, FloatText, hexToRgb } from './effects.js';
+import { Projectile, Particle, Gib, Telegraph, Shockwave, Zone, FloatText, hexToRgb } from './effects.js';
 import { TEAM } from './entity.js';
 import { WaveDirector, waveScaling, waveClearBonus, isBossWave } from './waves.js';
 import { rollUpgrades } from '../data/upgrades.js';
 import { permanentMods, masteryMods, masteryRank } from '../data/permanent.js';
 import { armorMods } from '../data/armor.js';
 import { forwardVec, clamp, rand, dist2 } from '../core/math.js';
+import { T } from '../render/atlas.js';
 
 const INTERMISSION = 4.0;
 
@@ -32,6 +33,7 @@ export class Game {
     this.zones = [];
     this.floaters = [];
     this.beams = [];
+    this.gibs = [];
     this.pets = [];
     this.timers = [];
     this.running = false;
@@ -77,7 +79,9 @@ export class Game {
       : (Math.random() * LAYOUT_COUNT) | 0;
     this.world = createArena(this.theme, 1 + ((Math.random() * 9000) | 0), this.layout);
     this.r.setWorld(this.world);
-    this.r.skyTint = [[0.55, 0.66, 0.82], [0.78, 0.68, 0.48], [0.16, 0.13, 0.20], [0.44, 0.60, 0.70]][this.theme];
+    // The renderer owns the palette now: sky gradient, sun colour and the
+    // hemispheric bounce all come from one themed set.
+    this.r.setTheme(this.theme);
 
     this.player = new Player(classDef, this.baseMods(), this.world, this.loadout);
     this.director = new WaveDirector();
@@ -395,6 +399,7 @@ export class Game {
 
     this.burst(mob.x, mob.centerY, mob.z, mob.def.boss ? 40 : 12,
       mob.elite ? '#ffd24a' : '#c0392b');
+    this.spawnGibs(mob);
     if (mob.def.boss) {
       this.screenShake = 0.6;
       this.audio.play('explode');
@@ -522,6 +527,7 @@ export class Game {
     for (const p of this.pets) if (!p.dead) p.update(dt, this);
     for (const p of this.projectiles) if (!p.dead) p.update(dt, this);
     for (const p of this.particles) p.update(dt);
+    for (const g of this.gibs) g.update(dt, this);
     for (const t of this.telegraphs) t.update(dt);
     for (const s of this.shockwaves) s.update(dt);
     for (const z of this.zones) z.update(dt, this);
@@ -539,6 +545,7 @@ export class Game {
     this.pets = this.pets.filter((p) => !p.dead);
     this.projectiles = this.projectiles.filter((p) => !p.dead);
     this.particles = this.particles.filter((p) => !p.dead);
+    this.gibs = this.gibs.filter((g) => !g.dead);
     this.telegraphs = this.telegraphs.filter((t) => !t.dead);
     this.shockwaves = this.shockwaves.filter((s) => !s.dead);
     this.zones = this.zones.filter((z) => !z.dead);
@@ -622,15 +629,74 @@ export class Game {
     const cam = this.camera;
     this.r.beginFrame(cam, this.r.skyTint);
     this.r.drawWorld();
+    this.drawShadows();
     for (const m of this.mobs) m.draw(this.r);
     for (const p of this.pets) p.draw(this.r);
+    // Sky fills the gaps left by the opaque pass, before anything blended.
+    this.r.drawSky();
     for (const p of this.projectiles) p.draw(this.r);
     for (const t of this.telegraphs) t.draw(this.r);
     for (const z of this.zones) z.draw(this.r);
     for (const s of this.shockwaves) s.draw(this.r);
+    for (const g of this.gibs) g.draw(this.r);
     for (const p of this.particles) p.draw(this.r);
     this.drawBeams();
     if (!this.player.dead) this.player.drawViewModel(this.r, cam);
+  }
+
+  /**
+   * Contact shadows, drawn in one pass between the world and the characters
+   * so nothing casts a shadow onto another character's face. The blob is
+   * dropped onto the first solid surface below the entity and fades with the
+   * distance it had to fall, which reads as a jump.
+   */
+  drawShadows() {
+    if (!this.r.fancy) return;
+    const cast = (e, scale = 1) => {
+      if (!e || e.dead) return;
+      const gy = this.world.groundAt(e.x, e.z, e.y + 0.5);
+      const drop = Math.max(0, e.y - gy);
+      if (drop > 6) return;
+      const fade = 1 - Math.min(1, drop / 6);
+      this.r.drawShadow(e.x, gy, e.z, (e.width || 0.6) * 0.95 * scale * (1 + drop * 0.10),
+        0.45 * fade * fade);
+    };
+    for (const m of this.mobs) cast(m, m.def && m.def.boss ? 1.25 : 1);
+    for (const p of this.pets) cast(p);
+    if (!this.player.dead) cast(this.player);
+  }
+
+  /**
+   * Break a corpse into tumbling chunks in its own colours, thrown along
+   * whatever killed it. Capped hard: a deep wave kills a dozen things a
+   * second, and unbounded debris is the fastest way to stall a phone.
+   */
+  spawnGibs(mob) {
+    if (!this.r.fancy) return;
+    const MAX = 90;
+    if (this.gibs.length > MAX) return;
+    const skin = mob.def.skin;
+    const parts = mob.def.boss ? 14 : mob.elite ? 9 : 6;
+    const unit = mob.height / 1.8;
+    const kx = mob.lastHitKX || 0, kz = mob.lastHitKZ || 0;
+    for (let i = 0; i < parts; i++) {
+      const colors = [skin.head, skin.body, skin.arm, skin.leg];
+      const color = colors[i % colors.length];
+      this.gibs.push(new Gib(
+        mob.x + rand(0.3, -0.3),
+        mob.y + 0.4 + Math.random() * mob.height * 0.8,
+        mob.z + rand(0.3, -0.3),
+        rand(3.4, -3.4) + kx * 2.4,
+        3 + Math.random() * 5,
+        rand(3.4, -3.4) + kz * 2.4,
+        color,
+        (0.16 + Math.random() * 0.12) * unit,
+        1.8 + Math.random() * 1.4,
+        i % 2 ? T.CLOTH : T.SKIN,
+      ));
+    }
+    // Oldest first, so the newest kill always gets its debris.
+    while (this.gibs.length > MAX) this.gibs.shift();
   }
 
   drawBeams() {

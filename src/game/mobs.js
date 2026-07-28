@@ -104,6 +104,8 @@ export class Mob extends Entity {
     this.avoidTimer = 0;
     this.avoidSign = 1;
     this.windup = 0;                          // telegraphed swing in progress
+    this.flinch = 0;                          // staggered by a heavy hit
+    this.flinchLock = 0;                      // immunity window after a stagger
     this.sepX = 0;
     this.sepZ = 0;
     // A fixed per-mob lean, so a pack spreads into an arc around the player
@@ -133,6 +135,29 @@ export class Mob extends Entity {
     if (inLava) this.damage(inLava * dt, { source: null });
 
     this.avoidTimer = Math.max(0, this.avoidTimer - dt);
+    // A hit worth a fifth of its health staggers it. Cancelling the wind-up
+    // is the point: interrupting a swing is what makes a big hit feel big,
+    // and it gives melee a reason to commit rather than only trade.
+    this.flinchLock = Math.max(0, this.flinchLock - dt);
+    if (this.flinchLock <= 0 && this.hurtFlash > 0.21
+      && this.lastHitFraction > 0.18 && !this.def.boss) {
+      this.flinch = this.lastHitFraction > 0.4 ? 0.4 : 0.22;
+      // Without this window a fast, hard-hitting build chain-staggers a mob
+      // for the whole fight: it never closes, never dies, and the wave never
+      // ends. The lock is what keeps a stagger a moment rather than a state.
+      this.flinchLock = this.flinch + 1.4;
+      this.windup = 0;
+      this.lastHitFraction = 0;
+    }
+    if (this.flinch > 0) {
+      this.flinch -= dt;
+      this.vx *= 0.86; this.vz *= 0.86;
+      this.walkPhase += Math.hypot(this.vx, this.vz) * dt * 2.4;
+      // Still run the leash: a mob that cannot act must not also be exempt
+      // from the failsafe that rescues a stalled wave.
+      this.checkStuck(dt, game, this.distanceXZ(game.player));
+      return;
+    }
 
     if (this.disabled) { this.vx *= 0.2; this.vz *= 0.2; return; }
 
@@ -442,7 +467,10 @@ export class Mob extends Entity {
       }
       return;
     }
-    this.moveToward(nx, nz, speed);
+    // The last few blocks are a sprint. A bomber that ambles in at walking
+    // pace is free damage; one that commits has to be dealt with.
+    const commit = dist < this.def.range + 5 ? 1.45 : 1;
+    this.moveToward(nx, nz, speed * commit);
     // Only light the fuse when it can actually reach — a bomber that primes
     // through a wall just removes itself from the wave for free.
     if (dist < this.def.range

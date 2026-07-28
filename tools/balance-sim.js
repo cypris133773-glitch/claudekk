@@ -23,7 +23,10 @@ const MAX_SECONDS = 60 * 45;         // give up after 45 simulated minutes
 
 // --- Stubs for the browser-only collaborators -------------------------------
 
-const stubRenderer = { setWorld() {}, skyTint: [0, 0, 0], project: () => null };
+const stubRenderer = {
+  setWorld() {}, setTheme() {}, project: () => null,
+  skyTint: [0, 0, 0], fancy: false,
+};
 const stubAudio = {
   play() {}, startMusic() {}, stopMusic() {}, setMusicIntensity() {}, ensure() {},
 };

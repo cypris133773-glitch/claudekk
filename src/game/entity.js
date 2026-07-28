@@ -57,6 +57,11 @@ export class Entity {
     this.hp -= dmg;
     this.hurtFlash = 0.22;
     this.lastDamagedAge = this.age;
+    // Kept so debris and death animations can be thrown the way the killing
+    // blow was travelling, rather than in an arbitrary direction.
+    this.lastHitKX = opts.kx || 0;
+    this.lastHitKZ = opts.kz || 0;
+    this.lastHitFraction = this.maxHp > 0 ? dmg / this.maxHp : 0;
     if (opts.knockback && this.knockResist < 1) {
       const k = opts.knockback * (1 - this.knockResist);
       this.vx += (opts.kx || 0) * k;

@@ -44,6 +44,8 @@ export const T = {
   FACE_PLAYER: 30,
   /** Reserved slot. Replaced at runtime by assets/enemy-head.png when present. */
   CUSTOM_HEAD: 31,
+  /** Soft radial falloff, used as the blob shadow under every entity. */
+  SHADOW: 32,
 };
 
 function px(data, x, y, r, g, b, a = 255) {
@@ -221,6 +223,17 @@ function buildAtlasPixels() {
 
   // Custom head slot: neutral until a texture is supplied at runtime.
   paint(data, T.CUSTOM_HEAD, noisy([255, 255, 255], 18, 47));
+
+  // Blob shadow: white with a radial alpha ramp, so a single tinted quad
+  // reads as a soft contact shadow. Squared falloff keeps the centre dark
+  // and the edge from banding on a 16px tile.
+  paint(data, T.SHADOW, (x, y) => {
+    const dx = (x + 0.5) / TILE - 0.5;
+    const dy = (y + 0.5) / TILE - 0.5;
+    const d = Math.min(1, Math.hypot(dx, dy) * 2);
+    const a = Math.round(255 * Math.pow(1 - d, 1.6));
+    return [255, 255, 255, a];
+  });
 
   return data;
 }

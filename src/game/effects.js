@@ -129,6 +129,79 @@ export class Particle {
   }
 }
 
+/**
+ * A chunk of a dead thing. Unlike a Particle it collides with the world,
+ * bounces, tumbles and settles, then fades. Nothing sells a hit like debris
+ * that lands on the floor and stays there for a moment.
+ */
+export class Gib {
+  constructor(x, y, z, vx, vy, vz, color, size, life = 2.6, tile = T.CLOTH) {
+    this.x = x; this.y = y; this.z = z;
+    this.vx = vx; this.vy = vy; this.vz = vz;
+    this.color = Array.isArray(color) ? color : hexToRgb(color);
+    this.size = size;
+    this.tile = tile;
+    this.life = life;
+    this.maxLife = life;
+    this.yaw = Math.random() * Math.PI * 2;
+    this.pitch = Math.random() * Math.PI * 2;
+    this.spinY = (Math.random() - 0.5) * 14;
+    this.spinP = (Math.random() - 0.5) * 14;
+    this.resting = false;
+    this.dead = false;
+  }
+
+  update(dt, game) {
+    this.life -= dt;
+    if (this.life <= 0) { this.dead = true; return; }
+    if (this.resting) return;
+
+    this.vy -= 26 * dt;
+    const world = game.world;
+    const half = this.size * 0.5;
+
+    // Axis-separated stepping, so a chunk slides along a wall instead of
+    // sticking to it, and bounces off the floor rather than through it.
+    const nx = this.x + this.vx * dt;
+    if (world.isSolid(nx + Math.sign(this.vx) * half, this.y, this.z)) this.vx *= -0.4;
+    else this.x = nx;
+
+    const nz = this.z + this.vz * dt;
+    if (world.isSolid(this.x, this.y, nz + Math.sign(this.vz) * half)) this.vz *= -0.4;
+    else this.z = nz;
+
+    const ny = this.y + this.vy * dt;
+    if (this.vy < 0 && world.isSolid(this.x, ny - half, this.z)) {
+      this.y = Math.floor(ny - half) + 1 + half;
+      this.vy *= -0.32;
+      this.vx *= 0.62; this.vz *= 0.62;
+      this.spinY *= 0.5; this.spinP *= 0.5;
+      // Below this a bounce is just jitter; park it and stop simulating.
+      if (Math.abs(this.vy) < 1.6) {
+        this.resting = true;
+        this.vx = this.vy = this.vz = 0;
+        this.pitch = Math.round(this.pitch / (Math.PI / 2)) * (Math.PI / 2);
+      }
+    } else if (this.vy > 0 && world.isSolid(this.x, ny + half, this.z)) {
+      this.vy = 0;
+    } else {
+      this.y = ny;
+    }
+
+    this.yaw += this.spinY * dt;
+    this.pitch += this.spinP * dt;
+  }
+
+  draw(r) {
+    // Only the last third fades, so debris reads as solid while it matters.
+    const t = this.life / this.maxLife;
+    const alpha = Math.min(1, t * 3);
+    r.drawBox(this.x, this.y, this.z, this.size, this.size, this.size, {
+      tile: this.tile, color: this.color, alpha, yaw: this.yaw, pitch: this.pitch,
+    });
+  }
+}
+
 /** Glowing ring on the ground warning of an incoming AoE. */
 export class Telegraph {
   constructor(x, y, z, radius, duration, onComplete, color = '#ff5a3c') {

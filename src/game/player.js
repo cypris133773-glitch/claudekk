@@ -247,6 +247,20 @@ export class Player extends Entity {
       return;
     }
 
+    // Jump feel. Three standard forgiveness rules, all of which the previous
+    // strict "on the ground this exact frame" check failed:
+    //   coyote  — you may still jump for a moment after walking off a ledge
+    //   buffer  — a jump pressed just before landing fires on touchdown
+    //   cutoff  — releasing early cuts the arc short, so height is a choice
+    this.coyote = this.onGround ? 0.12 : Math.max(0, (this.coyote || 0) - dt);
+    this.jumpBuffer = Math.max(0, (this.jumpBuffer || 0) - dt);
+    // Refill on the press *and* on every grounded frame the button is still
+    // held, so holding jump keeps you hopping. A rising edge alone means one
+    // jump per press — which silently strands anyone who holds the button to
+    // scramble out of lava.
+    if (input.jump && (!this.jumpHeld || this.onGround)) this.jumpBuffer = 0.14;
+    this.jumpHeld = !!input.jump;
+
     const disabled = this.disabled || this.root > 0;
     const sprintMult = input.sprint && input.moveY > 0.2 ? 1.28 : 1;
     const speed = disabled ? 0 : this.moveSpeed * (1 - this.slow) * sprintMult;
@@ -254,10 +268,13 @@ export class Player extends Entity {
     this.vx += (mx * speed - this.vx) * clamp(accel * dt, 0, 1);
     this.vz += (mz * speed - this.vz) * clamp(accel * dt, 0, 1);
 
-    if (input.jump && this.onGround && !disabled) {
+    if (this.jumpBuffer > 0 && this.coyote > 0 && !disabled) {
       this.vy = 9.2;
       this.onGround = false;
+      this.jumpBuffer = 0;
+      this.coyote = 0;
     }
+    if (!input.jump && this.vy > 3.2) this.vy = 3.2 + (this.vy - 3.2) * 0.35;
     this.sprinting = sprintMult > 1;
     const moving = Math.hypot(this.vx, this.vz);
     this.bobPhase += moving * dt * 1.6;
