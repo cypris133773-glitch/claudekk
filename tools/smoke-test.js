@@ -465,6 +465,61 @@ check('every skill in every class pool casts without throwing', async () => {
   }
 });
 
+
+// --- Deployment config -----------------------------------------------------
+// vercel.json is validated against a strict schema at build time, and a
+// rejected key fails the deploy rather than being ignored. That failure only
+// surfaces in the Vercel dashboard, minutes later, so it is worth catching in
+// a test that runs before the push.
+
+check('vercel.json only uses properties Vercel accepts', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const cfg = JSON.parse(fs.readFileSync(path.join(root, 'vercel.json'), 'utf8'));
+
+  // The documented top-level keys. Notably absent: any comment convention.
+  // "//" is common in package.json and is rejected outright here.
+  const allowed = new Set([
+    '$schema', 'buildCommand', 'cleanUrls', 'crons', 'devCommand', 'framework',
+    'functions', 'git', 'headers', 'ignoreCommand', 'images', 'installCommand',
+    'outputDirectory', 'public', 'redirects', 'regions', 'rewrites',
+    'trailingSlash',
+  ]);
+  const unknown = Object.keys(cfg).filter((k) => !allowed.has(k));
+  assert(unknown.length === 0,
+    `vercel.json has properties Vercel will reject: ${unknown.join(', ')}`);
+
+  // The site is served from the repo root; there is no build step producing
+  // a public/ directory, and without this the deploy fails looking for one.
+  assert(cfg.outputDirectory === '.', `outputDirectory is ${JSON.stringify(cfg.outputDirectory)}, expected "."`);
+});
+
+check('everything index.html loads is present and not deployment-ignored', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+  const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  const refs = [...html.matchAll(/(?:src|href)="([^":]+)"/g)].map((m) => m[1]);
+  assert(refs.length >= 3, `only found ${refs.length} asset references in index.html`);
+
+  const ignored = fs.readFileSync(path.join(root, '.vercelignore'), 'utf8')
+    .split('\n').map((l) => l.trim())
+    .filter((l) => l && !l.startsWith('#'))
+    .map((l) => l.replace(/\/$/, ''));
+
+  for (const ref of refs) {
+    const rel = ref.replace(/^\.?\//, '');
+    assert(fs.existsSync(path.join(root, rel)), `index.html references missing ${rel}`);
+    const top = rel.split('/')[0];
+    assert(!ignored.includes(top),
+      `.vercelignore excludes ${top}/, which index.html needs`);
+  }
+});
+
 // --- Math ------------------------------------------------------------------
 
 check('clamp behaves', () => {
