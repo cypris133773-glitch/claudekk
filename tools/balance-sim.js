@@ -214,7 +214,7 @@ console.log(`\nBLOCKFRAY balance simulation — ${runs} run(s) per class`
   + (armor ? `, armour tier ${armor}` : '')
   + (layout === undefined ? ', mixed layouts' : `, ${LAYOUT_NAMES[layout % LAYOUT_NAMES.length]} layout`)
   + '\n');
-console.log('class     median  best  worst   kills   min   peak  upg');
+console.log('class        median  best  worst   kills   min   peak  upg');
 console.log('-'.repeat(58));
 
 const all = [];
@@ -229,7 +229,7 @@ for (const id of targets) {
   }
   const waves = results.map((r) => r.wave);
   const row = [
-    id.padEnd(9),
+    id.padEnd(12),
     String(median(waves)).padStart(6),
     String(Math.max(...waves)).padStart(5),
     String(Math.min(...waves)).padStart(6),

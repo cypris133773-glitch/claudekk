@@ -41,8 +41,19 @@ const near = (a, b, eps = 1e-6) => Math.abs(a - b) < eps;
 
 // --- Classes ---------------------------------------------------------------
 
-check('six playable classes', () => {
-  assert(CLASSES.length === 6, `expected 6 classes, got ${CLASSES.length}`);
+check('seven playable classes', () => {
+  assert(CLASSES.length === 7, `expected 7 classes, got ${CLASSES.length}`);
+});
+
+check('every class resource is distinct enough to matter', () => {
+  for (const c of CLASSES) {
+    const r = c.resource;
+    assert(r.max > 0, `${c.id} resource has no ceiling`);
+    // A resource with no regen must have another way to fill, or the class
+    // runs dry after its opening rotation and never casts again.
+    const fills = (r.regen || 0) > 0 || r.onHitGain || r.onKillGain || r.onTakeGain;
+    assert(fills, `${c.id} resource ${r.name} can never be refilled`);
+  }
 });
 
 check('class ids are unique', () => {

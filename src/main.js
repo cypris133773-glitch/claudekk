@@ -27,7 +27,7 @@ import { clamp } from './core/math.js';
     'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
 })();
 
-export const BUILD = '2026-07-28 19:13 UTC';
+export const BUILD = '2026-07-28 19:20 UTC';
 console.info('BLOCKFRAY build', BUILD);
 
 const glCanvas = document.getElementById('view');

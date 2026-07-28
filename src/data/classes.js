@@ -14,6 +14,10 @@ export const RESOURCE = {
   RAGE: { key: 'rage', name: 'Rage', color: '#ff5a3c', max: 100, regen: -3, startFull: false, onHitGain: 9, onTakeGain: 6 },
   ENERGY: { key: 'energy', name: 'Energy', color: '#ffd24a', max: 100, regen: 18, startFull: true },
   SOUL: { key: 'soul', name: 'Soul Shards', color: '#a35cff', max: 100, regen: 5, startFull: true, onKillGain: 12 },
+  // Hatred neither regenerates on its own nor starts full: it is built by
+  // fighting and spent immediately, which is what makes the Demonslayer a
+  // class you play forwards.
+  HATRED: { key: 'hatred', name: 'Hatred', color: '#ff3ca0', max: 100, regen: 0, startFull: false, onHitGain: 7, onKillGain: 14 },
 };
 
 /** How many skills are equipped at once — four buttons, four keys. */
@@ -543,6 +547,93 @@ export const CLASSES = [
           { id: 'r_s4', name: 'Vanish', desc: 'Dropping below 30% health instantly resets Ambush.', max: 1, effect: { vanish: 1 } },
           { id: 'r_s5', name: 'Nightstalker', desc: '+14 max health and 6% thorns per rank.', max: 6, effect: { maxHp: 14, thorns: 0.06 } },
           { id: 'r_s6', name: 'Symbols of Death', desc: '+18% damage; kills restore 8 health.', max: 1, effect: { allDamage: 0.18, killHeal: 8 } },
+        ],
+      },
+    ],
+  },
+  // -------------------------------------------------------------------------
+  {
+    id: 'demonslayer',
+    name: 'Demonslayer',
+    role: 'Fel Melee / Mobility',
+    tagline: 'Burn hot, close fast, and take the demon with you.',
+    color: '#7dff5a',
+    accent: '#c9ff9a',
+    resource: RESOURCE.HATRED,
+    base: { hp: 112, armor: 0.15, speed: 5.7, attackDamage: 23, attackSpeed: 2.05, attackRange: 3.2, critChance: 0.14, critMult: 2.2 },
+    weapon: { type: 'axe', tile: 'OBSIDIAN', color: '#9dff7a', length: 1.05, projectile: { speed: 38, color: '#7dff5a', size: 0.26, gravity: 0 } },
+    difficulty: 3,
+    skills: [
+      {
+        id: 'felrush', name: 'Fel Rush', kind: 'dash', cost: 12, cooldown: 5, icon: '💚', unlock: 0,
+        desc: 'Hurl yourself forward in a trail of fel fire, burning everything you pass.',
+        power: { distance: 13, speed: 42, damage: 34, knockback: 6, radius: 2.0 },
+      },
+      {
+        id: 'glaivethrow', name: 'Throw Glaive', kind: 'projectile', cost: 14, cooldown: 2.4, icon: '🌀', unlock: 0,
+        desc: 'A spinning glaive that detonates in fel fire and leaves the target burning.',
+        power: { damage: 44, speed: 40, radius: 2.4, burn: 12, color: '#7dff5a', size: 0.3 },
+      },
+      {
+        id: 'immolation', name: 'Immolation Aura', kind: 'aoe_self', cost: 20, cooldown: 7, icon: '🔥', unlock: 0,
+        desc: 'Erupt in fel flame three times over, scorching everything close by.',
+        power: { radius: 5.6, damage: 26, ticks: 3, tickDelay: 0.34, dot: { dps: 8, duration: 4 }, color: '#9dff7a' },
+      },
+      {
+        id: 'soulcleave', name: 'Soul Cleave', kind: 'cone', cost: 26, cooldown: 5, icon: '🗡', unlock: 0,
+        desc: 'A wide sweep that devours the souls it cuts, healing you for 35% of the damage.',
+        power: { damage: 62, range: 6.5, angle: 0.7, lifesteal: 0.35, color: '#7dff5a' },
+      },
+      {
+        id: 'sigilofflame', name: 'Sigil of Flame', kind: 'zone', cost: 24, cooldown: 10, icon: '🕯', unlock: 3,
+        desc: 'Brand the ground ahead; anything standing on it burns for 7s.',
+        power: { radius: 5.5, dps: 30, duration: 7, range: 18, delay: 0.6, color: '#9dff7a' },
+      },
+      {
+        id: 'eyebeam', name: 'Eye Beam', kind: 'cone', cost: 34, cooldown: 12, icon: '👁', unlock: 6,
+        desc: 'A narrow beam of fel energy that scours everything in a long line.',
+        power: { damage: 96, range: 17, angle: 0.32, color: '#7dff5a' },
+      },
+      {
+        id: 'chaosnova', name: 'Chaos Nova', kind: 'aoe_self', cost: 30, cooldown: 13, icon: '💥', unlock: 10,
+        desc: 'Detonate chaos around you, rooting everything caught in it for 2.2s.',
+        power: { radius: 7.5, damage: 46, root: 2.2, knockback: 4, color: '#c9ff9a' },
+      },
+      {
+        id: 'metamorphosis', name: 'Metamorphosis', kind: 'buff', cost: 30, cooldown: 30, icon: '😈', unlock: 15,
+        desc: 'Take demon form for 10s: +40% damage, +25% speed, and 20% less damage taken.',
+        power: { duration: 10, damageBonus: 0.40, moveSpeed: 0.25, damageTaken: 0.80 },
+      },
+    ],
+    talents: [
+      {
+        name: 'Havoc', color: '#7dff5a', nodes: [
+          { id: 'd_h1', name: 'Demonic Presence', desc: '+6% melee damage per rank.', max: 8, effect: { meleeDamage: 0.06 } },
+          { id: 'd_h2', name: 'Critical Chaos', desc: '+4% crit chance per rank.', max: 6, effect: { critChance: 0.04 } },
+          { id: 'd_h3', name: 'Unbound Chaos', desc: '+9% crit damage per rank.', max: 7, effect: { critMult: 0.09 } },
+          { id: 'd_h4', name: 'Momentum', desc: '+6% move speed per rank.', max: 5, effect: { moveSpeed: 0.06 } },
+          { id: 'd_h5', name: 'Demon Blades', desc: '+6% attack speed per rank.', max: 7, effect: { attackSpeed: 0.06 } },
+          { id: 'd_h6', name: 'Chaotic Transformation', desc: '+18% damage and -10% cooldowns.', max: 1, effect: { allDamage: 0.18, cooldownReduction: 0.10 } },
+        ],
+      },
+      {
+        name: 'Vengeance', color: '#ff5a3c', nodes: [
+          { id: 'd_v1', name: 'Charred Flesh', desc: '+18 max health per rank.', max: 8, effect: { maxHp: 18 } },
+          { id: 'd_v2', name: 'Fiery Brand', desc: '+3% armor per rank.', max: 6, effect: { armor: 0.03 } },
+          { id: 'd_v3', name: 'Demon Hide', desc: 'Take 3% less damage per rank.', max: 5, effect: { damageReduction: 0.03 } },
+          { id: 'd_v4', name: 'Feed the Demon', desc: 'Restore 8 health per kill, per rank.', max: 5, effect: { killHeal: 8 } },
+          { id: 'd_v5', name: 'Burning Alive', desc: 'Reflect 8% of damage taken per rank.', max: 5, effect: { thorns: 0.08 } },
+          { id: 'd_v6', name: 'Last Resort', desc: 'Survive a lethal hit once per wave, and take 10% less damage.', max: 1, effect: { cheatDeath: 1, damageReduction: 0.10 } },
+        ],
+      },
+      {
+        name: 'Felblood', color: '#a35cff', nodes: [
+          { id: 'd_f1', name: 'Thirst', desc: 'Heal 3% of damage dealt per rank.', max: 6, effect: { lifesteal: 0.03 } },
+          { id: 'd_f2', name: 'Blind Fury', desc: '+12 max Hatred and +2 Hatred per hit, per rank.', max: 5, effect: { resourceMax: 12, onHitGain: 2 } },
+          { id: 'd_f3', name: 'Burning Hatred', desc: 'Kills restore +6 Hatred per rank.', max: 4, effect: { onKillGain: 6 } },
+          { id: 'd_f4', name: 'Cycle of Hatred', desc: '-5% cooldowns per rank.', max: 6, effect: { cooldownReduction: 0.05 } },
+          { id: 'd_f5', name: 'Burning Wound', desc: 'Burn and fel damage ticks 15% harder per rank.', max: 6, effect: { burnDamage: 0.15, dotDamage: 0.10 } },
+          { id: 'd_f6', name: 'Fel Devastation', desc: '+25% damage to bosses and 8% lifesteal.', max: 1, effect: { bossDamage: 0.25, lifesteal: 0.08 } },
         ],
       },
     ],
