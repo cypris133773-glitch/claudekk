@@ -11,8 +11,9 @@
 // floor for a real player, not a target.
 
 import { Game } from '../src/game/game.js';
-import { CLASSES, CLASS_BY_ID } from '../src/data/classes.js';
-import { PERMANENT } from '../src/data/permanent.js';
+import { CLASSES, CLASS_BY_ID, defaultLoadout, resolveLoadout } from '../src/data/classes.js';
+import { ARMOR_SLOTS } from '../src/data/armor.js';
+import { PERMANENT, talentPointsForBestWave } from '../src/data/permanent.js';
 import { forwardVec } from '../src/core/math.js';
 import { LAYOUT_NAMES } from '../src/world/world.js';
 
@@ -27,17 +28,27 @@ const stubAudio = {
   play() {}, startMusic() {}, stopMusic() {}, setMusicIntensity() {}, ensure() {},
 };
 
-function stubProfile(forgeLevel = 0) {
+function stubProfile(forgeLevel = 0, armorTier = 0) {
   const classes = {};
-  for (const c of CLASSES) classes[c.id] = { talents: {}, bestWave: 0, kills: 0, runs: 0 };
+  for (const c of CLASSES) {
+    classes[c.id] = {
+      talents: {}, bestWave: 0, kills: 0, runs: 0, mastery: 0,
+      loadout: defaultLoadout(c),
+    };
+  }
   const permanent = {};
   if (forgeLevel > 0) {
     for (const def of PERMANENT) permanent[def.id] = Math.min(def.max, forgeLevel);
   }
+  const armor = {};
+  if (armorTier > 0) for (const s of ARMOR_SLOTS) armor[s.id] = armorTier;
   return {
-    data: { permanent, classes, souls: 0, stats: {} },
+    data: { permanent, armor, classes, souls: 0, stats: {} },
     settings: { showDamage: false },
     classData: (id) => classes[id],
+    // The bot always fights with the default kit; unlockable skills are a
+    // player choice, and simulating them would measure the harness's taste.
+    loadout: (cls) => resolveLoadout(cls, classes[cls.id].loadout, classes[cls.id].bestWave),
     finishRun() {},
     save() {},
   };
@@ -83,11 +94,11 @@ function botInput(game) {
   }
 
   // Fire skills off cooldown, cheapest first so resources are not starved.
-  const order = p.cls.skills
+  const order = p.skills
     .map((s, i) => ({ i, cost: s.cost }))
     .sort((a, b) => a.cost - b.cost);
   for (const { i } of order) {
-    if (p.cooldowns[i] <= 0 && p.resource >= p.cls.skills[i].cost) {
+    if (p.cooldowns[i] <= 0 && p.resource >= p.skills[i].cost) {
       state.skills[i] = true;
       break;                              // one cast per frame, like a human
     }
@@ -101,9 +112,9 @@ function botInput(game) {
   return state;
 }
 
-function simulateRun(classId, { forge = 0, talentPoints = 0, layout } = {}) {
+function simulateRun(classId, { forge = 0, armor = 0, talentPoints = 0, layout } = {}) {
   const cls = CLASS_BY_ID[classId];
-  const profile = stubProfile(forge);
+  const profile = stubProfile(forge, armor);
   if (talentPoints > 0) autoSpendTalents(profile, cls, talentPoints);
 
   const game = new Game(stubRenderer, stubAudio, profile);
@@ -171,8 +182,14 @@ const args = process.argv.slice(2);
 let forge = 0;
 const forgeIdx = args.indexOf('--forge');
 if (forgeIdx >= 0) {
-  forge = Number(args[forgeIdx + 1]) || 3;
+  forge = Number.isFinite(Number(args[forgeIdx + 1])) ? Number(args[forgeIdx + 1]) : 3;
   args.splice(forgeIdx, 2);
+}
+let armor = 0;
+const armorIdx = args.indexOf('--armor');
+if (armorIdx >= 0) {
+  armor = Number.isFinite(Number(args[armorIdx + 1])) ? Number(args[armorIdx + 1]) : 5;
+  args.splice(armorIdx, 2);
 }
 let layout;
 const layoutIdx = args.indexOf('--layout');
@@ -191,6 +208,7 @@ const median = (xs) => {
 
 console.log(`\nBLOCKFRAY balance simulation — ${runs} run(s) per class`
   + (forge ? `, Forge level ${forge}` : ', no permanent upgrades')
+  + (armor ? `, armour tier ${armor}` : '')
   + (layout === undefined ? ', mixed layouts' : `, ${LAYOUT_NAMES[layout % LAYOUT_NAMES.length]} layout`)
   + '\n');
 console.log('class     median  best  worst   kills   min   peak  upg');
@@ -203,7 +221,7 @@ for (const id of targets) {
     // Talent points scale with the best wave reached so far, like the real game.
     const best = results.length ? Math.max(...results.map((r) => r.wave)) : 0;
     results.push(simulateRun(id, {
-      forge, layout, talentPoints: best + Math.floor(best / 5) * 2,
+      forge, armor, layout, talentPoints: talentPointsForBestWave(best),
     }));
   }
   const waves = results.map((r) => r.wave);

@@ -103,6 +103,12 @@ export class Mob extends Entity {
     this.windowDist = undefined;
     this.avoidTimer = 0;
     this.avoidSign = 1;
+    this.windup = 0;                          // telegraphed swing in progress
+    this.sepX = 0;
+    this.sepZ = 0;
+    // A fixed per-mob lean, so a pack spreads into an arc around the player
+    // instead of every member steering at the same point.
+    this.slotBias = (((this.id % 7) - 3) / 3) * 0.55;
   }
 
   makeElite() {
@@ -133,13 +139,28 @@ export class Mob extends Entity {
     const target = game.pickEnemyTarget(this) || player;
     const dx = target.x - this.x, dz = target.z - this.z;
     const dist = Math.hypot(dx, dz);
-    const nx = dist > 0.001 ? dx / dist : 0;
-    const nz = dist > 0.001 ? dz / dist : 0;
+    let nx = dist > 0.001 ? dx / dist : 0;
+    let nz = dist > 0.001 ? dz / dist : 0;
+
+    this.updateSeparation(game);
+    this.crowd = this.crowdRank(game, target);
+    // Approach on an arc rather than a straight line. Mobs at the back of a
+    // pack lean harder, so a group fans out and surrounds instead of forming
+    // one conga line that the player can out-walk forever.
+    if (dist > this.def.range * 0.8 && !this.def.boss) {
+      const lean = this.slotBias * Math.min(1, this.crowd / 3);
+      if (lean) {
+        const cs = Math.cos(lean), sn = Math.sin(lean);
+        const ax = nx * cs - nz * sn, az = nx * sn + nz * cs;
+        nx = ax; nz = az;
+      }
+    }
     // Face the target (camera convention: forward = (-sin, -cos)).
     this.turnToward(Math.atan2(-nx, -nz), dt, 7);
 
     const speed = this.speed * (1 - this.slow) * (this.root > 0 ? 0 : 1);
     this.attackTimer = Math.max(0, this.attackTimer - dt);
+    this.resolveWindup(dt, game, target, dist);
 
     switch (this.def.behavior) {
       case 'ranged': this.aiRanged(dt, game, target, dist, nx, nz, speed); break;
@@ -220,6 +241,77 @@ export class Mob extends Entity {
     game.burst(this.x, this.centerY, this.z, 8, '#6a2fb5');
   }
 
+  /**
+   * Repulsion from other enemies. Without it every mob steers at the same
+   * point and the pack collapses into a single stack: only the front one can
+   * ever land a hit, and area damage kills the entire wave at once. Bosses
+   * push but are not pushed — being shoved out of a slam is not a fight.
+   */
+  updateSeparation(game) {
+    let sx = 0, sz = 0;
+    for (const other of game.mobs) {
+      if (other === this || other.dead) continue;
+      const dx = this.x - other.x, dz = this.z - other.z;
+      const want = (this.width + other.width) * 1.15 + 0.35;
+      const d2 = dx * dx + dz * dz;
+      if (d2 > want * want || d2 < 1e-6) continue;
+      const d = Math.sqrt(d2);
+      // Falls off linearly to zero at the desired spacing.
+      const push = (1 - d / want) * (other.def.boss ? 2 : 1);
+      sx += (dx / d) * push;
+      sz += (dz / d) * push;
+    }
+    const mag = Math.hypot(sx, sz);
+    if (mag > 1.6) { sx = sx / mag * 1.6; sz = sz / mag * 1.6; }
+    this.sepX = sx;
+    this.sepZ = sz;
+  }
+
+  /** How many other enemies are already closer to the target than this one. */
+  crowdRank(game, target) {
+    const mine = (this.x - target.x) ** 2 + (this.z - target.z) ** 2;
+    let n = 0;
+    for (const other of game.mobs) {
+      if (other === this || other.dead) continue;
+      if ((other.x - target.x) ** 2 + (other.z - target.z) ** 2 < mine) n++;
+      if (n >= 6) break;
+    }
+    return n;
+  }
+
+  /**
+   * Melee attacks land at the end of a short wind-up rather than the instant
+   * a mob is in range. That is the whole difference between a hit you could
+   * have stepped out of and one that simply happened to you.
+   */
+  startSwing(damageMult = 1, knockback = 4, windup = 0.20) {
+    if (this.windup > 0 || this.attackTimer > 0) return false;
+    // Deliberately no "attack token" cap here. Limiting how many of a crowd
+    // may swing at once reads well on paper, but measured against the balance
+    // harness it cut enemy pressure hardest for the ranged classes that were
+    // already the safest, and widened the class spread rather than closing it.
+    // Spacing comes from separation instead, which thins a pile without
+    // making being surrounded survivable.
+    this.windup = windup;
+    this.windupMult = damageMult;
+    this.windupKnock = knockback;
+    this.swing = 1;
+    return true;
+  }
+
+  resolveWindup(dt, game, target, dist) {
+    if (this.windup <= 0) return;
+    this.windup -= dt;
+    if (this.windup > 0) return;
+    this.windup = 0;
+    this.attackTimer = 1 / this.def.attackSpeed;
+    // Stepping out of reach during the wind-up makes the swing miss, which is
+    // what makes the tell worth reading.
+    if (!this.disabled && dist <= this.def.range + 0.9) {
+      this.meleeHit(game, target, this.windupMult, this.windupKnock);
+    }
+  }
+
   /** Hop up a single block when walking into a ledge. */
   autoJump(world, nx, nz) {
     if (!this.onGround) return;
@@ -250,13 +342,20 @@ export class Mob extends Entity {
       dx = nx * c - nz * s;
       dz = nx * s + nz * c;
     }
+    dx += this.sepX * 0.85;
+    dz += this.sepZ * 0.85;
+    const len = Math.hypot(dx, dz);
+    if (len > 1) { dx /= len; dz /= len; }
     this.vx += (dx * speed - this.vx) * 0.28;
     this.vz += (dz * speed - this.vz) * 0.28;
   }
 
   strafe(nx, nz, speed, sign) {
-    this.vx += (-nz * speed * sign - this.vx) * 0.18;
-    this.vz += (nx * speed * sign - this.vz) * 0.18;
+    const dx = -nz * sign + this.sepX * 0.7;
+    const dz = nx * sign + this.sepZ * 0.7;
+    const len = Math.hypot(dx, dz) || 1;
+    this.vx += ((dx / len) * speed - this.vx) * 0.18;
+    this.vz += ((dz / len) * speed - this.vz) * 0.18;
   }
 
   meleeHit(game, target, mult = 1, knockback = 4) {
@@ -267,27 +366,34 @@ export class Mob extends Entity {
   }
 
   aiMelee(dt, game, target, dist, nx, nz, speed) {
-    if (dist > this.def.range) this.moveToward(nx, nz, speed);
-    else {
+    if (this.windup > 0) {
+      // Planted mid-swing: a mob that keeps sliding forward while winding up
+      // gives the player nothing to step away from.
+      this.vx *= 0.55; this.vz *= 0.55;
+      return;
+    }
+    if (dist > this.def.range) {
+      // Anything held out of the front rank hangs back a body-width, ready to
+      // step in the moment a slot opens, instead of shoving from behind.
+      const press = this.crowd >= 4 ? speed * 0.62 : speed;
+      this.moveToward(nx, nz, press);
+    } else {
       this.moveToward(nx, nz, speed * 0.15);
-      if (this.attackTimer <= 0) {
-        this.attackTimer = 1 / this.def.attackSpeed;
-        this.meleeHit(game, target);
-      }
+      this.startSwing();
     }
   }
 
   aiLeaper(dt, game, target, dist, nx, nz, speed) {
+    if (this.windup > 0) { this.vx *= 0.6; this.vz *= 0.6; return; }
     if (dist < this.def.range) {
-      if (this.attackTimer <= 0) {
-        this.attackTimer = 1 / this.def.attackSpeed;
-        this.meleeHit(game, target, 1, 3);
-      }
+      this.startSwing(1, 3, 0.14);      // fast and twitchy, but still readable
       this.moveToward(nx, nz, speed * 0.3);
     } else {
       this.moveToward(nx, nz, speed);
-      // Pounce from mid range.
-      if (this.onGround && dist > 4 && dist < 9 && Math.random() < dt * 0.9) {
+      // Pounce from mid range, but only with a clear line — leaping into a
+      // wall was the single most common way these stranded themselves.
+      const clear = game.world.lineOfSight(this.x, this.eyeY, this.z, target.x, target.centerY, target.z);
+      if (this.onGround && clear && dist > 4 && dist < 9 && Math.random() < dt * 0.9) {
         this.vy = 9.5;
         this.vx = nx * speed * 2.1;
         this.vz = nz * speed * 2.1;
@@ -297,12 +403,20 @@ export class Mob extends Entity {
 
   aiRanged(dt, game, target, dist, nx, nz, speed) {
     const ideal = 11;
-    if (dist > ideal + 3) this.moveToward(nx, nz, speed);
-    else if (dist < ideal - 3) this.moveToward(-nx, -nz, speed);
-    else this.strafe(nx, nz, speed * 0.7, this.id % 2 ? 1 : -1);
+    const los = game.world.lineOfSight(this.x, this.eyeY, this.z, target.x, target.centerY, target.z);
+    if (!los) {
+      // No shot from here. Close in rather than plinking at a wall — this is
+      // what used to leave archers stalled at nominal range forever.
+      this.moveToward(nx, nz, speed);
+    } else if (dist > ideal + 3) this.moveToward(nx, nz, speed);
+    else if (dist < ideal - 3) {
+      // Back off, but keep circling so retreating does not walk it into a
+      // corner it cannot get out of.
+      this.moveToward(-nx, -nz, speed);
+      this.strafe(nx, nz, speed * 0.45, this.id % 2 ? 1 : -1);
+    } else this.strafe(nx, nz, speed * 0.7, this.id % 2 ? 1 : -1);
 
-    if (this.attackTimer <= 0 && dist < this.def.range
-      && game.world.lineOfSight(this.x, this.eyeY, this.z, target.x, target.centerY, target.z)) {
+    if (this.attackTimer <= 0 && dist < this.def.range && los) {
       this.attackTimer = 1 / this.def.attackSpeed;
       this.swing = 1;
       game.fireProjectile({
@@ -329,7 +443,10 @@ export class Mob extends Entity {
       return;
     }
     this.moveToward(nx, nz, speed);
-    if (dist < this.def.range) {
+    // Only light the fuse when it can actually reach — a bomber that primes
+    // through a wall just removes itself from the wave for free.
+    if (dist < this.def.range
+      && game.world.lineOfSight(this.x, this.eyeY, this.z, target.x, target.centerY, target.z)) {
       this.state = 'fuse';
       this.fuse = this.def.fuse;
       game.sfx('fuse');
@@ -338,6 +455,7 @@ export class Mob extends Entity {
 
   aiSlammer(dt, game, target, dist, nx, nz, speed) {
     this.slamTimer -= dt;
+    if (this.windup > 0) { this.vx *= 0.5; this.vz *= 0.5; return; }
     if (dist > this.def.range) this.moveToward(nx, nz, speed);
     else {
       this.moveToward(nx, nz, speed * 0.2);
@@ -349,9 +467,8 @@ export class Mob extends Entity {
             team: TEAM.ENEMY, source: this, color: '#c9a06a', knockback: 9,
           });
         });
-      } else if (this.attackTimer <= 0) {
-        this.attackTimer = 1 / this.def.attackSpeed;
-        this.meleeHit(game, target, 1, 6);
+      } else {
+        this.startSwing(1, 6, 0.32);      // heavy and slow: a real tell
       }
     }
   }

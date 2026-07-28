@@ -16,6 +16,13 @@ function power(player, skill) {
   if (p.chainDamage) p.chainDamage *= dmgMult;
   if (p.radius) p.radius *= 1 + (m.aoeRadius || 0);
   if (p.dot) p.dot = { ...p.dot, dps: p.dot.dps * (1 + (m.dotDamage || 0)) * dmgMult, duration: p.dot.duration + (m.dotDuration || 0) };
+  // Ground zones tick like a damage-over-time effect, so they scale with the
+  // same talents rather than being the one skill kind talents cannot touch.
+  if (p.dps) {
+    p.dps *= (1 + (m.dotDamage || 0)) * dmgMult;
+    p.duration += m.dotDuration || 0;
+  }
+  if (p.damagePerSecond) p.damagePerSecond *= dmgMult;
   if (p.burn) p.burn *= (1 + (m.burnDamage || 0)) * dmgMult;
   if (p.healPerSecond) p.healPerSecond *= player.stats.healMult;
   if (p.instant) p.instant *= player.stats.healMult;
@@ -41,7 +48,7 @@ export function skillCost(player, skill) {
 
 /** Returns true if the skill was cast. */
 export function castSkill(game, player, index) {
-  const skill = player.cls.skills[index];
+  const skill = player.skills[index];
   if (!skill) return false;
   if (player.cooldowns[index] > 0) return false;
   const cost = skillCost(player, skill);
@@ -82,6 +89,10 @@ export function castSkill(game, player, index) {
           if (player.dead) return;
           game.shockwave(player.x, player.y, player.z, p.radius, p.color || player.cls.color);
           const hits = game.enemiesInRadius(player.x, player.centerY, player.z, p.radius);
+          // Per-enemy self-healing has to be capped: a late wave puts 25 mobs
+          // in one nova, which out-heals everything the arena can do back and
+          // turns the fight into a stalemate the player cannot lose.
+          let healHits = 0;
           for (const m of hits) {
             const dx = m.x - player.x, dz = m.z - player.z;
             const d = Math.hypot(dx, dz) || 1;
@@ -92,15 +103,37 @@ export function castSkill(game, player, index) {
             if (p.root) m.root = Math.max(m.root, p.root);
             if (p.slow) m.applySlow(p.slow, (p.slowDuration || 2) + (player.mods.slowDuration || 0));
             if (p.dot) m.applyDot(p.dot.dps, p.dot.duration, 'poison', player);
-            if (p.healPerHit) player.heal(p.healPerHit * player.stats.healMult);
+            if (p.healPerHit && healHits < 8) {
+              healHits++;
+              player.heal(p.healPerHit * player.stats.healMult);
+            }
           }
           if (skill.id === 'frostnova' && player.mods.coldSnap) {
-            const blinkIdx = player.cls.skills.findIndex((s) => s.id === 'blink');
+            const blinkIdx = player.skills.findIndex((s) => s.id === 'blink');
             if (blinkIdx >= 0) player.cooldowns[blinkIdx] = 0;
           }
         });
       }
       game.sfx('nova');
+      break;
+    }
+
+    // A lingering ground effect: Blizzard, Rain of Fire, Smoke Bomb. Unlike
+    // aoe_target this deals no burst — it denies an area for several seconds,
+    // which is what makes the horde route around you instead of through you.
+    case 'zone': {
+      const zrange = p.range || 22;
+      const zhit = game.world.raycast(ex, ey, ez, dir[0], dir[1], dir[2], zrange);
+      const zx = ex + dir[0] * zhit;
+      const zz = ez + dir[2] * zhit;
+      const zy = game.world.groundAt(zx, zz, ey + 2);
+      game.telegraph(zx, zy, zz, p.radius, p.delay || 0.4, () => {
+        game.spawnZone(zx, zy, zz, {
+          radius: p.radius, dps: p.dps, duration: p.duration,
+          team: TEAM.PLAYER, source: player, color: p.color, slow: p.slow || 0,
+        });
+      }, p.color);
+      game.sfx('cast');
       break;
     }
 
@@ -234,15 +267,17 @@ export function castSkill(game, player, index) {
         if (!current) { game.notify('No target'); return false; }
         const hit = new Set();
         let dmg = p.damage;
+        let total = 0;
         let fromX = ex, fromY = ey - 0.2, fromZ = ez;
         for (let j = 0; j < p.jumps && current; j++) {
           hit.add(current);
           game.beam(fromX, fromY, fromZ, current.x, current.centerY, current.z, p.color);
-          game.dealDamage(player, current, dmg, { skillId: skill.id });
+          total += game.dealDamage(player, current, dmg, { skillId: skill.id });
           fromX = current.x; fromY = current.centerY; fromZ = current.z;
           dmg *= p.falloff;
           current = game.nearestEnemy(fromX, fromY, fromZ, p.jumpRange, hit);
         }
+        if (p.lifesteal && total > 0) game.healEntity(player, player, total * p.lifesteal);
         return true;
       };
       if (!fire()) return false;
@@ -268,6 +303,7 @@ export function castSkill(game, player, index) {
         const dx = m.x - player.x, dz = m.z - player.z;
         const d = Math.hypot(dx, dz) || 1;
         game.dealDamage(player, m, dmg, { knockback: 4, kx: dx / d, kz: dz / d, skillId: skill.id });
+        if (p.dot && !m.dead) m.applyDot(p.dot.dps, p.dot.duration, 'bleed', player);
         if (p.chain) {
           let from = m;
           const hitSet = new Set(hits);

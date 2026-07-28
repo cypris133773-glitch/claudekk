@@ -23,9 +23,14 @@ export class Input {
     this.pointerLocked = false;
     this.touch = {
       moveId: null, moveOX: 0, moveOY: 0, moveX: 0, moveY: 0,
-      lookId: null, lookX: 0, lookY: 0,
+      lookId: null, lookX: 0, lookY: 0, lookMoved: 0, lookStart: 0,
       buttons: new Map(),   // pointerId -> button name
     };
+    // Smoothed stick output. Raw touch coordinates jitter by a pixel or two
+    // even from a still thumb, which reads as the character twitching in place.
+    this.smoothMX = 0;
+    this.smoothMY = 0;
+    this.tapAttack = false;
     this.buttonHits = new Set();  // named virtual buttons pressed this frame
     this.heldButtons = new Set();
     this.enabled = false;
@@ -48,6 +53,14 @@ export class Input {
     this.heldButtons.clear();
     this.touch.moveId = this.touch.lookId = null;
     this.touch.moveX = this.touch.moveY = 0;
+    this.smoothMX = this.smoothMY = 0;
+    this.tapAttack = false;
+  }
+
+  /** Radius, in CSS px, at which the movement stick reads full speed. */
+  get stickRadius() {
+    const w = this.canvas.clientWidth || window.innerWidth || 360;
+    return clamp(w * 0.15, 46, 68);
   }
 
   _bind() {
@@ -223,12 +236,23 @@ export class Input {
       this.touch.lookId = id;
       this.touch.lookX = x; this.touch.lookY = y;
       this.touch.lookMoved = 0;
+      this.touch.lookStart = performance.now();
     }
   }
 
   _move(id, x, y) {
     if (id === this.touch.moveId) {
       this.touch.moveX = x; this.touch.moveY = y;
+      // Drag the origin along once the thumb passes the rim. Without this the
+      // stick "runs out" the moment a thumb wanders, and the only way to keep
+      // sprinting in one direction is to lift and re-plant it.
+      const r = this.stickRadius;
+      const dx = x - this.touch.moveOX, dy = y - this.touch.moveOY;
+      const d = Math.hypot(dx, dy);
+      if (d > r) {
+        this.touch.moveOX = x - (dx / d) * r;
+        this.touch.moveOY = y - (dy / d) * r;
+      }
     } else if (id === this.touch.lookId) {
       const s = this.settings.touchSensitivity;
       const dx = x - this.touch.lookX;
@@ -252,6 +276,13 @@ export class Input {
       this.touch.moveX = this.touch.moveOX;
       this.touch.moveY = this.touch.moveOY;
     } else if (id === this.touch.lookId) {
+      // A quick stab on the look side that never turned into a drag is a tap:
+      // treat it as an attack, so the right thumb can aim and swing without
+      // travelling to the button. Any real look drag disqualifies it.
+      const held = performance.now() - (this.touch.lookStart || 0);
+      if (this.settings.tapAttack !== false && this.touch.lookMoved < 14 && held < 260) {
+        this.tapAttack = true;
+      }
       this.touch.lookId = null;
     }
   }
@@ -262,7 +293,7 @@ export class Input {
     return {
       ox: this.touch.moveOX, oy: this.touch.moveOY,
       x: this.touch.moveX, y: this.touch.moveY,
-      radius: 62,
+      radius: this.stickRadius,
     };
   }
 
@@ -354,14 +385,32 @@ export class Input {
     if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) mx += 1;
     if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) mx -= 1;
 
-    // Touch joystick overrides when active
+    // Touch joystick overrides when active.
     const j = this.joystick;
-    if (j) {
-      const dx = j.x - j.ox, dy = j.y - j.oy;
-      const d = Math.hypot(dx, dy);
-      const k = d > 0 ? Math.min(1, d / j.radius) / d : 0;
-      mx = dx * k;
-      my = -dy * k;
+    if (j || this.smoothMX || this.smoothMY) {
+      let tx = 0, ty = 0;
+      if (j) {
+        const dx = j.x - j.ox, dy = j.y - j.oy;
+        const d = Math.hypot(dx, dy);
+        // Dead zone kills thumb tremor; the 0.82 divisor means full speed
+        // arrives a little before the rim, so you never have to hunt for it.
+        const DEAD = 0.14;
+        const norm = d / j.radius;
+        const mag = norm <= DEAD ? 0 : Math.min(1, (norm - DEAD) / (0.82 - DEAD));
+        if (mag > 0) {
+          tx = (dx / d) * mag;
+          ty = -(dy / d) * mag;
+        }
+      }
+      // Exponential smoothing: frame-rate independent, and it also gives the
+      // stick a short tail on release so a lifted thumb does not stop dead.
+      const k = 1 - Math.exp(-dt * 26);
+      this.smoothMX += (tx - this.smoothMX) * k;
+      this.smoothMY += (ty - this.smoothMY) * k;
+      if (Math.abs(this.smoothMX) < 0.002) this.smoothMX = 0;
+      if (Math.abs(this.smoothMY) < 0.002) this.smoothMY = 0;
+      mx = this.smoothMX;
+      my = this.smoothMY;
     }
     // A live controller stick wins over the keyboard's digital directions.
     if (this.padMove && (this.padMove[0] || this.padMove[1])) {
@@ -376,7 +425,8 @@ export class Input {
     s.sprint = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') || s.sprint
       || this.heldButtons.has('sprint') || this.padSprint;
     s.attack = this.mouseDown || this.heldButtons.has('attack')
-      || this.buttonHits.has('attack') || this.padAttack;
+      || this.buttonHits.has('attack') || this.padAttack || this.tapAttack;
+    this.tapAttack = false;
 
     for (let i = 0; i < 4; i++) {
       if (this.buttonHits.has('skill' + i)) s.skills[i] = true;

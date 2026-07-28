@@ -1,8 +1,10 @@
 // Persistent profile: souls, permanent upgrades, per-class talents, records.
 // Stored in localStorage; a Steam build can swap this for the Steam cloud.
 
-import { CLASSES } from '../data/classes.js';
-import { talentPointsForBestWave } from '../data/permanent.js';
+import { CLASSES, defaultLoadout, resolveLoadout } from '../data/classes.js';
+import {
+  talentPointsForBestWave, masteryRank, masteryProgress, masteryFromRun,
+} from '../data/permanent.js';
 
 const KEY = 'blockfray.save.v1';
 
@@ -37,13 +39,17 @@ export const storage = {
 function emptyProfile() {
   const classes = {};
   for (const c of CLASSES) {
-    classes[c.id] = { talents: {}, bestWave: 0, kills: 0, runs: 0, unlocked: true };
+    classes[c.id] = {
+      talents: {}, bestWave: 0, kills: 0, runs: 0, unlocked: true,
+      loadout: defaultLoadout(c), mastery: 0,
+    };
   }
   return {
     version: 1,
     souls: 0,
     lifetimeSouls: 0,
     permanent: {},
+    armor: {},
     classes,
     lastClass: CLASSES[0].id,
     stats: { runs: 0, kills: 0, bestWave: 0, timePlayed: 0, deaths: 0 },
@@ -58,6 +64,7 @@ function emptyProfile() {
       showDamage: true,
       leftHanded: false,
       autoAttack: true,
+      tapAttack: true,
       hapticFeedback: true,
       fullscreenOnPlay: true,
     },
@@ -111,6 +118,30 @@ export class Profile {
 
   classData(classId) { return this.data.classes[classId]; }
 
+  get armor() { return this.data.armor; }
+
+  // --- Skill loadout -------------------------------------------------------
+
+  /** The four skill objects a class will take into the arena. */
+  loadout(cls) {
+    const cd = this.classData(cls.id);
+    return resolveLoadout(cls, cd.loadout, cd.bestWave);
+  }
+
+  /** Persist a loadout, normalised so a bad list can never be stored. */
+  setLoadout(cls, ids) {
+    const cd = this.classData(cls.id);
+    cd.loadout = resolveLoadout(cls, ids, cd.bestWave).map((s) => s.id);
+    this.save();
+    return cd.loadout;
+  }
+
+  // --- Mastery -------------------------------------------------------------
+
+  masteryRank(classId) { return masteryRank(this.classData(classId).mastery || 0); }
+
+  masteryProgress(classId) { return masteryProgress(this.classData(classId).mastery || 0); }
+
   spentTalentPoints(classId) {
     const ranks = this.data.classes[classId].talents;
     return Object.values(ranks).reduce((a, b) => a + b, 0);
@@ -135,6 +166,7 @@ export class Profile {
     cd.runs++;
     cd.kills += kills;
     cd.bestWave = Math.max(cd.bestWave, wave);
+    cd.mastery = (cd.mastery || 0) + masteryFromRun({ wave, kills });
     this.data.souls += souls;
     this.data.lifetimeSouls += souls;
     this.data.stats.runs++;

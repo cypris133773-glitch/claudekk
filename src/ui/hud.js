@@ -378,57 +378,95 @@ export class Hud {
     }
   }
 
+  /**
+   * The stick floats to wherever the thumb lands, which is the right feel but
+   * gives a new player nothing to aim at. When it is idle a faint ring marks
+   * the resting spot; once a thumb is down the live stick is drawn there
+   * instead, with a dead-zone marker so "not moving" is visible.
+   */
   drawJoystick() {
-    const j = this.input.joystick;
-    if (!j) return;
     const c = this.ctx;
+    const s = this.safe;
+    const j = this.input.joystick;
+    const radius = this.input.stickRadius;
+    const lefty = this.profile.settings.leftHanded;
+    const homeX = lefty ? this.w - s.r - 30 - radius : s.l + 30 + radius;
+    const homeY = this.h - s.b - 30 - radius;
+
+    if (!j) {
+      c.beginPath();
+      c.arc(homeX, homeY, radius, 0, Math.PI * 2);
+      c.strokeStyle = 'rgba(255,255,255,0.10)';
+      c.lineWidth = 2;
+      c.stroke();
+      c.beginPath();
+      c.arc(homeX, homeY, radius * 0.34, 0, Math.PI * 2);
+      c.fillStyle = 'rgba(255,255,255,0.07)';
+      c.fill();
+      return;
+    }
+
     c.beginPath();
-    c.arc(j.ox, j.oy, j.radius, 0, Math.PI * 2);
-    c.strokeStyle = 'rgba(255,255,255,0.25)';
+    c.arc(j.ox, j.oy, radius, 0, Math.PI * 2);
+    c.fillStyle = 'rgba(8,10,16,0.28)';
+    c.fill();
+    c.strokeStyle = 'rgba(255,255,255,0.30)';
     c.lineWidth = 3;
     c.stroke();
+    // Dead-zone ring: inside this the character deliberately stands still.
+    c.beginPath();
+    c.arc(j.ox, j.oy, radius * 0.14, 0, Math.PI * 2);
+    c.strokeStyle = 'rgba(255,255,255,0.16)';
+    c.lineWidth = 1.5;
+    c.stroke();
+
     const dx = j.x - j.ox, dy = j.y - j.oy;
     const d = Math.hypot(dx, dy);
-    const k = d > j.radius ? j.radius / d : 1;
+    const k = d > radius ? radius / d : 1;
+    const kx = j.ox + dx * k, ky = j.oy + dy * k;
     c.beginPath();
-    c.arc(j.ox + dx * k, j.oy + dy * k, 26, 0, Math.PI * 2);
-    c.fillStyle = 'rgba(255,255,255,0.30)';
+    c.arc(kx, ky, radius * 0.42, 0, Math.PI * 2);
+    c.fillStyle = 'rgba(255,255,255,0.34)';
     c.fill();
+    c.strokeStyle = 'rgba(255,255,255,0.55)';
+    c.lineWidth = 2;
+    c.stroke();
   }
 
   /** Skill buttons — clickable on touch, keybind hints on desktop. */
   drawSkills(p) {
     const c = this.ctx;
     const touch = this.touchMode;
-    const size = touch ? 62 : 52;
-    const gap = touch ? 12 : 10;
+    const s = this.safe;
     const lefty = this.profile.settings.leftHanded;
     const rects = [];
 
-    const n = p.cls.skills.length;
-    const margin = 20;
-    const padW = size * 2 + gap;          // width of the 2x2 touch pad
-    let baseX, baseY;
-    if (touch) {
-      // 2x2 pad tucked into the thumb corner; mirrored for left-handed play.
-      baseX = lefty ? margin : this.w - margin - padW;
-      baseY = this.h - margin - size;
-    } else {
-      const totalW = n * size + (n - 1) * gap;
-      baseX = this.w / 2 - totalW / 2;
-      baseY = this.h - size - 18;
-    }
+    const n = p.skills.length;
+    // One centred row along the bottom edge, on phone and desktop alike. The
+    // corner pad this replaced sat under the same thumb as the attack button,
+    // so casting meant letting go of attack; from the middle both thumbs can
+    // reach it and neither has to leave its stick.
+    // Action-button radius, shrunk on narrow phones so the centred row still
+    // has somewhere to live. 170px is what four minimum-size skill buttons
+    // plus their gaps need.
+    const ar = clamp(Math.min(this.w * 0.085, (this.w - 170) / 4.3), 28, 44);
+    // Keep the row clear of the thumb clusters at both edges: overlapping hit
+    // circles resolve in list order, so an attack tap would silently cast.
+    // 2.15 is the attack button's hit radius as a multiple of its drawn one.
+    const reserve = touch ? 18 + ar * 2.15 + 8 : 0;
+    const gap = touch ? 8 : 10;
+    const avail = Math.max(150, this.w - reserve * 2);
+    const size = touch
+      ? Math.round(clamp(Math.min(this.w * 0.115, (avail - (n - 1) * gap) / n), 30, 50))
+      : 52;
+    const totalW = n * size + (n - 1) * gap;
+    const baseX = this.w / 2 - totalW / 2;
+    const baseY = this.h - size - (touch ? 14 + s.b : 18);
 
     for (let i = 0; i < n; i++) {
-      const skill = p.cls.skills[i];
-      let x, y;
-      if (touch) {
-        x = baseX + (i % 2) * (size + gap);
-        y = baseY - Math.floor(i / 2) * (size + gap);
-      } else {
-        x = baseX + i * (size + gap);
-        y = baseY;
-      }
+      const skill = p.skills[i];
+      const x = baseX + i * (size + gap);
+      const y = baseY;
 
       const cd = p.cooldowns[i];
       const maxCd = skillCooldown(p, skill);
@@ -474,19 +512,24 @@ export class Hud {
         c.fillStyle = 'rgba(255,255,255,0.55)';
         c.fillText(String(i + 1), x + size / 2, y + size - 8);
       }
-      rects.push({ name: 'skill' + i, cx: x + size / 2, cy: y + size / 2, r: size * 0.62 });
+      // Cap the hit circle at half the pitch so neighbouring buttons cannot
+      // claim each other's taps — the first match in the list would win.
+      rects.push({
+        name: 'skill' + i, cx: x + size / 2, cy: y + size / 2,
+        r: Math.max(MIN_TOUCH / 2, Math.min(size * 0.62, (size + gap) / 2)),
+      });
     }
 
     if (touch) {
-      // Action cluster sits inboard of the skill pad, on the same thumb.
-      const dir = lefty ? 1 : -1;                    // step away from the pad
-      const padEdge = lefty ? baseX + padW : baseX;
-      const ar = Math.min(46, this.h * 0.13);
-      const ax = padEdge + dir * (20 + ar);
-      const ay = this.h - margin - ar;
+      // Attack/jump/sprint stay in the thumb corner, outboard of the skill row
+      // and above the home indicator; mirrored for left-handed play.
+      const dir = lefty ? 1 : -1;                     // toward the screen edge
+      const edge = lefty ? s.l : this.w - s.r;
+      const ax = edge + dir * (18 + ar);
+      const ay = this.h - s.b - 22 - ar;
       this.touchButton(ax, ay, ar, '⚔', 'attack', rects, '#ff8a5c');
-      this.touchButton(ax, ay - ar - 54, 30, '⤒', 'jump', rects, '#8fd8ff');
-      this.touchButton(ax + dir * (ar + 34), ay - 14, 26, '»', 'sprint', rects, '#c9ffb0');
+      this.touchButton(ax, ay - ar - 44, 26, '⤒', 'jump', rects, '#8fd8ff');
+      this.touchButton(ax + dir * (ar + 26), ay - ar - 30, 23, '»', 'sprint', rects, '#c9ffb0');
     }
     this.input.setButtonRects(rects);
   }

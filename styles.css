@@ -70,15 +70,17 @@ canvas {
   padding: var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l);
 }
 
+/* Nothing in the UI scrolls: every screen is paged, tabbed or scaled to fit
+   (see Menus.fitScreen). overflow:hidden is what makes that a guarantee
+   rather than an intention. */
 #ui {
   position: fixed;
   inset: 0;
   height: 100dvh;
   z-index: 3;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
-  touch-action: pan-y;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
   background:
     radial-gradient(ellipse at 50% 0%, rgba(110, 200, 255, 0.10), transparent 60%),
     linear-gradient(180deg, rgba(8, 10, 16, 0.94), rgba(8, 10, 16, 0.98));
@@ -204,11 +206,11 @@ body.is-fullscreen #fullscreen-btn { background: rgba(110, 200, 255, 0.18); }
 .screen {
   max-width: 1120px;
   margin: 0 auto;
-  min-height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
+.screen.overlay { min-height: 100%; }
 
 .screen.overlay { justify-content: center; }
 
@@ -409,15 +411,15 @@ button:disabled { opacity: 0.35; cursor: default; }
 
 .class-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  gap: 8px;
 }
 
 .class-card {
   background: var(--panel-2);
   border: 1.5px solid var(--line);
-  border-radius: 14px;
-  padding: 12px;
+  border-radius: 12px;
+  padding: 9px 10px;
   cursor: pointer;
   display: flex;
   flex-direction: column;
@@ -430,20 +432,20 @@ button:disabled { opacity: 0.35; cursor: default; }
   background: color-mix(in srgb, var(--accent) 12%, var(--panel-2));
   box-shadow: 0 0 0 1px var(--accent) inset;
 }
-.class-name { font-size: 17px; font-weight: 800; color: var(--accent); }
-.class-role { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 1px; }
+.class-name { font-size: 14.5px; font-weight: 800; color: var(--accent); }
+.class-role { font-size: 9.5px; color: var(--dim); text-transform: uppercase; letter-spacing: 1px; }
 .class-tag { font-size: 12px; color: var(--dim); line-height: 1.4; min-height: 32px; }
 .class-res { font-size: 11px; font-weight: 700; letter-spacing: 1px; }
-.class-skills { font-size: 18px; letter-spacing: 4px; }
+.class-skills { font-size: 15px; letter-spacing: 2px; }
 .class-meta { display: flex; justify-content: space-between; font-size: 11px; color: var(--dim); }
-.class-diff { position: absolute; top: 10px; right: 12px; color: var(--gold); font-size: 11px; }
+.class-diff { position: absolute; top: 8px; right: 9px; color: var(--gold); font-size: 9px; }
 
 .class-detail {
-  margin-top: 16px;
+  margin-top: 12px;
   border-top: 1px solid var(--line);
-  padding-top: 14px;
+  padding-top: 10px;
 }
-.class-detail h3 { margin: 0 0 12px; font-size: 18px; }
+.class-detail h3 { margin: 0 0 10px; font-size: 15px; }
 
 .stat-row {
   display: grid;
@@ -594,7 +596,7 @@ button:disabled { opacity: 0.35; cursor: default; }
 .class-stats h3 { font-size: 14px; color: var(--dim); text-transform: uppercase; letter-spacing: 2px; }
 .cs-row {
   display: grid;
-  grid-template-columns: 1.2fr repeat(4, 1fr);
+  grid-template-columns: 1.1fr repeat(4, 1fr);
   gap: 8px;
   padding: 9px 4px;
   border-bottom: 1px solid var(--line);
@@ -789,3 +791,196 @@ body.show-popout-btn #popout-btn { display: block; }
 .diag-row span { color: var(--dim); white-space: nowrap; }
 .diag-row b { text-align: right; word-break: break-word; font-weight: 600; }
 .footnote .build { color: rgba(255, 255, 255, 0.32); font-size: 11px; }
+
+/* --------------------------------------------------------------------- */
+/* No-scroll layout helpers                                               */
+/* --------------------------------------------------------------------- */
+
+/* Pager under a paged list. Two 30px buttons and a counter — the whole
+   reason a 17-entry Forge fits a 560px-tall phone. */
+.paged { display: flex; flex-direction: column; gap: 10px; }
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+.pager-label { font-size: 12px; color: var(--dim); font-weight: 700; min-width: 46px; text-align: center; }
+
+/* Title menu packs into columns once there is width for it. */
+.main-menu.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  width: min(760px, 100%);
+}
+@media (max-height: 700px) {
+  .menu-btn { padding: 10px 14px; }
+  .menu-label { font-size: 15px; }
+  .game-title { font-size: clamp(32px, 9vw, 60px); }
+  .logo { margin-bottom: 0; }
+}
+
+.dim { color: var(--dim); font-weight: 400; font-size: 11px; }
+
+/* Endless mastery track. */
+.mastery {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
+  margin: 10px 0;
+}
+.mastery-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  margin-bottom: 6px;
+}
+.mastery-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.10);
+  overflow: hidden;
+}
+.mastery-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--gold), #ff9a4c);
+}
+
+/* Equipped-kit strip on the class card. */
+.kit-strip { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.kit-chip {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+/* Skill loadout picker. */
+.skill-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 8px;
+}
+.skill-card {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  background: var(--panel-2);
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  padding: 9px 10px;
+  cursor: pointer;
+}
+.skill-card.on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel-2));
+}
+.skill-card.locked { opacity: 0.5; cursor: default; }
+.sc-icon {
+  width: 38px; height: 38px;
+  flex: 0 0 38px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 19px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 10px;
+}
+.sc-body { min-width: 0; }
+.sc-name { font-weight: 800; font-size: 13.5px; }
+.sc-name em { font-style: normal; font-size: 10px; color: var(--gold); letter-spacing: 1px; }
+.sc-desc { font-size: 11.5px; color: var(--dim); line-height: 1.35; }
+.sc-nums { font-size: 10.5px; color: rgba(255, 255, 255, 0.35); margin-top: 2px; }
+
+/* Talent branch tabs + one branch at a time. */
+.branch-tabs { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+.branch-tabs .pill b { color: var(--gold); margin-left: 4px; }
+.talent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 8px;
+}
+.talent-node { display: flex; flex-direction: column; gap: 2px; }
+.talent-btns { margin-top: 6px; }
+
+/* --------------------------------------------------------------------- */
+/* Short screens — a landscape phone has ~375px of height, total          */
+/* --------------------------------------------------------------------- */
+
+@media (max-height: 640px) {
+  #ui { padding: calc(8px + var(--safe-t)) calc(10px + var(--safe-r)) calc(8px + var(--safe-b)) calc(10px + var(--safe-l)); }
+  .screen { gap: 8px; }
+  .panel { padding: 10px 12px; border-radius: 12px; }
+  .panel-head h1 { font-size: clamp(16px, 3.4vw, 22px); }
+  .panel-head .sub { margin: 3px 0 8px; font-size: 11.5px; line-height: 1.35; }
+  .actions { margin-top: 10px; gap: 8px; }
+  .big-btn { padding: 10px 16px; font-size: 14px; }
+  .ghost-btn { padding: 8px 12px; font-size: 12.5px; }
+  .souls-badge { padding: 6px 10px; font-size: 12px; }
+  .stat-cell { padding: 8px; }
+  .stat-cell b { font-size: 16px; }
+  .stat-cell span { font-size: 9.5px; }
+  .cs-row { padding: 5px 3px; font-size: 11px; }
+  .class-stats { margin-top: 10px; }
+  .mastery { margin: 6px 0; padding: 6px 8px; }
+  .forge-card { padding: 8px 10px; gap: 9px; }
+  .forge-icon { width: 34px; height: 34px; flex: 0 0 34px; font-size: 17px; }
+  .forge-desc { margin: 1px 0 3px; font-size: 11px; }
+  .talent-node { padding: 7px 9px; }
+  .talent-desc { font-size: 11px; }
+  .skill-card { padding: 7px 8px; }
+  .settings-list { gap: 9px; }
+  .setting label { margin-bottom: 3px; font-size: 13px; }
+  input[type="range"] { height: 24px; }
+  .diag-pad { height: 84px; margin-bottom: 8px; }
+  .diag-row { padding: 3px 0; font-size: 11px; }
+  /* The class detail block is a nice-to-have; the cards and the play button
+     are not. Drop the raw stat table first when height runs out. */
+  .class-detail .stat-row { display: none; }
+  .howto li { line-height: 1.5; font-size: 12px; }
+}
+
+@media (max-height: 470px) {
+  .class-detail .mastery, .class-detail .kit-strip { display: none; }
+  .game-title { font-size: clamp(26px, 7vw, 40px); letter-spacing: 4px; }
+  .game-sub { display: none; }
+  .menu-btn { padding: 8px 12px; }
+  .menu-hint { font-size: 10.5px; }
+  .panel-head .sub { display: none; }
+}
+
+/* A 320px-wide phone cannot fit eight full-height menu rows plus the logo,
+   and shrinking the whole screen to compensate makes the labels illegible. */
+@media (max-width: 380px) {
+  .main-menu.grid { gap: 7px; }
+  .menu-btn { padding: 9px 12px; border-radius: 11px; }
+  .menu-label { font-size: 14.5px; letter-spacing: 1.5px; }
+  .menu-hint { font-size: 10.5px; }
+  .logo { margin-bottom: 2px; }
+  .game-title { font-size: clamp(34px, 11vw, 56px); }
+  .footnote { margin-top: 6px; font-size: 11px; }
+}
+
+/* Three tall upgrade cards stack into 570px on a narrow phone, which is more
+   than the whole viewport. Lay them out as rows there instead. */
+@media (max-width: 430px), (max-height: 560px) {
+  .card-row { grid-template-columns: 1fr; }
+  .upgrade-card {
+    flex-direction: row;
+    align-items: center;
+    text-align: left;
+    gap: 12px;
+    min-height: 0;
+    padding: 10px 12px;
+  }
+  .up-icon { font-size: 30px; line-height: 1; flex: 0 0 auto; }
+  .up-desc { font-size: 11.5px; line-height: 1.35; }
+  .up-rarity { position: absolute; }
+  .upgrade-card { position: relative; padding-top: 18px; }
+}

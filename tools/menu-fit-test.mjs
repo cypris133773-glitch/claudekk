@@ -1,0 +1,206 @@
+// Every menu must fit the viewport. The game claims nothing scrolls; this is
+// what makes that a checked property rather than a hope.
+//
+// For each viewport size it opens every screen, asserts the UI layer is not
+// scrollable, and asserts the primary action of that screen is inside the
+// visible area — a screen that fits only because it was scaled into the
+// bottom bezel is not actually usable.
+//
+//   node tools/menu-fit-test.mjs
+//
+// Requires playwright-core and the bundled fragment (npm run build:fragment).
+
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const FRAGMENT = path.join(ROOT, 'dist/blockfray-fragment.html');
+
+const require_ = createRequire(import.meta.url);
+async function loadChromium() {
+  const roots = [
+    process.env.PW_MODULES,
+    ROOT,
+    process.env.SCRATCHPAD,
+    '/tmp/claude-0/-home-user-claudekk/6e1ff4ef-d006-50e3-98cf-f197651cae20/scratchpad',
+  ].filter(Boolean);
+  for (const r of roots) {
+    try {
+      const p = require_.resolve('playwright-core', { paths: [r] });
+      const m = await import(`file://${p}`);
+      const c = m.chromium || (m.default && m.default.chromium);
+      if (c) return c;
+    } catch { /* try the next root */ }
+  }
+  throw new Error('playwright-core not found; set PW_MODULES');
+}
+
+const CHROME = process.env.CHROME_PATH
+  || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+const LAUNCH_ARGS = [
+  '--use-gl=swiftshader', '--enable-unsafe-swiftshader',
+  '--no-sandbox', '--disable-dev-shm-usage',
+];
+
+const HOST_HTML = `<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>host</title>
+<style>html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#000}
+#f{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}</style>
+</head><body>
+<iframe id="f" src="/game.html" sandbox="allow-scripts"></iframe>
+</body></html>`;
+
+function startServer() {
+  const server = http.createServer((req, res) => {
+    const url = req.url.split('?')[0];
+    if (url === '/game.html') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      res.end(fs.readFileSync(FRAGMENT));
+      return;
+    }
+    if (url === '/' || url === '/host.html') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      res.end(HOST_HTML);
+      return;
+    }
+    res.writeHead(404).end('not found');
+  });
+  return new Promise((resolve) => {
+    server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port }));
+  });
+}
+
+/** Every screen, including the three that only appear during a run. */
+const SCREENS = [
+  'title', 'classes', 'loadout', 'talents', 'forge', 'armoury',
+  'stats', 'settings', 'howto', 'diag',
+  'pause', 'upgrade', 'results',
+];
+
+/**
+ * The in-run overlays need a live run behind them. Starting one directly is
+ * far more reliable than driving the menus, and it is the same call the PLAY
+ * button makes.
+ */
+function primeRun() {
+  const B = window.BLOCKFRAY;
+  const cls = B.CLASSES.find((c) => c.id === B.profile.data.lastClass) || B.CLASSES[0];
+  if (!B.game.running) B.game.startRun(cls);
+  B.game.wave = 7;
+  B.game.soulsEarned = 420;
+  B.game.offerUpgrades();
+  B.game.result = {
+    reachedWave: 7, wave: 6, kills: 88, souls: 420, duration: 305, damageDealt: 12345,
+  };
+}
+
+const VIEWPORTS = [
+  { name: 'phone portrait', width: 390, height: 844 },
+  { name: 'phone landscape', width: 844, height: 390 },
+  { name: 'small portrait', width: 320, height: 568 },
+  { name: 'small landscape', width: 667, height: 375 },
+  { name: 'tablet', width: 820, height: 1180 },
+  { name: 'desktop', width: 1440, height: 900 },
+];
+
+/**
+ * Measured inside the frame. A screen passes when the UI layer has nothing to
+ * scroll to and every button's centre lands inside the viewport.
+ */
+function probeScreen(name) {
+  const B = window.BLOCKFRAY;
+  B.menus.show(name);
+  const ui = document.getElementById('ui');
+  const vw = window.innerWidth, vh = window.innerHeight;
+  // Measured from bounding rects, not scrollHeight: Chromium's scrollHeight
+  // is pure layout and ignores the fit-to-screen transform entirely, so it
+  // reports overflow on a screen that is visibly, provably on screen.
+  const screenEl = ui.firstElementChild;
+  const box = screenEl.getBoundingClientRect();
+  const overflowY = Math.round(Math.max(0, box.bottom - vh) + Math.max(0, -box.top));
+  const overflowX = Math.round(Math.max(0, box.right - vw) + Math.max(0, -box.left));
+  const offscreen = [];
+  for (const b of ui.querySelectorAll('button, a.ghost-btn, .class-card, .skill-card, .upgrade-card')) {
+    const r = b.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) continue;      // display:none
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    if (cy < 0 || cy > vh || cx < 0 || cx > vw) {
+      offscreen.push(`${(b.textContent || b.className).trim().slice(0, 24)}@${Math.round(cx)},${Math.round(cy)}`);
+    }
+  }
+  // How hard the safety net had to work. Anything under MIN_SCALE means the
+  // screen does not really fit — it was shrunk until it did, and shrunk text
+  // on a phone is its own failure.
+  const m = /scale\(([\d.]+)\)/.exec(screenEl.style.transform || '');
+  return {
+    overflowY,
+    overflowX,
+    offscreen,
+    scale: m ? Number(m[1]) : 1,
+    buttons: ui.querySelectorAll('button').length,
+  };
+}
+
+const MIN_SCALE = 0.8;
+
+const results = [];
+let failures = 0;
+
+async function run() {
+  if (!fs.existsSync(FRAGMENT)) {
+    console.error('Missing dist/blockfray-fragment.html — run: npm run build:fragment');
+    process.exit(1);
+  }
+  const chromium = await loadChromium();
+  const { server, port } = await startServer();
+  const browser = await chromium.launch({ executablePath: CHROME, args: LAUNCH_ARGS });
+
+  for (const vp of VIEWPORTS) {
+    const context = await browser.newContext({
+      viewport: { width: vp.width, height: vp.height },
+      deviceScaleFactor: 2,
+      hasTouch: true,
+      isMobile: vp.width < 900,
+    });
+    const page = await context.newPage();
+    await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'load' });
+    const frame = page.frames().find((f) => f !== page.mainFrame());
+    await frame.waitForFunction(() => !!window.BLOCKFRAY, null, { timeout: 20000 });
+    await frame.evaluate(primeRun);
+
+    console.log(`\n=== ${vp.name}  ${vp.width}x${vp.height} ===`);
+    for (const name of SCREENS) {
+      const r = await frame.evaluate(probeScreen, name);
+      // One CSS pixel of slack: sub-pixel layout rounding is not a scrollbar.
+      const ok = r.overflowY <= 1 && r.overflowX <= 1 && r.offscreen.length === 0
+        && r.scale >= MIN_SCALE;
+      if (!ok) failures++;
+      results.push({ vp: vp.name, name, ok });
+      const fit = r.scale < 1 ? ` (scaled to ${r.scale.toFixed(2)})` : '';
+      const detail = ok
+        ? `${r.buttons} controls, fits${fit}`
+        : [
+          r.overflowY > 1 ? `${r.overflowY}px below the fold` : '',
+          r.overflowX > 1 ? `${r.overflowX}px past the edge` : '',
+          r.scale < MIN_SCALE ? `had to shrink to ${r.scale.toFixed(2)}` : '',
+          r.offscreen.length ? `offscreen: ${r.offscreen.join(', ')}` : '',
+        ].filter(Boolean).join('; ');
+      console.log(`  [${ok ? 'PASS' : 'FAIL'}] ${name.padEnd(10)} ${detail}`);
+    }
+    await context.close();
+  }
+
+  await browser.close();
+  server.close();
+
+  console.log(`\n================ SUMMARY ================`);
+  console.log(`${results.length - failures}/${results.length} screen layouts fit`);
+  process.exit(failures ? 1 : 0);
+}
+
+run().catch((err) => { console.error(err); process.exit(1); });

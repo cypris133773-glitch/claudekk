@@ -10,10 +10,14 @@ export const BOSS_EVERY = 5;
  * dangerous fights rather than instant deaths.
  */
 export function waveScaling(wave) {
-  const w = wave - 1;
+  // Clamped at zero: a fractional power of a negative base is NaN, and wave 0
+  // is reachable — anything spawned during the opening intermission, or by a
+  // harness priming a fight, would come out with NaN damage and quietly
+  // poison every hit point it touched.
+  const w = Math.max(0, wave - 1);
   return {
     hp: 1 + w * 0.16 + Math.pow(w, 1.42) * 0.012,
-    damage: 1 + w * 0.065 + Math.pow(w, 1.30) * 0.005,
+    damage: 1 + w * 0.075 + Math.pow(w, 1.30) * 0.008,
     speed: Math.min(1.55, 1 + w * 0.012),
     souls: 1 + w * 0.09,
   };

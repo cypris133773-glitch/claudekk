@@ -15,6 +15,10 @@ export const PERMANENT = [
   { id: 'p_start', name: 'Head Start', icon: '🎁', desc: 'Begin each run with 1 free upgrade per level.', max: 3, baseCost: 250, growth: 2.0, effect: { startingUpgrades: 1 } },
   { id: 'p_reroll', name: 'Second Thoughts', icon: '🔄', desc: '+1 upgrade reroll per wave.', max: 3, baseCost: 180, growth: 1.8, effect: { rerolls: 1 } },
   { id: 'p_revive', name: 'Phoenix Ember', icon: '🔥', desc: 'Revive once per run at 50% health.', max: 1, baseCost: 600, growth: 1, effect: { cheatDeathRun: 0.5 } },
+  { id: 'p_thorns', name: 'Bramble', icon: '🌵', desc: 'Reflect 4% of damage taken per level.', max: 8, baseCost: 95, growth: 1.4, effect: { thorns: 0.04 } },
+  { id: 'p_boss', name: 'Titanbane', icon: '🗿', desc: '+6% damage to bosses per level.', max: 8, baseCost: 110, growth: 1.45, effect: { bossDamage: 0.06 } },
+  { id: 'p_vamp', name: 'Bloodbound', icon: '🩸', desc: 'Heal 3 health per kill, per level.', max: 8, baseCost: 105, growth: 1.42, effect: { killHeal: 3 } },
+  { id: 'p_cost', name: 'Efficiency', icon: '⚗', desc: 'Skills cost 4% less per level.', max: 6, baseCost: 120, growth: 1.45, effect: { costReduction: 0.04 } },
 ];
 
 export const PERMANENT_BY_ID = Object.fromEntries(PERMANENT.map((p) => [p.id, p]));
@@ -36,6 +40,50 @@ export function permanentMods(levels) {
 
 /** Talent points are earned by reaching new best waves. */
 export function talentPointsForBestWave(bestWave) {
-  // 1 point at wave 1, then one per wave cleared, with a bonus every 5th.
-  return bestWave + Math.floor(bestWave / 5) * 2;
+  // One point per wave cleared, with a bonus every 5th and a second bonus
+  // every 10th. The trees hold well over a hundred ranks, so pushing deeper
+  // keeps paying out long after the early branches are full.
+  return bestWave + Math.floor(bestWave / 5) * 2 + Math.floor(bestWave / 10) * 3;
+}
+
+// --- Mastery: the endless per-class track ----------------------------------
+// Talent points run out once a tree is full. Mastery never does: every run
+// banks progress toward the next rank, and each rank is a small permanent
+// bump for that class. The curve is quadratic, so ranks slow down without
+// ever stopping.
+
+/** Mastery progress a finished run is worth. */
+export function masteryFromRun({ wave = 0, kills = 0 }) {
+  return Math.round(wave * wave * 2 + wave * 10 + kills);
+}
+
+/** Total progress needed to have reached `rank`. */
+export function masteryThreshold(rank) {
+  return Math.round(120 * rank + 26 * rank * rank);
+}
+
+export function masteryRank(progress) {
+  // Inverse of the threshold curve; the loop only tidies up rounding.
+  let rank = Math.max(0, Math.floor((-120 + Math.sqrt(14400 + 104 * (progress || 0))) / 52));
+  while (masteryThreshold(rank + 1) <= (progress || 0)) rank++;
+  while (rank > 0 && masteryThreshold(rank) > (progress || 0)) rank--;
+  return rank;
+}
+
+/** Progress into the current rank, for a progress bar. */
+export function masteryProgress(progress) {
+  const rank = masteryRank(progress);
+  const from = masteryThreshold(rank);
+  const to = masteryThreshold(rank + 1);
+  return { rank, into: (progress || 0) - from, need: to - from };
+}
+
+/** What a class's mastery ranks are worth, as a modifier bag. */
+export function masteryMods(rank) {
+  if (!rank) return {};
+  return {
+    allDamage: 0.012 * rank,
+    maxHp: 4 * rank,
+    critChance: 0.002 * rank,
+  };
 }

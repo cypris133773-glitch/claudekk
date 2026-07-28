@@ -1,8 +1,16 @@
-// All DOM menus: title, class select, talent trees, the Forge (permanent
-// upgrades), settings, pause, in-run upgrade cards and the results screen.
+// All DOM menus: title, class select, skill loadout, talent trees, the Forge
+// and the Armoury (permanent upgrades), settings, pause, in-run upgrade cards
+// and the results screen.
+//
+// Nothing here scrolls. Every screen is built to fit the viewport: long lists
+// are paged, dense ones are tabbed, and fitScreen() is the safety net that
+// scales a screen down rather than letting it run off the bottom.
 
-import { CLASSES } from '../data/classes.js';
-import { PERMANENT, upgradeCost, talentPointsForBestWave } from '../data/permanent.js';
+import { CLASSES, LOADOUT_SIZE, unlockedSkills } from '../data/classes.js';
+import {
+  PERMANENT, upgradeCost, talentPointsForBestWave, masteryProgress,
+} from '../data/permanent.js';
+import { ARMOR_SLOTS, armorCost, armorTierName, ARMOR_MAX_TIER, armorRating } from '../data/armor.js';
 import { RARITY } from '../data/upgrades.js';
 import { skillCost } from '../game/skills.js';
 import { storage } from '../core/save.js';
@@ -19,6 +27,19 @@ const fmtTime = (s) => {
   return `${m}m ${Math.floor(s % 60)}s`;
 };
 
+/**
+ * Rows per page for the current viewport height. A landscape phone has barely
+ * 375px to work with once the browser chrome is out, which is one or two rows
+ * of anything — the buckets are deliberately pessimistic.
+ */
+function byHeight(small, medium, large) {
+  const h = window.innerHeight || 800;
+  if (h < 470) return Math.max(1, small - 1);
+  if (h < 620) return small;
+  if (h < 900) return medium;
+  return large;
+}
+
 export class Menus {
   constructor(root, ctx) {
     this.root = root;
@@ -26,6 +47,12 @@ export class Menus {
     this.screen = null;
     this.selectedClass = ctx.profile.data.lastClass || CLASSES[0].id;
     this.talentClass = this.selectedClass;
+    this.talentBranch = 0;
+    this.pages = {};             // screen name -> current page index
+    // Re-fit on rotation and on the address bar sliding away.
+    window.addEventListener('resize', () => {
+      if (this.screen) this.fitScreen();
+    });
   }
 
   get profile() { return this.ctx.profile; }
@@ -41,6 +68,7 @@ export class Menus {
   }
 
   show(name) {
+    if (name !== this.screen) this.pages = {};
     this.screen = name;
     this.root.innerHTML = '';
     this.root.classList.toggle('hidden', name === null);
@@ -48,8 +76,10 @@ export class Menus {
     const builder = {
       title: () => this.buildTitle(),
       classes: () => this.buildClassSelect(),
+      loadout: () => this.buildLoadout(),
       talents: () => this.buildTalents(),
       forge: () => this.buildForge(),
+      armoury: () => this.buildArmoury(),
       settings: () => this.buildSettings(),
       stats: () => this.buildStats(),
       pause: () => this.buildPause(),
@@ -59,6 +89,38 @@ export class Menus {
       diag: () => this.buildDiagnostics(),
     }[name];
     if (builder) this.root.appendChild(builder());
+    this.fitScreen();
+  }
+
+  /** Rebuild the current screen in place. show() keeps page and tab state
+   *  when the name is unchanged, so a buy or a tab tap redraws without
+   *  jumping back to page one. */
+  refresh() { this.show(this.screen); }
+
+  /**
+   * Last line of defence against a screen that does not fit. Content is
+   * designed to fit on its own; this catches the combinations that still
+   * overflow — a very short landscape phone, a huge system font — by scaling
+   * the whole screen instead of introducing a scrollbar. Two passes, because
+   * widening the element to compensate for the scale reflows the text.
+   */
+  fitScreen() {
+    const screen = this.root.firstElementChild;
+    if (!screen) return;
+    screen.style.transform = '';
+    const style = getComputedStyle(this.root);
+    const avail = this.root.clientHeight
+      - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+    if (avail <= 0) return;
+    const need = screen.scrollHeight;
+    if (need <= avail + 1) return;
+    // Scale about the top centre and leave the element's own width alone.
+    // Widening it to reclaim the side margins looks tidier but pushes the box
+    // past the container, and a transform cannot pull it back — the result is
+    // a horizontally scrolling menu with its buttons off the right edge.
+    const k = Math.max(0.5, avail / need);
+    screen.style.transformOrigin = 'top center';
+    screen.style.transform = `scale(${k})`;
   }
 
   panel(titleText, subtitle) {
@@ -74,6 +136,34 @@ export class Menus {
     return el('div', 'souls-badge', `<span>💠</span> ${this.profile.souls.toLocaleString()} Souls`);
   }
 
+  /**
+   * Render one page of a long list, with a compact pager underneath. Paging
+   * is what lets a 17-entry Forge fit a phone without a scrollbar.
+   */
+  paged(key, items, perPage, container, render) {
+    const pages = Math.max(1, Math.ceil(items.length / perPage));
+    const page = Math.min(this.pages[key] || 0, pages - 1);
+    this.pages[key] = page;
+    for (const item of items.slice(page * perPage, page * perPage + perPage)) {
+      container.appendChild(render(item));
+    }
+    if (pages <= 1) return container;
+    const bar = el('div', 'pager');
+    const prev = el('button', 'tiny-btn', '‹');
+    const next = el('button', 'tiny-btn', '›');
+    prev.disabled = page === 0;
+    next.disabled = page >= pages - 1;
+    this.click(prev, () => { this.pages[key] = page - 1; this.refresh(); });
+    this.click(next, () => { this.pages[key] = page + 1; this.refresh(); });
+    bar.appendChild(prev);
+    bar.appendChild(el('span', 'pager-label', `${page + 1} / ${pages}`));
+    bar.appendChild(next);
+    const wrap = el('div', 'paged');
+    wrap.appendChild(container);
+    wrap.appendChild(bar);
+    return wrap;
+  }
+
   // -------------------------------------------------------------------------
   // Title
   // -------------------------------------------------------------------------
@@ -86,11 +176,13 @@ export class Menus {
     wrap.appendChild(logo);
     wrap.appendChild(this.soulsBadge());
 
-    const menu = el('div', 'main-menu');
+    const menu = el('div', 'main-menu grid');
     const best = this.profile.data.stats.bestWave;
+    const rating = armorRating(this.profile.armor);
     const items = [
       { label: 'PLAY', hint: best ? `Best: wave ${best}` : 'Start your first run', primary: true, go: () => this.show('classes') },
       { label: 'THE FORGE', hint: 'Permanent upgrades', go: () => this.show('forge') },
+      { label: 'ARMOURY', hint: rating ? `Armour rating ${rating}` : 'Buy and upgrade gear', go: () => this.show('armoury') },
       { label: 'TALENTS', hint: 'Spend talent points', go: () => this.show('talents') },
       { label: 'RECORDS', hint: 'Career statistics', go: () => this.show('stats') },
       { label: 'SETTINGS', hint: 'Controls & display', go: () => this.show('settings') },
@@ -118,6 +210,20 @@ export class Menus {
     return bar;
   }
 
+  /** The endless per-class progress bar, shown wherever a class is chosen. */
+  masteryBar(classId) {
+    const m = masteryProgress(this.profile.classData(classId).mastery || 0);
+    const pct = Math.round((m.into / m.need) * 100);
+    const box = el('div', 'mastery');
+    box.innerHTML = `
+      <div class="mastery-top">
+        <span>Mastery ${m.rank}</span>
+        <span class="dim">+${(m.rank * 1.2).toFixed(1)}% damage · +${m.rank * 4} health</span>
+      </div>
+      <div class="mastery-bar"><i style="width:${pct}%"></i></div>`;
+    return box;
+  }
+
   // -------------------------------------------------------------------------
   // Class select
   // -------------------------------------------------------------------------
@@ -125,7 +231,7 @@ export class Menus {
   buildClassSelect() {
     const wrap = el('div', 'screen');
     wrap.appendChild(this.backBar('title'));
-    const p = this.panel('Choose your class', 'Each class has its own resource, four skills and a talent tree.');
+    const p = this.panel('Choose your class');
     const grid = el('div', 'class-grid');
 
     for (const cls of CLASSES) {
@@ -133,18 +239,14 @@ export class Menus {
       const card = el('div', 'class-card' + (cls.id === this.selectedClass ? ' selected' : ''));
       card.style.setProperty('--accent', cls.color);
       card.innerHTML = `
-        <div class="class-top">
-          <div class="class-name">${cls.name}</div>
-          <div class="class-role">${cls.role}</div>
-        </div>
-        <div class="class-tag">${cls.tagline}</div>
-        <div class="class-res" style="color:${cls.resource.color}">${cls.resource.name}</div>
+        <div class="class-name">${cls.name}</div>
+        <div class="class-role">${cls.role}</div>
         <div class="class-skills">
-          ${cls.skills.map((s) => `<span title="${s.name}: ${s.desc}">${s.icon}</span>`).join('')}
+          ${this.profile.loadout(cls).map((s) => `<span title="${s.name}">${s.icon}</span>`).join('')}
         </div>
         <div class="class-meta">
-          <span>Best wave ${cd.bestWave}</span>
-          <span>${this.profile.availableTalentPoints(cls.id)} pts free</span>
+          <span>wave ${cd.bestWave}</span>
+          <span>${this.profile.availableTalentPoints(cls.id)} pts</span>
         </div>
         <div class="class-diff">${'★'.repeat(cls.difficulty)}${'☆'.repeat(3 - cls.difficulty)}</div>`;
       this.click(card, () => {
@@ -158,7 +260,7 @@ export class Menus {
 
     const cls = CLASSES.find((c) => c.id === this.selectedClass);
     const detail = el('div', 'class-detail');
-    detail.innerHTML = `<h3 style="color:${cls.color}">${cls.name} — ${cls.role}</h3>`;
+    detail.innerHTML = `<h3 style="color:${cls.color}">${cls.name} — ${cls.tagline}</h3>`;
     const stats = el('div', 'stat-row');
     stats.innerHTML = `
       <div><b>${cls.base.hp}</b><span>Health</span></div>
@@ -168,32 +270,84 @@ export class Menus {
       <div><b>${Math.round(cls.base.critChance * 100)}%</b><span>Crit</span></div>
       <div><b>${cls.base.attackRange < 6 ? 'Melee' : 'Ranged'}</b><span>Range</span></div>`;
     detail.appendChild(stats);
+    detail.appendChild(this.masteryBar(cls.id));
 
-    const skills = el('div', 'skill-list');
-    cls.skills.forEach((s, i) => {
-      const row = el('div', 'skill-row');
-      row.innerHTML = `
-        <div class="skill-icon" style="border-color:${cls.accent}">${s.icon}</div>
-        <div class="skill-text">
-          <div class="skill-name">${s.name} <span class="key">${i + 1}</span></div>
-          <div class="skill-desc">${s.desc}</div>
-          <div class="skill-nums">${s.cost} ${cls.resource.name} · ${s.cooldown}s cooldown</div>
-        </div>`;
-      skills.appendChild(row);
-    });
-    detail.appendChild(skills);
+    // Equipped kit, as a compact strip — the full pool lives on the loadout
+    // screen so this one never grows past a phone.
+    const strip = el('div', 'kit-strip');
+    for (const s of this.profile.loadout(cls)) {
+      strip.appendChild(el('span', 'kit-chip', `${s.icon} ${s.name}`));
+    }
+    detail.appendChild(strip);
     p.appendChild(detail);
 
     const actions = el('div', 'actions');
-    const talentBtn = this.click(el('button', 'ghost-btn', 'Talents'), () => {
+    actions.appendChild(this.click(el('button', 'ghost-btn', 'Skills'), () => this.show('loadout')));
+    actions.appendChild(this.click(el('button', 'ghost-btn', 'Talents'), () => {
       this.talentClass = this.selectedClass;
       this.show('talents');
-    });
-    const playBtn = this.click(el('button', 'big-btn', 'ENTER THE ARENA'), () => {
+    }));
+    actions.appendChild(this.click(el('button', 'big-btn', 'ENTER THE ARENA'), () => {
       this.ctx.startRun(cls);
-    });
-    actions.appendChild(talentBtn);
-    actions.appendChild(playBtn);
+    }));
+    p.appendChild(actions);
+    wrap.appendChild(p);
+    return wrap;
+  }
+
+  // -------------------------------------------------------------------------
+  // Skill loadout — pick four of the class's eight
+  // -------------------------------------------------------------------------
+
+  buildLoadout() {
+    const cls = CLASSES.find((c) => c.id === this.selectedClass);
+    const cd = this.profile.classData(cls.id);
+    const equipped = this.profile.loadout(cls).map((s) => s.id);
+    const open = unlockedSkills(cls, cd.bestWave).length;
+
+    const wrap = el('div', 'screen');
+    wrap.appendChild(this.backBar('classes'));
+    const p = this.panel(`${cls.name} skills`,
+      `Equip ${LOADOUT_SIZE} of ${cls.skills.length}. ${open} unlocked — reach deeper waves with this class for the rest.`);
+
+    const grid = el('div', 'skill-grid');
+    const makeCard = (s) => {
+      const on = equipped.includes(s.id);
+      const locked = (s.unlock || 0) > cd.bestWave;
+      const card = el('div', 'skill-card' + (on ? ' on' : '') + (locked ? ' locked' : ''));
+      card.style.setProperty('--accent', cls.accent);
+      card.innerHTML = `
+        <div class="sc-icon">${locked ? '🔒' : s.icon}</div>
+        <div class="sc-body">
+          <div class="sc-name">${s.name}${on ? ' <em>equipped</em>' : ''}</div>
+          <div class="sc-desc">${s.desc}</div>
+          <div class="sc-nums">${locked
+            ? `Unlocks at wave ${s.unlock} with ${cls.name}`
+            : `${s.cost} ${cls.resource.name} · ${s.cooldown}s cooldown`}</div>
+        </div>`;
+      if (!locked) {
+        this.click(card, () => {
+          const next = equipped.includes(s.id)
+            ? equipped.filter((id) => id !== s.id)
+            // Replacing the oldest slot keeps the swap to one tap; dropping a
+            // skill first and then picking one would be two.
+            : [...equipped.slice(equipped.length >= LOADOUT_SIZE ? 1 : 0), s.id];
+          if (!next.length) { this.ctx.audio.play('deny'); return; }
+          this.profile.setLoadout(cls, next);
+          this.refresh();
+        });
+      }
+      return card;
+    };
+    p.appendChild(this.paged('loadout', cls.skills, byHeight(3, 5, 8), grid, makeCard));
+
+    const actions = el('div', 'actions');
+    actions.appendChild(this.click(el('button', 'ghost-btn', 'Reset to default'), () => {
+      this.profile.setLoadout(cls, []);
+      this.refresh();
+    }));
+    actions.appendChild(this.click(el('button', 'big-btn', 'Play as ' + cls.name),
+      () => this.ctx.startRun(cls)));
     p.appendChild(actions);
     wrap.appendChild(p);
     return wrap;
@@ -209,7 +363,7 @@ export class Menus {
     for (const c of CLASSES) {
       const b = el('button', 'pill' + (c.id === this.talentClass ? ' active' : ''), c.name);
       b.style.setProperty('--accent', c.color);
-      this.click(b, () => { this.talentClass = c.id; this.show('talents'); });
+      this.click(b, () => { this.talentClass = c.id; this.talentBranch = 0; this.show('talents'); });
       picker.appendChild(b);
     }
     wrap.appendChild(this.backBar('title', picker));
@@ -220,63 +374,75 @@ export class Menus {
     const total = talentPointsForBestWave(cd.bestWave);
 
     const p = this.panel(`${cls.name} Talents`,
-      `${avail} of ${total} points available · earn more by reaching deeper waves with this class`);
+      `${avail} of ${total} points available · deeper waves keep paying out`);
+    p.appendChild(this.masteryBar(cls.id));
 
-    const cols = el('div', 'talent-cols');
-    for (const branch of cls.talents) {
-      const col = el('div', 'talent-col');
-      col.style.setProperty('--accent', branch.color);
+    // Branch tabs. Three full columns do not fit a phone, and a tab is a
+    // better fit for the trees anyway: you commit to a branch, not a row.
+    const tabs = el('div', 'branch-tabs');
+    cls.talents.forEach((branch, i) => {
       const spent = branch.nodes.reduce((s, n) => s + (cd.talents[n.id] || 0), 0);
-      col.appendChild(el('div', 'talent-branch', `${branch.name}<span>${spent}</span>`));
+      const b = el('button', 'pill' + (i === this.talentBranch ? ' active' : ''),
+        `${branch.name} <b>${spent}</b>`);
+      b.style.setProperty('--accent', branch.color);
+      this.click(b, () => { this.talentBranch = i; this.refresh(); });
+      tabs.appendChild(b);
+    });
+    p.appendChild(tabs);
 
-      branch.nodes.forEach((node, tier) => {
-        const rank = cd.talents[node.id] || 0;
-        // Tiers unlock as points are invested in the branch.
-        const required = tier * 2;
-        const locked = spent < required;
-        const row = el('div', 'talent-node'
-          + (rank ? ' has-rank' : '')
-          + (rank >= node.max ? ' maxed' : '')
-          + (locked ? ' locked' : ''));
-        row.innerHTML = `
-          <div class="talent-head">
-            <span class="talent-name">${node.name}</span>
-            <span class="talent-rank">${rank}/${node.max}</span>
-          </div>
-          <div class="talent-desc">${node.desc}</div>
-          ${locked ? `<div class="talent-lock">Requires ${required} points in ${branch.name}</div>` : ''}`;
-        const btns = el('div', 'talent-btns');
-        const minus = el('button', 'tiny-btn', '−');
-        const plus = el('button', 'tiny-btn', '+');
-        minus.disabled = rank <= 0;
-        plus.disabled = locked || rank >= node.max || avail <= 0;
-        this.click(minus, () => {
-          if ((cd.talents[node.id] || 0) <= 0) return;
-          cd.talents[node.id]--;
-          if (!cd.talents[node.id]) delete cd.talents[node.id];
-          this.profile.save();
-          this.show('talents');
-        });
-        this.click(plus, () => {
-          if (this.profile.availableTalentPoints(cls.id) <= 0) { this.ctx.audio.play('deny'); return; }
-          cd.talents[node.id] = (cd.talents[node.id] || 0) + 1;
-          this.profile.save();
-          this.ctx.audio.play('buy');
-          this.show('talents');
-        });
-        btns.appendChild(minus);
-        btns.appendChild(plus);
-        row.appendChild(btns);
-        col.appendChild(row);
+    const branch = cls.talents[Math.min(this.talentBranch, cls.talents.length - 1)];
+    const spent = branch.nodes.reduce((s, n) => s + (cd.talents[n.id] || 0), 0);
+    const cols = el('div', 'talent-grid');
+    cols.style.setProperty('--accent', branch.color);
+
+    const makeNode = (node) => {
+      const tier = branch.nodes.indexOf(node);
+      const rank = cd.talents[node.id] || 0;
+      const required = tier * 2;
+      const locked = spent < required;
+      const row = el('div', 'talent-node'
+        + (rank ? ' has-rank' : '')
+        + (rank >= node.max ? ' maxed' : '')
+        + (locked ? ' locked' : ''));
+      row.innerHTML = `
+        <div class="talent-head">
+          <span class="talent-name">${node.name}</span>
+          <span class="talent-rank">${rank}/${node.max}</span>
+        </div>
+        <div class="talent-desc">${locked
+          ? `Requires ${required} points in ${branch.name}`
+          : node.desc}</div>`;
+      const btns = el('div', 'talent-btns');
+      const minus = el('button', 'tiny-btn', '−');
+      const plus = el('button', 'tiny-btn', '+');
+      minus.disabled = rank <= 0;
+      plus.disabled = locked || rank >= node.max || avail <= 0;
+      this.click(minus, () => {
+        if ((cd.talents[node.id] || 0) <= 0) return;
+        cd.talents[node.id]--;
+        if (!cd.talents[node.id]) delete cd.talents[node.id];
+        this.profile.save();
+        this.refresh();
       });
-      cols.appendChild(col);
-    }
-    p.appendChild(cols);
+      this.click(plus, () => {
+        if (this.profile.availableTalentPoints(cls.id) <= 0) { this.ctx.audio.play('deny'); return; }
+        cd.talents[node.id] = (cd.talents[node.id] || 0) + 1;
+        this.profile.save();
+        this.ctx.audio.play('buy');
+        this.refresh();
+      });
+      btns.appendChild(minus);
+      btns.appendChild(plus);
+      row.appendChild(btns);
+      return row;
+    };
+    p.appendChild(this.paged(`talents:${cls.id}:${this.talentBranch}`,
+      branch.nodes, byHeight(2, 3, 6), cols, makeNode));
 
     const actions = el('div', 'actions');
-    actions.appendChild(this.click(el('button', 'ghost-btn', 'Reset all points'), () => {
+    actions.appendChild(this.click(el('button', 'ghost-btn', 'Reset points'), () => {
       this.profile.respec(cls.id);
-      this.show('talents');
+      this.refresh();
     }));
     actions.appendChild(this.click(el('button', 'big-btn', 'Play as ' + cls.name), () => {
       this.selectedClass = cls.id;
@@ -295,10 +461,10 @@ export class Menus {
     const wrap = el('div', 'screen');
     wrap.appendChild(this.backBar('title'));
     const p = this.panel('The Forge',
-      'Permanent upgrades bought with Souls. They apply to every class, on every run, forever.');
+      'Permanent upgrades bought with Souls. They apply to every class, forever.');
 
     const grid = el('div', 'forge-grid');
-    for (const def of PERMANENT) {
+    p.appendChild(this.paged('forge', PERMANENT, byHeight(3, 5, 12), grid, (def) => {
       const level = this.profile.data.permanent[def.id] || 0;
       const maxed = level >= def.max;
       const cost = upgradeCost(def, level);
@@ -307,7 +473,7 @@ export class Menus {
       card.innerHTML = `
         <div class="forge-icon">${def.icon}</div>
         <div class="forge-body">
-          <div class="forge-name">${def.name}</div>
+          <div class="forge-name">${def.name} <span class="dim">${level}/${def.max}</span></div>
           <div class="forge-desc">${def.desc}</div>
           <div class="forge-pips">${Array.from({ length: def.max }, (_, i) =>
             `<i class="${i < level ? 'on' : ''}"></i>`).join('')}</div>
@@ -323,14 +489,75 @@ export class Menus {
         this.profile.data.permanent[def.id] = lv + 1;
         this.profile.save();
         this.ctx.audio.play('buy');
-        this.show('forge');
+        this.refresh();
       });
       card.appendChild(buy);
-      grid.appendChild(card);
-    }
-    p.appendChild(grid);
+      return card;
+    }));
     wrap.appendChild(p);
     return wrap;
+  }
+
+  // -------------------------------------------------------------------------
+  // The Armoury — five gear slots with no ceiling
+  // -------------------------------------------------------------------------
+
+  buildArmoury() {
+    const wrap = el('div', 'screen');
+    wrap.appendChild(this.backBar('title'));
+    const rating = armorRating(this.profile.armor);
+    const p = this.panel('Armoury',
+      `Armour rating ${rating}. Every tier costs more and gives more — there is no cap.`);
+
+    const grid = el('div', 'forge-grid');
+    p.appendChild(this.paged('armoury', ARMOR_SLOTS, byHeight(3, 4, 5), grid, (def) => {
+      const tier = this.profile.armor[def.id] || 0;
+      const maxed = tier >= ARMOR_MAX_TIER;
+      const cost = armorCost(def, tier);
+      const afford = this.profile.souls >= cost;
+      const card = el('div', 'forge-card' + (!afford && !maxed ? ' poor' : ''));
+      card.innerHTML = `
+        <div class="forge-icon">${def.icon}</div>
+        <div class="forge-body">
+          <div class="forge-name">${armorTierName(def, tier)} <span class="dim">T${tier}</span></div>
+          <div class="forge-desc">${def.desc}</div>
+          <div class="forge-desc dim">Equipped: ${this.armorSummary(def, tier)}</div>
+        </div>`;
+      const buy = el('button', 'buy-btn', maxed ? 'MAX' : `💠 ${cost}`);
+      buy.disabled = maxed || !afford;
+      this.click(buy, () => {
+        const t = this.profile.armor[def.id] || 0;
+        if (t >= ARMOR_MAX_TIER) return;
+        const c = armorCost(def, t);
+        if (this.profile.souls < c) { this.ctx.audio.play('deny'); return; }
+        this.profile.souls -= c;
+        this.profile.armor[def.id] = t + 1;
+        this.profile.save();
+        this.ctx.audio.play('buy');
+        this.refresh();
+      });
+      card.appendChild(buy);
+      return card;
+    }));
+    wrap.appendChild(p);
+    return wrap;
+  }
+
+  /** "+45 health, +9% armor" for the tiers already bought in one slot. */
+  armorSummary(def, tier) {
+    if (!tier) return 'nothing yet';
+    const label = {
+      maxHp: (v) => `+${Math.round(v)} health`,
+      armor: (v) => `+${(v * 100).toFixed(1)}% armor`,
+      moveSpeed: (v) => `+${(v * 100).toFixed(1)}% speed`,
+      dodge: (v) => `+${(v * 100).toFixed(1)}% dodge`,
+      critChance: (v) => `+${(v * 100).toFixed(1)}% crit`,
+      allDamage: (v) => `+${(v * 100).toFixed(1)}% damage`,
+      resourceMax: (v) => `+${Math.round(v)} resource`,
+    };
+    return Object.entries(def.effect)
+      .map(([k, v]) => (label[k] ? label[k](v * tier) : `${k} ${v * tier}`))
+      .join(', ');
   }
 
   // -------------------------------------------------------------------------
@@ -341,7 +568,7 @@ export class Menus {
     const wrap = el('div', 'screen');
     wrap.appendChild(this.backBar('title'));
     const s = this.profile.data.stats;
-    const p = this.panel('Records', 'Career totals across every run.');
+    const p = this.panel('Records');
     const grid = el('div', 'stat-grid');
     const rows = [
       ['Best wave', s.bestWave],
@@ -358,16 +585,15 @@ export class Menus {
     p.appendChild(grid);
 
     const table = el('div', 'class-stats');
-    table.appendChild(el('h3', null, 'By class'));
     for (const c of CLASSES) {
       const cd = this.profile.classData(c.id);
       const row = el('div', 'cs-row');
       row.innerHTML = `
         <span class="cs-name" style="color:${c.color}">${c.name}</span>
         <span>wave ${cd.bestWave}</span>
-        <span>${cd.runs} runs</span>
         <span>${cd.kills} kills</span>
-        <span>${this.profile.availableTalentPoints(c.id)} pts free</span>`;
+        <span>mastery ${this.profile.masteryRank(c.id)}</span>
+        <span>${this.profile.availableTalentPoints(c.id)} pts</span>`;
       table.appendChild(row);
     }
     p.appendChild(table);
@@ -404,7 +630,7 @@ export class Menus {
       });
       input.addEventListener('change', () => this.profile.save());
       row.appendChild(input);
-      list.appendChild(row);
+      return row;
     };
 
     const toggle = (label, key, hint) => {
@@ -415,74 +641,92 @@ export class Menus {
         st[key] = !st[key];
         this.profile.save();
         this.ctx.onSettingsChanged();
-        this.show('settings');
+        this.refresh();
       });
       row.appendChild(btn);
-      list.appendChild(row);
+      return row;
     };
 
-    slider('Mouse sensitivity', 'sensitivity', 0.2, 3, 0.05, (v) => v.toFixed(2) + 'x');
-    slider('Touch sensitivity', 'touchSensitivity', 0.2, 3, 0.05, (v) => v.toFixed(2) + 'x');
-    slider('Field of view', 'fov', 60, 100, 1, (v) => Math.round(v) + '°');
-    slider('Render scale', 'renderScale', 0.5, 1, 0.05, (v) => Math.round(v * 100) + '%');
-    slider('Sound volume', 'sfxVolume', 0, 1, 0.05, (v) => Math.round(v * 100) + '%');
-    slider('Music volume', 'musicVolume', 0, 1, 0.05, (v) => Math.round(v * 100) + '%');
-    toggle('Invert look Y', 'invertY');
-    toggle('Damage numbers', 'showDamage');
-    toggle('Left-handed layout', 'leftHanded', 'Swaps the joystick and buttons');
-    toggle('Hold to attack', 'autoAttack', 'Keep swinging while the button is held');
-    toggle('Fullscreen on play', 'fullscreenOnPlay', 'Go fullscreen when a run starts');
+    const rows = [
+      () => slider('Mouse sensitivity', 'sensitivity', 0.2, 3, 0.05, (v) => v.toFixed(2) + 'x'),
+      () => slider('Touch sensitivity', 'touchSensitivity', 0.2, 3, 0.05, (v) => v.toFixed(2) + 'x'),
+      () => slider('Field of view', 'fov', 60, 100, 1, (v) => Math.round(v) + '°'),
+      () => slider('Render scale', 'renderScale', 0.5, 1, 0.05, (v) => Math.round(v * 100) + '%'),
+      () => slider('Sound volume', 'sfxVolume', 0, 1, 0.05, (v) => Math.round(v * 100) + '%'),
+      () => slider('Music volume', 'musicVolume', 0, 1, 0.05, (v) => Math.round(v * 100) + '%'),
+      () => toggle('Invert look Y', 'invertY'),
+      () => toggle('Damage numbers', 'showDamage'),
+      () => toggle('Left-handed layout', 'leftHanded', 'Swaps the stick and the buttons'),
+      () => toggle('Hold to attack', 'autoAttack', 'Keep swinging while the button is held'),
+      () => toggle('Tap to attack', 'tapAttack', 'A quick tap on the look side swings'),
+      () => toggle('Fullscreen on play', 'fullscreenOnPlay', 'Go fullscreen when a run starts'),
+      () => this.fullscreenRow(),
+    ].filter(Boolean);
 
-    p.appendChild(list);
-    p.appendChild(el('p', 'footnote', 'Render scale below 100% boosts frame rate on phones.'));
+    p.appendChild(this.paged('settings', rows, byHeight(4, 7, 13), list, (make) => make()));
     wrap.appendChild(p);
     return wrap;
+  }
+
+  /**
+   * A full-width fullscreen control. The 44px corner button is easy to miss
+   * and impossible to find at all once a run is under way, and inside a frame
+   * that refuses fullscreen the honest answer is a link to a real tab.
+   */
+  fullscreenRow() {
+    const fs = this.ctx.fullscreen || {};
+    const row = el('div', 'setting toggle');
+    if (fs.usable) {
+      const on = fs.isOn();
+      row.innerHTML = `<label>Fullscreen<span class="hint">${on ? 'Currently fullscreen' : 'Fill the whole screen'}</span></label>`;
+      const btn = el('button', 'switch' + (on ? ' on' : ''), on ? 'ON' : 'OFF');
+      this.click(btn, () => { fs.toggle(); setTimeout(() => this.refresh(), 120); });
+      row.appendChild(btn);
+    } else {
+      row.innerHTML = `<label>Fullscreen<span class="hint">This embed will not allow it — open the game in its own tab</span></label>`;
+      const link = el('a', 'ghost-btn', 'Open ⇱');
+      link.href = location.href;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      row.appendChild(link);
+    }
+    return row;
   }
 
   buildHowTo() {
     const wrap = el('div', 'screen');
     wrap.appendChild(this.backBar('title'));
     const p = this.panel('How to play');
-    p.appendChild(el('div', 'howto', `
-      <div class="howto-col">
-        <h3>Phone</h3>
-        <ul>
-          <li><b>Left half</b> — drag to move (the stick appears where you touch)</li>
-          <li><b>Right half</b> — drag to look around</li>
-          <li><b>⚔</b> — attack (hold to keep attacking)</li>
-          <li><b>⤒</b> — jump &nbsp; <b>»</b> — sprint</li>
-          <li><b>Skill pad</b> — four class skills with cooldown rings</li>
-        </ul>
-      </div>
-      <div class="howto-col">
-        <h3>Keyboard & mouse</h3>
-        <ul>
-          <li><b>WASD</b> move · <b>Space</b> jump · <b>Shift</b> sprint</li>
-          <li><b>Mouse</b> look · <b>Left click</b> attack</li>
-          <li><b>1 2 3 4</b> (or Q E R F) — skills</li>
-          <li><b>Esc</b> — pause</li>
-        </ul>
-      </div>
-      <div class="howto-col">
-        <h3>Controller</h3>
-        <ul>
-          <li><b>Left stick</b> move · <b>Right stick</b> look</li>
-          <li><b>A</b> jump · <b>X</b> or <b>RT</b> attack · <b>L3/LT</b> sprint</li>
-          <li><b>LB RB Y B</b> — skills 1–4</li>
-          <li><b>Start</b> — pause</li>
-          <li>Plug in and press anything; it takes over automatically.</li>
-        </ul>
-      </div>
-      <div class="howto-col">
-        <h3>The loop</h3>
-        <ul>
-          <li>Waves never stop. Every 5th wave is a boss.</li>
-          <li>Clear a wave, pick <b>one of three upgrades</b> for this run.</li>
-          <li>Dying banks your <b>Souls</b> — spend them in <b>The Forge</b> for permanent power.</li>
-          <li>Reaching deeper waves grants <b>talent points</b> for that class.</li>
-          <li>Mind the lava channels. They hurt everything, including bosses.</li>
-        </ul>
-      </div>`));
+    const cols = [
+      `<h3>Phone</h3><ul>
+        <li><b>Left half</b> — drag to move; the stick appears under your thumb</li>
+        <li><b>Right half</b> — drag to look, tap to swing</li>
+        <li><b>⚔</b> attack · <b>⤒</b> jump · <b>»</b> sprint</li>
+        <li><b>Bottom centre</b> — your four skills, with cooldown rings</li>
+      </ul>`,
+      `<h3>Keyboard & mouse</h3><ul>
+        <li><b>WASD</b> move · <b>Space</b> jump · <b>Shift</b> sprint</li>
+        <li><b>Mouse</b> look · <b>Left click</b> attack</li>
+        <li><b>1 2 3 4</b> (or Q E R F) — skills</li>
+        <li><b>Esc</b> — pause</li>
+      </ul>`,
+      `<h3>Controller</h3><ul>
+        <li><b>Left stick</b> move · <b>Right stick</b> look</li>
+        <li><b>A</b> jump · <b>X</b> or <b>RT</b> attack · <b>L3/LT</b> sprint</li>
+        <li><b>LB RB Y B</b> — skills 1–4</li>
+        <li>Plug in and press anything; it takes over automatically.</li>
+      </ul>`,
+      `<h3>The loop</h3><ul>
+        <li>Waves never stop. Every 5th wave is a boss.</li>
+        <li>Clear a wave, pick <b>one of three upgrades</b> for this run.</li>
+        <li>Dying banks <b>Souls</b> — spend them in the <b>Forge</b> and <b>Armoury</b>.</li>
+        <li>Deeper waves grant <b>talent points</b> and <b>mastery</b> for that class.</li>
+        <li>Each class has <b>eight skills</b>; four are equipped at a time.</li>
+      </ul>`,
+    ];
+    const box = el('div', 'howto');
+    p.appendChild(this.paged('howto', cols, byHeight(1, 2, 4), box,
+      (html) => el('div', 'howto-col', html)));
     wrap.appendChild(p);
     return wrap;
   }
@@ -534,7 +778,6 @@ export class Menus {
         ['Canvas CSS', `${view.clientWidth} x ${view.clientHeight}`],
         ['Canvas buffer', `${view.width} x ${view.height}`],
         ['Device pixel ratio', String(window.devicePixelRatio)],
-        ['Viewport meta', document.querySelector('meta[name="viewport"]')?.content || 'MISSING'],
         ['In iframe', String(window.self !== window.top)],
         ['Fullscreen allowed', String(document.fullscreenEnabled)],
         ['WebGL renderer', dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : 'hidden'],
@@ -542,12 +785,24 @@ export class Menus {
         ['Build', this.ctx.build || 'dev'],
         ['Storage', storage.available() ? 'available' : 'BLOCKED (progress will not save)'],
         ['Last error', window.__blockfrayError || 'none'],
-        ['User agent', navigator.userAgent],
       ];
+      const perPage = byHeight(5, 8, 16);
+      const pageCount = Math.max(1, Math.ceil(rows.length / perPage));
+      const page = Math.min(this.pages.diagRows || 0, pageCount - 1);
       out.innerHTML = rows
+        .slice(page * perPage, page * perPage + perPage)
         .map(([k, v]) => `<div class="diag-row"><span>${k}</span><b>${v}</b></div>`)
-        .join('');
+        .join('')
+        + (pageCount > 1 ? `<div class="diag-row dim"><span>page</span><b>${page + 1} / ${pageCount}</b></div>` : '');
+      nextBtn.classList.toggle('hidden', pageCount <= 1);
+      this.pages.diagRows = page;
+      this.diagPages = pageCount;
     };
+    const nextBtn = this.click(el('button', 'ghost-btn wide', 'More readings ›'), () => {
+      this.pages.diagRows = ((this.pages.diagRows || 0) + 1) % (this.diagPages || 1);
+      refresh();
+    });
+    p.appendChild(nextBtn);
     refresh();
     this.diagTimer = setInterval(() => {
       if (this.screen !== 'diag') { clearInterval(this.diagTimer); return; }
@@ -574,7 +829,6 @@ export class Menus {
       () => this.ctx.quitRun()));
     p.appendChild(menu);
 
-    // Current run build summary.
     const g = this.ctx.game;
     if (g.runUpgrades.length) {
       const list = el('div', 'run-build');
@@ -637,9 +891,9 @@ export class Menus {
     const rows = [
       ['Waves cleared', res.wave],
       ['Kills', res.kills],
-      ['Damage dealt', res.damageDealt.toLocaleString()],
       ['Souls banked', '💠 ' + res.souls],
       ['Talent points free', this.profile.availableTalentPoints(g.cls.id)],
+      ['Mastery', this.profile.masteryRank(g.cls.id)],
       ['Class best', 'wave ' + cd.bestWave],
     ];
     for (const [k, v] of rows) {
@@ -648,20 +902,11 @@ export class Menus {
       grid.appendChild(d);
     }
     p.appendChild(grid);
-
-    if (g.runUpgrades.length) {
-      const chips = el('div', 'chips');
-      for (const u of g.runUpgrades) {
-        chips.appendChild(el('span', 'chip', `${u.icon} ${u.name}${u.stacks > 1 ? ` ×${u.stacks}` : ''}`));
-      }
-      const box = el('div', 'run-build');
-      box.appendChild(el('h3', null, 'Your build'));
-      box.appendChild(chips);
-      p.appendChild(box);
-    }
+    p.appendChild(this.masteryBar(g.cls.id));
 
     const actions = el('div', 'actions');
-    actions.appendChild(this.click(el('button', 'ghost-btn', 'The Forge'), () => this.show('forge')));
+    actions.appendChild(this.click(el('button', 'ghost-btn', 'Forge'), () => this.show('forge')));
+    actions.appendChild(this.click(el('button', 'ghost-btn', 'Armoury'), () => this.show('armoury')));
     actions.appendChild(this.click(el('button', 'ghost-btn', 'Talents'), () => {
       this.talentClass = g.cls.id;
       this.show('talents');

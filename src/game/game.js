@@ -9,7 +9,8 @@ import { Projectile, Particle, Telegraph, Shockwave, Zone, FloatText, hexToRgb }
 import { TEAM } from './entity.js';
 import { WaveDirector, waveScaling, waveClearBonus, isBossWave } from './waves.js';
 import { rollUpgrades } from '../data/upgrades.js';
-import { permanentMods } from '../data/permanent.js';
+import { permanentMods, masteryMods, masteryRank } from '../data/permanent.js';
+import { armorMods } from '../data/armor.js';
 import { forwardVec, clamp, rand, dist2 } from '../core/math.js';
 
 const INTERMISSION = 4.0;
@@ -57,8 +58,17 @@ export class Game {
     this.reset();
     this.cls = classDef;
     const cd = this.profile.classData(classDef.id);
+    // Permanent power comes from three account-wide sources that all flatten
+    // into the same bag: the Forge, the Armoury and this class's mastery rank.
     const perm = permanentMods(this.profile.data.permanent);
+    for (const [k, v] of Object.entries(armorMods(this.profile.data.armor))) {
+      perm[k] = (perm[k] || 0) + v;
+    }
+    for (const [k, v] of Object.entries(masteryMods(masteryRank(cd.mastery || 0)))) {
+      perm[k] = (perm[k] || 0) + v;
+    }
     this.permMods = perm;
+    this.loadout = this.profile.loadout(classDef);
     this.baseMods = () => buildMods(classDef, cd.talents, perm, this.runUpgrades);
 
     this.theme = (Math.random() * 4) | 0;
@@ -69,7 +79,7 @@ export class Game {
     this.r.setWorld(this.world);
     this.r.skyTint = [[0.55, 0.66, 0.82], [0.78, 0.68, 0.48], [0.16, 0.13, 0.20], [0.44, 0.60, 0.70]][this.theme];
 
-    this.player = new Player(classDef, this.baseMods(), this.world);
+    this.player = new Player(classDef, this.baseMods(), this.world, this.loadout);
     this.director = new WaveDirector();
     this.rerollsLeft = perm.rerolls || 0;
     this.running = true;
@@ -278,6 +288,8 @@ export class Game {
       if (crit) dmg *= source.critMult;
       // Shatter: frozen targets take extra damage.
       if (source.mods.frozenDamage && target.freeze > 0) dmg *= 1 + source.mods.frozenDamage;
+      // Titanbane and the class capstones that specialise into boss fights.
+      if (source.stats.bossMult > 1 && target.def && target.def.boss) dmg *= source.stats.bossMult;
     } else if (opts.forceCrit) {
       crit = true;
       dmg *= 2;
@@ -337,9 +349,10 @@ export class Game {
       this.audio.play('hurt');
       const r = this.player.resourceDef;
       if (r.onTakeGain) this.player.gainResource(r.onTakeGain);
-      // Thorns
-      if (this.player.mods.thorns && source && opts.melee !== false && source.damage) {
-        source.damage(this.player.mods.thorns, { source: this.player });
+      // Thorns reflect a share of the damage that actually landed — a flat
+      // number would be worthless by wave 10 and free wave-1 clears before it.
+      if (this.player.thorns && source && opts.melee !== false && source.damage) {
+        source.damage(dealt * this.player.thorns, { source: this.player });
         if (source.dead) this.onEnemyKilled(source, this.player, {});
       }
       // Soul Link: split incoming damage with fiends.

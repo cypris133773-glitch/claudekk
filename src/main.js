@@ -8,6 +8,7 @@ import { Profile, storage } from './core/save.js';
 import { Game } from './game/game.js';
 import { Hud } from './ui/hud.js';
 import { Menus } from './ui/menus.js';
+import { CLASSES } from './data/classes.js';
 import { clamp } from './core/math.js';
 
 // The viewport meta must exist or mobile browsers lay the page out at a
@@ -96,6 +97,13 @@ const menus = new Menus(uiRoot, {
   audio,
   game,
   build: BUILD,
+  // Menus own a full-width fullscreen control; the 44px corner button is easy
+  // to miss and cannot be found at all mid-run.
+  fullscreen: {
+    get usable() { return fullscreenUsable; },
+    isOn: () => isFullscreen(),
+    toggle: () => { if (isFullscreen()) exitFullscreen(); else enterFullscreen(); },
+  },
   startRun: (cls) => startRun(cls),
   resumeRun: () => resumeRun(),
   quitRun: () => quitRun(),
@@ -215,7 +223,9 @@ const nextPaint = () => new Promise((r) => requestAnimationFrame(() => requestAn
 async function startRun(cls) {
   // Both of these need the user gesture that is still on the stack.
   audio.ensure();
-  if (isTouchDevice() && profile.settings.fullscreenOnPlay && fullscreenUsable) enterFullscreen();
+  // Desktop benefits from this as much as a phone does — a windowed browser
+  // wastes a third of the screen on chrome.
+  if (profile.settings.fullscreenOnPlay && fullscreenUsable) enterFullscreen();
 
   // The hint has served its purpose once a run begins, and it sits where the
   // health bar goes.
@@ -390,4 +400,6 @@ document.addEventListener('touchmove', (e) => {
 document.addEventListener('gesturestart', (e) => e.preventDefault());
 
 // Expose a tiny handle for debugging and for a future Steam/Electron wrapper.
-window.BLOCKFRAY = { game, profile, renderer, audio, menus, input };
+// Exposed for the diagnostics screen and the headless test harnesses; a
+// shipped build is a single file, so there is nothing else to inspect with.
+window.BLOCKFRAY = { game, profile, renderer, audio, menus, input, CLASSES };

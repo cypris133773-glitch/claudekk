@@ -1,9 +1,18 @@
 // Headless checks over the pure-logic modules (no DOM required).
 // Run with: npm test
 
-import { CLASSES, CLASS_BY_ID, TALENT_BY_ID } from '../src/data/classes.js';
+import {
+  CLASSES, CLASS_BY_ID, TALENT_BY_ID, LOADOUT_SIZE, totalTalentRanks,
+  defaultLoadout, resolveLoadout, unlockedSkills,
+} from '../src/data/classes.js';
+import {
+  ARMOR_SLOTS, armorCost, armorMods, armorRating, armorTierName, ARMOR_MAX_TIER,
+} from '../src/data/armor.js';
 import { UPGRADES, RARITY, rollUpgrades } from '../src/data/upgrades.js';
-import { PERMANENT, upgradeCost, permanentMods, talentPointsForBestWave } from '../src/data/permanent.js';
+import {
+  PERMANENT, upgradeCost, permanentMods, talentPointsForBestWave,
+  masteryRank, masteryThreshold, masteryProgress, masteryMods, masteryFromRun,
+} from '../src/data/permanent.js';
 import {
   waveScaling, waveBudget, buildWaveQueue, isBossWave, waveClearBonus,
   bossForWave, BOSS_EVERY,
@@ -41,11 +50,11 @@ check('class ids are unique', () => {
   assert(ids.size === CLASSES.length, 'duplicate class id');
 });
 
-check('every class has 4 skills with valid kinds', () => {
+check('every class has a pool of 8 skills with valid kinds', () => {
   const kinds = new Set(['projectile', 'aoe_self', 'aoe_target', 'dash', 'buff',
-    'heal', 'summon', 'cone', 'chain', 'strike']);
+    'heal', 'summon', 'cone', 'chain', 'strike', 'zone']);
   for (const c of CLASSES) {
-    assert(c.skills.length === 4, `${c.id} has ${c.skills.length} skills`);
+    assert(c.skills.length === 8, `${c.id} has ${c.skills.length} skills`);
     for (const s of c.skills) {
       assert(kinds.has(s.kind), `${c.id}/${s.id} unknown kind "${s.kind}"`);
       assert(s.cost >= 0, `${c.id}/${s.id} negative cost`);
@@ -56,11 +65,11 @@ check('every class has 4 skills with valid kinds', () => {
   }
 });
 
-check('every class has 3 talent branches of 4 nodes', () => {
+check('every class has 3 talent branches of 6 nodes', () => {
   for (const c of CLASSES) {
     assert(c.talents.length === 3, `${c.id} has ${c.talents.length} branches`);
     for (const b of c.talents) {
-      assert(b.nodes.length === 4, `${c.id}/${b.name} has ${b.nodes.length} nodes`);
+      assert(b.nodes.length === 6, `${c.id}/${b.name} has ${b.nodes.length} nodes`);
       for (const n of b.nodes) {
         assert(n.max >= 1, `${n.id} max rank ${n.max}`);
         assert(Object.keys(n.effect).length > 0, `${n.id} has no effect`);
@@ -161,6 +170,13 @@ check('talent points increase with best wave', () => {
 
 // --- Wave director ---------------------------------------------------------
 
+check('wave 0 scaling is finite', () => {
+  const s = waveScaling(0);
+  for (const [k, v] of Object.entries(s)) {
+    assert(Number.isFinite(v), `waveScaling(0).${k} is ${v}`);
+  }
+});
+
 check('wave scaling rises monotonically and never stalls', () => {
   let prevHp = 0, prevDmg = 0;
   for (let w = 1; w <= 200; w++) {
@@ -256,7 +272,8 @@ check('every declared effect key is consumed by game code', async () => {
   const { fileURLToPath } = await import('node:url');
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-  const dataSrc = ['src/data/classes.js', 'src/data/upgrades.js', 'src/data/permanent.js']
+  const dataSrc = ['src/data/classes.js', 'src/data/upgrades.js', 'src/data/permanent.js',
+    'src/data/armor.js']
     .map((f) => fs.readFileSync(path.join(root, f), 'utf8')).join('\n');
   const keys = new Set();
   for (const m of dataSrc.matchAll(/effect:\s*\{([^}]*)\}/g)) {
@@ -270,6 +287,168 @@ check('every declared effect key is consumed by game code', async () => {
 
   const dead = [...keys].filter((k) => !codeSrc.includes('.' + k));
   assert(dead.length === 0, `effects declared but never read: ${dead.sort().join(', ')}`);
+});
+
+
+// --- Loadouts, armour and mastery ------------------------------------------
+
+check('the first four skills of every class are always available', () => {
+  for (const c of CLASSES) {
+    const free = c.skills.slice(0, LOADOUT_SIZE);
+    for (const s of free) assert(!(s.unlock || 0), `${c.id}/${s.id} gates a starter skill`);
+    const later = c.skills.slice(LOADOUT_SIZE);
+    for (const s of later) assert((s.unlock || 0) > 0, `${c.id}/${s.id} is an unlock with no gate`);
+  }
+});
+
+check('skill ids are unique within a class', () => {
+  for (const c of CLASSES) {
+    const ids = new Set(c.skills.map((s) => s.id));
+    assert(ids.size === c.skills.length, `${c.id} has a duplicate skill id`);
+  }
+});
+
+check('resolveLoadout always yields four distinct unlocked skills', () => {
+  for (const c of CLASSES) {
+    for (const [ids, best] of [
+      [undefined, 0], [[], 0], [['nonsense'], 0],
+      [[c.skills[7].id], 0],                       // locked at wave 0
+      [[c.skills[7].id], 99],                      // unlocked deep in
+      [[c.skills[0].id, c.skills[0].id], 0],       // duplicate
+      [c.skills.map((s) => s.id), 99],             // too many
+    ]) {
+      const out = resolveLoadout(c, ids, best);
+      assert(out.length === LOADOUT_SIZE, `${c.id} produced ${out.length} skills`);
+      assert(new Set(out.map((s) => s.id)).size === LOADOUT_SIZE, `${c.id} duplicated a slot`);
+      const open = new Set(unlockedSkills(c, best).map((s) => s.id));
+      for (const s of out) assert(open.has(s.id), `${c.id} slotted locked skill ${s.id}`);
+    }
+    assert(resolveLoadout(c, defaultLoadout(c), 0).map((s) => s.id).join() === defaultLoadout(c).join(),
+      `${c.id} default loadout is not stable`);
+  }
+});
+
+check('talent trees are deep enough to outlast the early waves', () => {
+  for (const c of CLASSES) {
+    const ranks = totalTalentRanks(c);
+    assert(ranks >= 70, `${c.id} only holds ${ranks} talent ranks`);
+    // Filling a tree should take real progress, not a handful of waves.
+    let wave = 0;
+    while (talentPointsForBestWave(wave) < ranks && wave < 500) wave++;
+    assert(wave >= 30, `${c.id} tree fills by wave ${wave}`);
+  }
+});
+
+check('talent points keep arriving forever', () => {
+  let prev = -1;
+  for (let w = 0; w <= 200; w++) {
+    const pts = talentPointsForBestWave(w);
+    assert(pts > prev, `points did not grow at wave ${w}`);
+    prev = pts;
+  }
+});
+
+check('mastery ranks are consistent with their thresholds', () => {
+  for (let rank = 0; rank < 60; rank++) {
+    const at = masteryThreshold(rank);
+    assert(masteryRank(at) === rank, `threshold for rank ${rank} resolves to ${masteryRank(at)}`);
+    assert(masteryRank(at - 1) === Math.max(0, rank - 1), `one short of rank ${rank} misreads`);
+  }
+  assert(masteryRank(0) === 0, 'a fresh class is rank 0');
+  assert(masteryRank(-5) === 0, 'negative progress is rank 0');
+});
+
+check('mastery never stops progressing', () => {
+  let progress = 0;
+  let last = 0;
+  for (let run = 0; run < 60; run++) {
+    progress += masteryFromRun({ wave: 10 + run, kills: 100 });
+    const r = masteryRank(progress);
+    assert(r >= last, 'mastery went backwards');
+    last = r;
+  }
+  assert(last > 10, `60 deep runs only reached mastery ${last}`);
+  const p = masteryProgress(progress);
+  assert(p.into >= 0 && p.into < p.need, 'progress into rank is out of range');
+  assert(masteryMods(last).allDamage > 0, 'mastery grants nothing');
+});
+
+check('armour costs climb and its bonuses add up', () => {
+  for (const def of ARMOR_SLOTS) {
+    assert(armorCost(def, 0) === def.baseCost, `${def.id} tier 0 cost`);
+    for (let t = 1; t < ARMOR_MAX_TIER; t++) {
+      assert(armorCost(def, t) > armorCost(def, t - 1), `${def.id} cost flat at ${t}`);
+    }
+    assert(armorTierName(def, 0).includes(def.name), `${def.id} unforged name`);
+    assert(armorTierName(def, 12) !== armorTierName(def, 2), `${def.id} names do not change`);
+  }
+  const tiers = Object.fromEntries(ARMOR_SLOTS.map((s) => [s.id, 3]));
+  const mods = armorMods(tiers);
+  assert(armorRating(tiers) === ARMOR_SLOTS.length * 3, 'armour rating');
+  assert(mods.maxHp > 0 && mods.allDamage > 0, 'armour gives no stats');
+  assert(Object.keys(armorMods({})).length === 0, 'empty armour grants nothing');
+});
+
+check('every armour and Forge effect is a modifier the player reads', () => {
+  const known = new Set(PERMANENT.flatMap((d) => Object.keys(d.effect)));
+  for (const def of ARMOR_SLOTS) {
+    for (const k of Object.keys(def.effect)) {
+      assert(known.has(k) || ['dodge'].includes(k), `armour key ${k} is not a known modifier`);
+    }
+  }
+});
+
+
+// --- Every skill actually fires -------------------------------------------
+// Eight skills across six classes is 48 code paths through castSkill, and a
+// typo in one skill's power block is invisible until a player equips it.
+
+check('every skill in every class pool casts without throwing', async () => {
+  const { Game } = await import('../src/game/game.js');
+  const { castSkill } = await import('../src/game/skills.js');
+
+  const stubRenderer = { setWorld() {}, skyTint: [0, 0, 0], project: () => null };
+  const stubAudio = {
+    play() {}, startMusic() {}, stopMusic() {}, setMusicIntensity() {}, ensure() {},
+  };
+
+  for (const cls of CLASSES) {
+    for (const skill of cls.skills) {
+      const classes = {};
+      for (const c of CLASSES) {
+        classes[c.id] = {
+          talents: {}, bestWave: 99, kills: 0, runs: 0, mastery: 0,
+          loadout: [skill.id],
+        };
+      }
+      const profile = {
+        data: { permanent: {}, armor: {}, classes, souls: 0, stats: {} },
+        settings: { showDamage: false },
+        classData: (id) => classes[id],
+        loadout: (c) => resolveLoadout(c, classes[c.id].loadout, 99),
+        finishRun() {}, save() {},
+      };
+      const game = new Game(stubRenderer, stubAudio, profile);
+      game.startRun(cls, { layout: 0 });
+      assert(game.player.skills[0].id === skill.id,
+        `${cls.id}: ${skill.id} did not reach slot 0`);
+
+      // Something to aim at, in front of the player and within every range.
+      const p = game.player;
+      p.yaw = 0;
+      for (let i = 0; i < 3; i++) game.spawnMob('husk', p.x + (i - 1) * 1.5, p.y, p.z - 3);
+      p.resource = p.resourceMax = 999;
+      p.cooldowns[0] = 0;
+
+      const cast = castSkill(game, p, 0);
+      assert(cast === true, `${cls.id}/${skill.id} refused to cast with full resource and a target`);
+      // Run the clock so delayed effects — telegraphs, meteor impacts, zone
+      // ticks, multi-hit whirlwinds — all resolve inside the check.
+      const input = { moveX: 0, moveY: 0, attack: false, jump: false, sprint: false, skills: [false] };
+      for (let i = 0; i < 150; i++) game.update(1 / 60, input);
+      assert(Number.isFinite(p.hp), `${cls.id}/${skill.id} corrupted player hp`);
+    }
+  }
 });
 
 // --- Math ------------------------------------------------------------------

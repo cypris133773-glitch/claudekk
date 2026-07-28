@@ -5,6 +5,7 @@ import { Entity, TEAM, drawHumanoid } from './entity.js';
 import { T } from '../render/atlas.js';
 import { clamp, forwardVec, rand } from '../core/math.js';
 import { castSkill, skillCooldown } from './skills.js';
+import { LOADOUT_SIZE } from '../data/classes.js';
 
 /** Sum every modifier source into one flat bag of numbers. */
 export function buildMods(cls, talentRanks, permanent, runUpgrades) {
@@ -26,15 +27,20 @@ export function buildMods(cls, talentRanks, permanent, runUpgrades) {
 }
 
 export class Player extends Entity {
-  constructor(cls, mods, world) {
+  /**
+   * `skills` is the four-skill loadout chosen in the menu. Every cooldown,
+   * HUD button and keybind indexes into it, never into the class's full pool.
+   */
+  constructor(cls, mods, world, skills) {
     super({
       x: world.playerSpawn.x, y: world.playerSpawn.y, z: world.playerSpawn.z,
       width: 0.6, height: 1.8, hp: cls.base.hp, team: TEAM.PLAYER,
     });
     this.cls = cls;
     this.mods = mods;
+    this.skills = (skills && skills.length ? skills : cls.skills).slice(0, LOADOUT_SIZE);
     this.buffs = [];
-    this.cooldowns = cls.skills.map(() => 0);
+    this.cooldowns = this.skills.map(() => 0);
     this.resourceDef = cls.resource;
     this.pitch = 0;
     this.sprinting = false;
@@ -72,6 +78,10 @@ export class Player extends Entity {
     const buffMove = this.buffs.reduce((s, x) => s + (x.moveSpeed || 0), 0);
     const buffTaken = this.buffs.reduce((s, x) => s * (x.damageTaken ?? 1), 1);
     const buffDodge = this.buffs.reduce((s, x) => s + (x.dodge || 0), 0);
+    // Offensive cooldowns (Battle Cry, Void Form, Shadow Dance) stack additively
+    // with talents rather than multiplying, so a long buff cannot spiral.
+    const buffDamage = this.buffs.reduce((s, x) => s + (x.damageBonus || 0), 0);
+    const buffHaste = this.buffs.reduce((s, x) => s + (x.attackSpeedBonus || 0), 0);
 
     this.maxHp = Math.round(b.hp + (m.maxHp || 0));
     this.resourceMax = this.resourceDef.max + (m.resourceMax || 0);
@@ -80,18 +90,20 @@ export class Player extends Entity {
     this.moveSpeed = b.speed * (1 + (m.moveSpeed || 0) + buffMove
       + (this.rampageStacks * (m.rampage ? 0.06 : 0)));
     this.attackDamage = b.attackDamage * (1 + (m.attackDamage || 0));
-    this.attackSpeed = b.attackSpeed * (1 + (m.attackSpeed || 0));
+    this.attackSpeed = b.attackSpeed * (1 + (m.attackSpeed || 0) + buffHaste);
     this.attackRange = b.attackRange;
     this.critChance = clamp(b.critChance + (m.critChance || 0), 0, 0.85);
     this.critMult = b.critMult + (m.critMult || 0);
     this.dodge = clamp((m.dodge || 0) + buffDodge, 0, 0.8);
     this.damageTakenMult = buffTaken * (1 - clamp(m.damageReduction || 0, 0, 0.6));
     this.stats = {
-      meleeMult: 1 + (m.meleeDamage || 0) + (m.allDamage || 0),
-      spellMult: 1 + (m.spellDamage || 0) + (m.allDamage || 0),
+      meleeMult: 1 + (m.meleeDamage || 0) + (m.allDamage || 0) + buffDamage,
+      spellMult: 1 + (m.spellDamage || 0) + (m.allDamage || 0) + buffDamage,
       healMult: clamp(1 + (m.healing || 0), 0.2, 4),
+      bossMult: 1 + (m.bossDamage || 0),
     };
     this.lifesteal = m.lifesteal || 0;
+    this.thorns = m.thorns || 0;
     this.hp = Math.min(this.hp, this.maxHp);
   }
 
@@ -134,6 +146,7 @@ export class Player extends Entity {
 
   onKill(mob) {
     this.kills++;
+    if (this.mods.killHeal) this.heal(this.mods.killHeal);
     const r = this.resourceDef;
     if (r.onKillGain) this.gainResource(r.onKillGain + (this.mods.onKillGain || 0));
     else if (this.mods.onKillGain) this.gainResource(this.mods.onKillGain);
@@ -189,7 +202,7 @@ export class Player extends Entity {
     if (input.attack && this.attackTimer <= 0 && !this.disabled) this.basicAttack(game);
 
     // Skills
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < this.skills.length; i++) {
       if (input.skills[i]) {
         input.skills[i] = false;
         castSkill(game, this, i);
@@ -198,7 +211,7 @@ export class Player extends Entity {
 
     if (this.hp < wasHp) game.timeSinceCombat = 0;
     if (this.mods.vanish && wasHp / this.maxHp >= 0.3 && this.hp / this.maxHp < 0.3) {
-      const idx = this.cls.skills.findIndex((s) => s.id === 'ambush');
+      const idx = this.skills.findIndex((s) => s.id === 'ambush');
       if (idx >= 0) this.cooldowns[idx] = 0;
     }
     if (this.mods.guardianSpirit) {
@@ -272,7 +285,7 @@ export class Player extends Entity {
         }
       }
       if (this.mods.maelstrom) {
-        const idx = this.cls.skills.findIndex((s) => s.id === 'chainlightning');
+        const idx = this.skills.findIndex((s) => s.id === 'chainlightning');
         if (idx >= 0) this.cooldowns[idx] = Math.max(0, this.cooldowns[idx] - this.mods.maelstrom);
       }
       game.sfx('swing');
