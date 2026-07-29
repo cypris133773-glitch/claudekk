@@ -10,12 +10,15 @@ import { CLASSES, LOADOUT_SIZE, unlockedSkills } from '../data/classes.js';
 import {
   PERMANENT, upgradeCost, talentPointsForBestWave, masteryProgress,
 } from '../data/permanent.js';
-import { ARMOR_SLOTS, armorCost, armorTierName, ARMOR_MAX_TIER, armorRating } from '../data/armor.js';
+import {
+  ARMOR_SLOTS, armorCost, armorTierName, ARMOR_MAX_TIER, armorRating,
+  armorSets, nextArmorSet,
+} from '../data/armor.js';
 import { RARITY } from '../data/upgrades.js';
 import { skillCost } from '../game/skills.js';
 import { storage } from '../core/save.js';
 import { DIFFICULTIES } from '../data/difficulty.js';
-import { skillIconElement, iconElement, schoolFor } from './icons.js';
+import { skillIconElement, iconElement, schoolFor, SCHOOLS } from './icons.js';
 
 const el = (tag, cls, html) => {
   const n = document.createElement(tag);
@@ -490,7 +493,7 @@ export class Menus {
       'Permanent upgrades bought with Souls. They apply to every class, forever.');
 
     const grid = el('div', 'forge-grid');
-    p.appendChild(this.paged('forge', PERMANENT, byHeight(3, 5, 12), grid, (def) => {
+    p.appendChild(this.paged('forge', PERMANENT, byHeight(3, 4, 10), grid, (def) => {
       const level = this.profile.data.permanent[def.id] || 0;
       const maxed = level >= def.max;
       const cost = upgradeCost(def, level);
@@ -532,23 +535,36 @@ export class Menus {
     const wrap = el('div', 'screen');
     wrap.appendChild(this.backBar('title'));
     const rating = armorRating(this.profile.armor);
-    const p = this.panel('Armoury',
-      `Armour rating ${rating}. Every tier costs more and gives more — there is no cap.`);
+    const p = this.panel('Armoury', `Rating ${rating}`);
+
+    // Set bonuses key off the *lowest* tier you own, so the screen has to show
+    // which slot is holding the set back — otherwise a player pours souls into
+    // one slot and never understands why the bonus stays locked.
+    const sets = armorSets(this.profile.armor);
+    const next = nextArmorSet(this.profile.armor);
+    const setBar = el('div', 'set-bar');
+    for (const st of sets) setBar.appendChild(el('span', 'set-chip on', `✓ ${st.name}`));
+    if (next) {
+      setBar.appendChild(el('span', 'set-chip',
+        `${next.set.name} — every slot to T${next.set.tier}`));
+    }
+    p.appendChild(setBar);
 
     const grid = el('div', 'forge-grid');
-    p.appendChild(this.paged('armoury', ARMOR_SLOTS, byHeight(3, 4, 5), grid, (def) => {
+    p.appendChild(this.paged('armoury', ARMOR_SLOTS, byHeight(3, 4, 6), grid, (def) => {
       const tier = this.profile.armor[def.id] || 0;
       const maxed = tier >= ARMOR_MAX_TIER;
       const cost = armorCost(def, tier);
       const afford = this.profile.souls >= cost;
       const card = el('div', 'forge-card' + (!afford && !maxed ? ' poor' : ''));
-      card.innerHTML = `
-        <div class="forge-icon">${def.icon}</div>
-        <div class="forge-body">
-          <div class="forge-name">${armorTierName(def, tier)} <span class="dim">T${tier}</span></div>
-          <div class="forge-desc">${def.desc}</div>
-          <div class="forge-desc dim">Equipped: ${this.armorSummary(def, tier)}</div>
-        </div>`;
+      const icon = el('div', 'forge-icon');
+      icon.appendChild(iconElement(def.icon, 34, { school: SCHOOLS[def.school] }));
+      card.appendChild(icon);
+      const body = el('div', 'forge-body');
+      body.innerHTML = `
+        <div class="forge-name">${def.name} <span class="dim">T${tier}</span></div>
+        <div class="forge-desc">${def.desc}</div>`;
+      card.appendChild(body);
       const buy = el('button', 'buy-btn', maxed ? 'MAX' : `💠 ${cost}`);
       buy.disabled = maxed || !afford;
       this.click(buy, () => {

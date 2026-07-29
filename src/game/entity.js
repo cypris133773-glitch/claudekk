@@ -233,4 +233,36 @@ export function drawHumanoid(r, e, skin) {
     r.drawBox(p[0], p[1], p[2], headSize * 1.12, headSize * 0.25, headSize * 1.12,
       { ...common, tile: skin.hatTile ?? T.CLOTH, color: col(skin.hat), yaw });
   }
+
+  // Horns. Two tapered stacks angled out from the temples — the cheapest way
+  // to make a humanoid box read as a monster rather than a person, and the
+  // silhouette is what a player actually recognises at fighting distance.
+  if (skin.horns) {
+    const hc = col(skin.horns);
+    for (let i = 0; i < 2; i++) {
+      const side = i === 0 ? -1 : 1;
+      for (let seg = 0; seg < 3; seg++) {
+        const t = seg / 3;
+        const w = headSize * (0.20 - t * 0.05);
+        const p = at(side * headSize * (0.42 + t * 0.30),
+          headY + headSize * (0.34 + t * 0.34),
+          -headSize * t * 0.16);
+        r.drawBox(p[0], p[1], p[2], w, headSize * 0.20, w,
+          { ...common, tile: skin.hornTile ?? T.BONE, color: hc, yaw });
+      }
+    }
+  }
+
+  // Pauldrons: slabs over the shoulders. Widening the silhouette at the top
+  // is what makes a heavy enemy look heavy without changing its hitbox.
+  if (skin.pauldrons) {
+    const pc = col(skin.pauldrons);
+    const shoulderY = legTop + bodyH - limbW * 0.15;
+    for (let i = 0; i < 2; i++) {
+      const side = i === 0 ? -1 : 1;
+      const p = at(side * (bodyW / 2 + limbW * 0.45), shoulderY, 0);
+      r.drawBox(p[0], p[1], p[2], limbW * 1.7, limbW * 0.85, limbW * 1.6,
+        { ...common, tile: skin.pauldronTile ?? T.METAL, color: pc, yaw });
+    }
+  }
 }

@@ -6,7 +6,8 @@ import {
   defaultLoadout, resolveLoadout, unlockedSkills,
 } from '../src/data/classes.js';
 import {
-  ARMOR_SLOTS, armorCost, armorMods, armorRating, armorTierName, ARMOR_MAX_TIER,
+  ARMOR_SLOTS, ARMOR_SETS, armorCost, armorMods, armorRating, armorTierName,
+  ARMOR_MAX_TIER, armorSets, nextArmorSet,
 } from '../src/data/armor.js';
 import { UPGRADES, RARITY, rollUpgrades } from '../src/data/upgrades.js';
 import {
@@ -165,9 +166,30 @@ check('permanent costs grow and never go backwards', () => {
 });
 
 check('permanentMods sums levels correctly', () => {
+  // Derived from the definitions rather than hard-coded, so a rebalance of
+  // the Forge does not fail a test that is really about the summing.
+  const hp = PERMANENT.find((d) => d.id === 'p_hp');
+  const dmg = PERMANENT.find((d) => d.id === 'p_dmg');
   const mods = permanentMods({ p_hp: 3, p_dmg: 2 });
-  assert(near(mods.maxHp, 45), `maxHp ${mods.maxHp}`);
-  assert(near(mods.allDamage, 0.10), `allDamage ${mods.allDamage}`);
+  assert(near(mods.maxHp, hp.effect.maxHp * 3), `maxHp ${mods.maxHp}`);
+  assert(near(mods.allDamage, dmg.effect.allDamage * 2), `allDamage ${mods.allDamage}`);
+});
+
+check('the Forge is an endless grind, not a checklist', () => {
+  const endless = PERMANENT.filter((d) => d.max >= 40);
+  assert(endless.length >= 15, `only ${endless.length} tracks run deep`);
+  // Maxing everything must be far out of reach of any single run.
+  let total = 0;
+  for (const d of PERMANENT) {
+    for (let lv = 0; lv < d.max; lv++) total += upgradeCost(d, lv);
+  }
+  assert(total > 5e6, `maxing the Forge only costs ${Math.round(total)} souls`);
+  // And the late levels must cost meaningfully more than the early ones, or
+  // "endless" is just a longer checklist.
+  for (const d of endless) {
+    assert(upgradeCost(d, d.max - 1) > upgradeCost(d, 0) * 20,
+      `${d.id} barely gets more expensive`);
+  }
 });
 
 check('talent points increase with best wave', () => {
@@ -538,6 +560,40 @@ check('everything index.html loads is present and not deployment-ignored', async
     assert(!ignored.includes(top),
       `.vercelignore excludes ${top}/, which index.html needs`);
   }
+});
+
+
+check('armour set bonuses key off the weakest slot', () => {
+  const even = Object.fromEntries(ARMOR_SLOTS.map((s) => [s.id, 12]));
+  assert(armorSets(even).length >= 2, 'an even tier-12 kit completes no sets');
+
+  // One neglected slot must hold the whole set back, or the bonus is just a
+  // reward for buying anything at all.
+  const lopsided = { ...even, boots: 0 };
+  assert(armorSets(lopsided).length === 0, 'a bare slot still completes sets');
+
+  const nxt = nextArmorSet(even);
+  assert(nxt && nxt.need > 0, 'no next set to aim for from tier 12');
+  assert(nextArmorSet(Object.fromEntries(ARMOR_SLOTS.map((s) => [s.id, 999]))) === null,
+    'a maxed kit still reports a next set');
+
+  // The bonuses must actually reach the modifier bag.
+  const withSets = armorMods(even);
+  const withoutSets = ARMOR_SLOTS.reduce((acc, d) => {
+    for (const [k, v] of Object.entries(d.effect)) acc[k] = (acc[k] || 0) + v * 12;
+    return acc;
+  }, {});
+  assert(withSets.maxHp > withoutSets.maxHp, 'set bonuses never reach the player');
+});
+
+check('the Armoury is deep enough to outlast the Forge', () => {
+  assert(ARMOR_SLOTS.length >= 8, `only ${ARMOR_SLOTS.length} equipment slots`);
+  assert(ARMOR_SETS.length >= 4, `only ${ARMOR_SETS.length} set tiers`);
+  let total = 0;
+  for (const d of ARMOR_SLOTS) {
+    for (let t = 0; t < ARMOR_MAX_TIER; t++) total += armorCost(d, t);
+  }
+  assert(total > 1e7, `a full kit only costs ${Math.round(total)} souls`);
 });
 
 // --- Math ------------------------------------------------------------------

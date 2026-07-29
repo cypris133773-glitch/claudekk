@@ -1104,3 +1104,16 @@ body.show-popout-btn #popout-btn { display: block; }
   cursor: pointer;
 }
 .kit-edit:hover { border-color: var(--gold); color: var(--gold); }
+
+/* Armoury set bonuses: what you have, and the one slot holding the rest back. */
+.set-bar { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 10px; }
+.set-chip {
+  font-size: 10.5px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--dim);
+  white-space: nowrap;
+}
+.set-chip.on { border-color: var(--gold); color: var(--gold); background: rgba(255, 210, 74, 0.08); }
+.forge-icon { line-height: 0; }

@@ -51,6 +51,30 @@ export const MOB_TYPES = {
     height: 2.0, width: 0.6, behavior: 'blinker',
     skin: { head: hex('#3a2050'), body: hex('#221338'), arm: hex('#4a2a66'), leg: hex('#221338'), face: T.FACE_BOSS, emissive: 0.18 },
   },
+  stalker: {
+    name: 'Stalker', weight: 5, minWave: 7, cost: 2,
+    hp: 78, damage: 13, speed: 6.2, range: 2.2, attackSpeed: 1.6, souls: 8,
+    height: 1.9, width: 0.5, behavior: 'leaper',
+    skin: { head: hex('#2a3f2a'), body: hex('#1c2b1c'), arm: hex('#38543a'), leg: hex('#1c2b1c'), face: T.FACE_CRAWLER, horns: hex('#c9d6b0') },
+  },
+  hexer: {
+    name: 'Hexer', weight: 4, minWave: 11, cost: 3,
+    hp: 95, damage: 15, speed: 3.4, range: 20, attackSpeed: 0.7, souls: 14,
+    height: 1.9, width: 0.6, behavior: 'ranged', projectile: { speed: 20, gravity: 3, color: '#b06cff', size: 0.3 },
+    skin: { head: hex('#4a2a5e'), body: hex('#2c1838'), arm: hex('#5e3575'), leg: hex('#241629'), face: T.FACE_BOSS, hat: hex('#7a3f9e'), emissive: 0.2, horns: hex('#c98fff') },
+  },
+  juggernaut: {
+    name: 'Juggernaut', weight: 3, minWave: 14, cost: 4,
+    hp: 320, damage: 26, speed: 2.9, range: 3.0, attackSpeed: 0.5, souls: 22,
+    height: 3.0, width: 1.05, behavior: 'slammer', knockResist: 0.85,
+    skin: { head: hex('#5a5a62'), body: hex('#3e3e46'), arm: hex('#5a5a62'), leg: hex('#2e2e36'), face: T.FACE_HUSK, headTile: T.METAL, bodyTile: T.METAL, hat: hex('#8a2f22'), horns: hex('#c9c9d2'), pauldrons: hex('#6f6f7a') },
+  },
+  wraith: {
+    name: 'Wraith', weight: 3, minWave: 18, cost: 4,
+    hp: 150, damage: 21, speed: 5.2, range: 2.4, attackSpeed: 1.2, souls: 26,
+    height: 2.2, width: 0.55, behavior: 'blinker',
+    skin: { head: hex('#10303a'), body: hex('#0a1e26'), arm: hex('#164654'), leg: hex('#0a1e26'), face: T.FACE_BOSS, emissive: 0.35, alpha: 0.82, horns: hex('#7ef0ff') },
+  },
   // --- Bosses. One is drawn per boss wave, rotating so the fight changes. ---
   colossus: {
     name: 'Colossus', weight: 0, minWave: 5, cost: 0, boss: true,
