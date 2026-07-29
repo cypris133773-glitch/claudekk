@@ -18,6 +18,9 @@ import { forwardVec } from '../src/core/math.js';
 import { LAYOUT_NAMES } from '../src/world/world.js';
 
 const FIXED = 1 / 60;
+// The bot plays a fully levelled character: the point of the harness is to
+// measure the ceiling, and a level-1 pool of two skills measures the floor.
+const SIM_LEVEL = 60;
 const MAX_WAVE = 80;
 const MAX_SECONDS = 60 * 45;         // give up after 45 simulated minutes
 
@@ -51,7 +54,7 @@ function stubProfile(forgeLevel = 0, armorTier = 0) {
     classData: (id) => classes[id],
     // The bot always fights with the default kit; unlockable skills are a
     // player choice, and simulating them would measure the harness's taste.
-    loadout: (cls) => resolveLoadout(cls, classes[cls.id].loadout, classes[cls.id].bestWave),
+    loadout: (cls) => resolveLoadout(cls, classes[cls.id].loadout, SIM_LEVEL),
     finishRun() {},
     save() {},
   };

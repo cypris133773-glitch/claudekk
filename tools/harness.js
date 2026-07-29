@@ -40,7 +40,9 @@ export function makeHarness(opts = {}) {
     },
     settings: { showDamage: false, difficulty: opts.difficulty || 1 },
     classData: (id) => classes[id],
-    loadout: (cls) => resolveLoadout(cls, classes[cls.id].loadout, 99),
+    // Level 60 by default: a harness that only ever saw a level-1 pool would
+    // test two skills out of thirteen.
+    loadout: (cls) => resolveLoadout(cls, classes[cls.id].loadout, opts.level || 60),
     finishRun() {}, save() {},
   };
 

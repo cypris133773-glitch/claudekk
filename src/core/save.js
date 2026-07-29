@@ -54,7 +54,7 @@ function emptyProfile() {
   for (const c of CLASSES) {
     classes[c.id] = {
       talents: {}, bestWave: 0, kills: 0, runs: 0, unlocked: true,
-      loadout: defaultLoadout(c), mastery: 0, xp: 0,
+      loadout: defaultLoadout(c, 1), mastery: 0, xp: 0,
     };
   }
   return {
@@ -78,7 +78,6 @@ function emptyProfile() {
       showDamage: true,
       leftHanded: false,
       autoAttack: true,
-      tapAttack: true,
       aimAssist: true,
       fancyGraphics: true,
       difficulty: 1,
@@ -177,16 +176,23 @@ export class Profile {
 
   // --- Skill loadout -------------------------------------------------------
 
-  /** The four skill objects a class will take into the arena. */
+  /**
+   * The skill objects a class will take into the arena — at most four, and
+   * fewer while it is still low enough that it has not learned four.
+   *
+   * The level is what gates this now, not best wave. Passing the wrong number
+   * here is the one mistake that would let a locked skill into a run, so it is
+   * read from the same place the menus read it.
+   */
   loadout(cls) {
     const cd = this.classData(cls.id);
-    return resolveLoadout(cls, cd.loadout, cd.bestWave);
+    return resolveLoadout(cls, cd.loadout, this.level(cls.id));
   }
 
   /** Persist a loadout, normalised so a bad list can never be stored. */
   setLoadout(cls, ids) {
     const cd = this.classData(cls.id);
-    cd.loadout = resolveLoadout(cls, ids, cd.bestWave).map((s) => s.id);
+    cd.loadout = resolveLoadout(cls, ids, this.level(cls.id)).map((s) => s.id);
     this.save();
     return cd.loadout;
   }

@@ -131,15 +131,15 @@ export const QUEST_COUNT = 500;
 export const ACTIVE_SLOTS = 3;
 
 /**
- * Diamonds per point of effort.
+ * Gold per point of effort.
  *
  * Anchored against a run rather than picked: an ordinary wave-20 run pays a
- * few thousand diamonds, and a quest costing a run's worth of effort should
+ * few thousand gold, and a quest costing a run's worth of effort should
  * pay a meaningful fraction of that on top — a bonus for playing, never a
  * substitute for playing. At 9 a quest is worth grinding toward and worth
  * nobody's time to farm in isolation.
  */
-export const DIAMONDS_PER_EFFORT = 9;
+export const GOLD_PER_EFFORT = 9;
 
 /**
  * Quests get harder as you work through them, on top of the ladder inside each
@@ -170,7 +170,7 @@ export function questAt(index) {
   const raw = step * scale;
   const goal = Math.max(1, roundNicely(raw));
   const effort = goal * t.effort;
-  const reward = Math.max(25, Math.round(effort * DIAMONDS_PER_EFFORT / 5) * 5);
+  const reward = Math.max(25, Math.round(effort * GOLD_PER_EFFORT / 5) * 5);
 
   return {
     index: i,

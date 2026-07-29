@@ -91,7 +91,7 @@ export function applyProgress(state, deltas = {}, peaks = {}) {
 }
 
 /**
- * Claim a finished quest: pay the diamonds and slide the next one in.
+ * Claim a finished quest: pay the gold and slide the next one in.
  *
  * Returns the reward, or 0 if the quest was not actually finished — the menu
  * disables the button, but a stale screen must not be able to mint currency.

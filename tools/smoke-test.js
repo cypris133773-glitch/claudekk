@@ -38,6 +38,8 @@ function check(name, fn) {
 
 const assert = (cond, msg) => { if (!cond) throw new Error(msg); };
 const near = (a, b, eps = 1e-6) => Math.abs(a - b) < eps;
+/** A class's two starting skills. */
+const unlockedSkillsAtOne = (c) => unlockedSkills(c, 1);
 
 // --- Classes ---------------------------------------------------------------
 
@@ -61,11 +63,11 @@ check('class ids are unique', () => {
   assert(ids.size === CLASSES.length, 'duplicate class id');
 });
 
-check('every class has a pool of 10 skills with valid kinds', () => {
+check('every class has a pool of 13 skills with valid kinds', () => {
   const kinds = new Set(['projectile', 'aoe_self', 'aoe_target', 'dash', 'buff',
     'heal', 'summon', 'cone', 'chain', 'strike', 'zone']);
   for (const c of CLASSES) {
-    assert(c.skills.length === 10, `${c.id} has ${c.skills.length} skills`);
+    assert(c.skills.length === 13, `${c.id} has ${c.skills.length} skills`);
     for (const s of c.skills) {
       assert(kinds.has(s.kind), `${c.id}/${s.id} unknown kind "${s.kind}"`);
       assert(s.cost >= 0, `${c.id}/${s.id} negative cost`);
@@ -355,13 +357,53 @@ check('every declared effect key is consumed by game code', async () => {
 
 // --- Loadouts, armour and mastery ------------------------------------------
 
-check('every skill is available from the first run', () => {
+check('skills unlock across the whole climb, two at a time to start', async () => {
+  const { unlockedSkills, unlockOrder, SKILL_UNLOCK_LEVELS, unlockLevelForSlot } =
+    await import('../src/data/classes.js');
+  const { MAX_LEVEL } = await import('../src/data/levels.js');
+
+  // Two at level 1 and everything by the cap. A skill that unlocks past 60 is
+  // a skill nobody ever sees.
+  assert(SKILL_UNLOCK_LEVELS[0] === 1 && SKILL_UNLOCK_LEVELS[1] === 1,
+    'a fresh character does not start with two skills');
+  let prev = 0;
+  for (const lv of SKILL_UNLOCK_LEVELS) {
+    assert(lv >= prev, 'the unlock schedule goes backwards');
+    assert(lv <= MAX_LEVEL, `a skill unlocks at level ${lv}, past the cap`);
+    prev = lv;
+  }
+  assert(prev >= MAX_LEVEL * 0.8, 'the last skill arrives long before the cap');
+
   for (const c of CLASSES) {
-    assert(unlockedSkills(c).length === c.skills.length,
-      `${c.id} gates ${c.skills.length - unlockedSkills(c).length} of its skills`);
-    for (const s of c.skills) {
-      assert(s.unlock === undefined, `${c.id}/${s.id} still carries an unlock gate`);
+    assert(unlockedSkills(c, 1).length === 2, `${c.id} does not start with two skills`);
+    assert(unlockedSkills(c, MAX_LEVEL).length === c.skills.length,
+      `${c.id} never unlocks its whole pool`);
+    // The order must cover the pool exactly once — a starter named wrongly
+    // would silently drop a skill out of the game.
+    const order = unlockOrder(c);
+    assert(order.length === c.skills.length, `${c.id} unlock order has ${order.length} entries`);
+    assert(new Set(order.map((s) => s.id)).size === c.skills.length,
+      `${c.id} unlock order repeats a skill`);
+    // And it must only ever grow with level.
+    let last = 0;
+    for (let L = 1; L <= MAX_LEVEL; L++) {
+      const n = unlockedSkills(c, L).length;
+      assert(n >= last, `${c.id} lost a skill between level ${L - 1} and ${L}`);
+      last = n;
     }
+  }
+});
+
+check('a class that can heal opens with one attack and one heal', () => {
+  for (const c of CLASSES) {
+    const heals = new Set(c.skills.filter((s) => s.kind === 'heal').map((s) => s.id));
+    if (!heals.size) continue;
+    const starters = unlockedSkillsAtOne(c);
+    const healers = starters.filter((s) => heals.has(s.id));
+    assert(healers.length === 1,
+      `${c.id} can heal but opens with ${healers.length} heals: ${starters.map((s) => s.id)}`);
+    assert(starters.length - healers.length === 1,
+      `${c.id} does not open with exactly one attack alongside its heal`);
   }
 });
 
@@ -372,22 +414,33 @@ check('skill ids are unique within a class', () => {
   }
 });
 
-check('resolveLoadout always yields four distinct unlocked skills', () => {
+check('resolveLoadout never slots a skill the class has not learned', () => {
   for (const c of CLASSES) {
-    for (const [ids, best] of [
-      [undefined, 0], [[], 0], [['nonsense'], 0],
-      [[c.skills[9].id], 0],                       // the last of the pool
-      [[c.skills[9].id], 99],
-      [[c.skills[0].id, c.skills[0].id], 0],       // duplicate
-      [c.skills.map((s) => s.id), 99],             // too many
-    ]) {
-      const out = resolveLoadout(c, ids, best);
-      assert(out.length === LOADOUT_SIZE, `${c.id} produced ${out.length} skills`);
-      assert(new Set(out.map((s) => s.id)).size === LOADOUT_SIZE, `${c.id} duplicated a slot`);
-      const open = new Set(unlockedSkills(c).map((s) => s.id));
-      for (const s of out) assert(open.has(s.id), `${c.id} slotted unknown skill ${s.id}`);
+    for (const level of [1, 4, 12, 34, 60]) {
+      const open = unlockedSkills(c, level);
+      const openIds = new Set(open.map((s) => s.id));
+      const expect = Math.min(LOADOUT_SIZE, open.length);
+      for (const ids of [
+        undefined, [], ['nonsense'],
+        [c.skills[c.skills.length - 1].id],          // the last of the pool
+        [c.skills[0].id, c.skills[0].id],            // a duplicate
+        c.skills.map((s) => s.id),                   // everything at once
+      ]) {
+        const out = resolveLoadout(c, ids, level);
+        assert(out.length === expect,
+          `${c.id} at level ${level} produced ${out.length} skills, expected ${expect}`);
+        assert(new Set(out.map((s) => s.id)).size === out.length, `${c.id} duplicated a slot`);
+        // This is the check that matters: a stored loadout from a higher-level
+        // save, or from a build with a different unlock order, must not be able
+        // to smuggle a locked skill into the arena.
+        for (const s of out) {
+          assert(openIds.has(s.id),
+            `${c.id} at level ${level} slotted ${s.id}, which unlocks later`);
+        }
+      }
     }
-    assert(resolveLoadout(c, defaultLoadout(c), 0).map((s) => s.id).join() === defaultLoadout(c).join(),
+    const d = defaultLoadout(c, 60);
+    assert(resolveLoadout(c, d, 60).map((s) => s.id).join() === d.join(),
       `${c.id} default loadout is not stable`);
   }
 });
@@ -942,13 +995,13 @@ check('all 500 quests are well formed and distinct enough to notice', async () =
 });
 
 check('quest rewards are a fixed rate on effort, with no outliers', async () => {
-  const { allQuests, DIAMONDS_PER_EFFORT } = await import('../src/data/quests.js');
+  const { allQuests, GOLD_PER_EFFORT } = await import('../src/data/quests.js');
   for (const q of allQuests()) {
     const rate = q.reward / q.effort;
     // The band exists because the payout is rounded to something legible and
     // floored for the smallest quests. Anything outside it is a template whose
     // effort figure does not describe the work.
-    assert(rate > DIAMONDS_PER_EFFORT * 0.55 && rate < DIAMONDS_PER_EFFORT * 1.9,
+    assert(rate > GOLD_PER_EFFORT * 0.55 && rate < GOLD_PER_EFFORT * 1.9,
       `${q.id} (${q.title}) pays ${q.reward} for ${q.effort.toFixed(1)} effort — rate ${rate.toFixed(2)}`);
   }
 });

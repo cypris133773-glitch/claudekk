@@ -6,16 +6,23 @@ import { Fiend, Totem } from './pets.js';
 import { TEAM } from './entity.js';
 
 /**
- * Rank multipliers. Every rank is +30% to what the skill does and 4% off its
- * cooldown, so a favoured skill genuinely outgrows the others instead of
+ * Rank multipliers. Every rank adds to what a skill does and takes a little
+ * off its cooldown, so a favoured skill outgrows the others instead of
  * everything creeping up together. Cooldown reduction is floored so a maxed
  * skill still has downtime.
  *
- * The number is high because ranks are now the *only* power a run gains.
- * Tuned against the balance harness: at +22% every class died on the wave-5
- * boss, because nothing else was growing to meet it.
+ * The damage figure has been down twice and up once. At +22% every class died
+ * on the wave-5 boss, because ranks were the only thing growing. At +30% the
+ * early game worked — and then compounded: a run to wave 40 hands out forty
+ * ranks, so four skills at ten ranks each were sitting at +300% before talents
+ * and the Forge were counted at all, which is why deep runs stopped being
+ * fights.
+ *
+ * +12% is the settlement. It is linear, so ten ranks is +120% rather than
+ * anything runaway, and the early curve is held up by the wave-before-a-boss
+ * bonus rank in game.js rather than by making each rank enormous.
  */
-export function rankDamageMult(rank) { return 1 + 0.30 * (rank || 0); }
+export function rankDamageMult(rank) { return 1 + 0.12 * (rank || 0); }
 export function rankCooldownMult(rank) { return Math.max(0.45, 1 - 0.04 * (rank || 0)); }
 
 /** Scale a skill's numbers by the player's current modifiers and its rank. */

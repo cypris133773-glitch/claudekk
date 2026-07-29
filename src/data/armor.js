@@ -1,6 +1,6 @@
 import { PRICE_MULTIPLIER } from './permanent.js';
 
-// The Armoury: fourteen equipment slots bought with diamonds in the main menu.
+// The Armoury: fourteen equipment slots bought with gold in the main menu.
 // Unlike the Forge, armour has no ceiling — every tier costs more and gives a
 // little more, so late-game Souls always have somewhere to go.
 

@@ -1814,3 +1814,52 @@ body.show-popout-btn #popout-btn { display: block; }
   text-shadow: 0 0 18px rgba(255, 210, 74, 0.55);
   margin-bottom: 6px;
 }
+
+/* Pause screen: tap a skill to read it. Mid-run is exactly when a player wants
+   to check what the skill they picked three waves ago actually does, and the
+   only place that text lived was a screen you cannot reach without abandoning
+   the run. */
+.kit-icons .kit-icon {
+  position: relative;
+  padding: 2px;
+  border: 1.5px solid transparent;
+  border-radius: 11px;
+  background: none;
+  cursor: pointer;
+  line-height: 0;
+}
+.kit-icons .kit-icon.on {
+  border-color: var(--accent);
+  background: rgba(110, 200, 255, 0.10);
+}
+.kit-detail {
+  margin-top: 8px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  min-height: 74px;
+}
+.kit-detail b { font-size: 13.5px; }
+.kit-detail .kit-rank {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--gold);
+  margin-left: 7px;
+}
+.kit-detail p { margin: 3px 0 4px; font-size: 12px; color: var(--dim); line-height: 1.4; }
+.kit-detail i { font-style: normal; font-size: 11px; color: rgba(255, 255, 255, 0.42); }
+@media (max-height: 520px) {
+  .kit-detail { min-height: 0; padding: 6px 9px; }
+  .kit-detail p { margin: 2px 0 3px; font-size: 11px; }
+}
+
+/* Thirteen skills instead of ten needs a wider grid on a short screen, or the
+   picker grows a third row and pushes the detail line and the Play button off
+   the bottom of a landscape phone. Seven across keeps it at two rows. */
+@media (max-height: 520px) {
+  .skill-picker { grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .skill-slot { padding: 4px 2px 3px; }
+  .slot-name { font-size: 8.5px; }
+  .skill-detail { min-height: 40px; padding: 6px 8px; margin-top: 6px; }
+}

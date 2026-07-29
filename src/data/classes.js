@@ -10,25 +10,90 @@
 // of four out of ten is the interesting decision — not the wait.
 
 export const RESOURCE = {
-  MANA: { key: 'mana', name: 'Mana', school: 'physical', color: '#4aa3ff', max: 100, regen: 7, startFull: true },
-  RAGE: { key: 'rage', name: 'Rage', school: 'physical', color: '#ff5a3c', max: 100, regen: -3, startFull: false, onHitGain: 9, onTakeGain: 6 },
-  ENERGY: { key: 'energy', name: 'Energy', school: 'physical', color: '#ffd24a', max: 100, regen: 18, startFull: true },
-  SOUL: { key: 'soul', name: 'Soul Shards', school: 'physical', color: '#a35cff', max: 100, regen: 5, startFull: true, onKillGain: 12 },
+  MANA: { key: 'mana', name: 'Mana', color: '#4aa3ff', max: 100, regen: 7, startFull: true },
+  RAGE: { key: 'rage', name: 'Rage', color: '#ff5a3c', max: 100, regen: -3, startFull: false, onHitGain: 9, onTakeGain: 6 },
+  ENERGY: { key: 'energy', name: 'Energy', color: '#ffd24a', max: 100, regen: 18, startFull: true },
+  SOUL: { key: 'soul', name: 'Soul Shards', color: '#a35cff', max: 100, regen: 5, startFull: true, onKillGain: 12 },
   // Hatred neither regenerates on its own nor starts full: it is built by
   // fighting and spent immediately, which is what makes the Demonslayer a
   // class you play forwards.
-  HATRED: { key: 'hatred', name: 'Hatred', school: 'physical', color: '#ff3ca0', max: 100, regen: 0, startFull: false, onHitGain: 7, onKillGain: 14 },
+  HATRED: { key: 'hatred', name: 'Hatred', color: '#ff3ca0', max: 100, regen: 0, startFull: false, onHitGain: 7, onKillGain: 14 },
   // Faith trickles rather than pours, and is topped up by both dealing and
   // taking hits. A Paladin who disengages runs dry, which is the point: the
   // armour exists to let you hold ground, not to let you walk away from it.
-  FAITH: { key: 'faith', name: 'Faith', school: 'physical', color: '#ffe9a8', max: 110, regen: 3, startFull: true, onHitGain: 5, onTakeGain: 8 },
+  FAITH: { key: 'faith', name: 'Faith', color: '#ffe9a8', max: 110, regen: 3, startFull: true, onHitGain: 5, onTakeGain: 8 },
   // Focus is the most generous pool in the game because the Hunter's limit is
   // never the resource — it is whether there is still room to back into.
-  FOCUS: { key: 'focus', name: 'Focus', school: 'physical', color: '#8ce06a', max: 100, regen: 22, startFull: true },
+  FOCUS: { key: 'focus', name: 'Focus', color: '#8ce06a', max: 100, regen: 22, startFull: true },
 };
 
 /** How many skills are equipped at once — four buttons, four keys. */
 export const LOADOUT_SIZE = 4;
+
+/**
+ * The level each skill in a class's unlock order becomes available.
+ *
+ * Two at level 1, then one at a time, spread across the whole climb to 60. The
+ * point is that a class is not finished at level 1: eleven of its thirteen
+ * skills are things you are still working toward, and each one arriving is a
+ * reason the next twenty levels matter. The last few are deliberately late —
+ * a capstone that arrives at level 30 is a capstone for the second half of
+ * nobody's career.
+ */
+export const SKILL_UNLOCK_LEVELS = [1, 1, 4, 8, 12, 17, 22, 28, 34, 41, 48, 54, 60];
+
+/**
+ * What each class opens with.
+ *
+ * Anything that can heal starts with one attack and one heal, so its opening
+ * two slots are the shape the class is actually about. Everything else starts
+ * with two attacks — usually one at range and one up close, because a class
+ * whose only two options are both melee cannot deal with the first ranged
+ * enemy it meets.
+ */
+const STARTERS = {
+  warrior: ['charge', 'whirlwind'],
+  mage: ['fireball', 'frostbolt'],
+  warlock: ['corruption', 'darkpact'],
+  shaman: ['chainlightning', 'ancestral'],
+  priest: ['smite', 'renew'],
+  rogue: ['shuriken', 'backstab'],
+  demonslayer: ['shear', 'glaivethrow'],
+  paladin: ['crusaderstrike', 'wordofglory'],
+  hunter: ['arcaneshot', 'mendpet'],
+};
+
+/**
+ * A class's skills in the order they unlock: its two starters, then the rest
+ * in the order they are declared. Computed once per class rather than on every
+ * menu redraw.
+ */
+const UNLOCK_ORDER = new Map();
+export function unlockOrder(cls) {
+  let order = UNLOCK_ORDER.get(cls.id);
+  if (order) return order;
+  const starters = STARTERS[cls.id] || [];
+  const byId = new Map(cls.skills.map((s) => [s.id, s]));
+  order = [];
+  for (const id of starters) {
+    const s = byId.get(id);
+    if (s && !order.includes(s)) order.push(s);
+  }
+  for (const s of cls.skills) if (!order.includes(s)) order.push(s);
+  UNLOCK_ORDER.set(cls.id, order);
+  return order;
+}
+
+/** The level at which a class's `n`-th skill unlocks. */
+export function unlockLevelForSlot(n) {
+  return SKILL_UNLOCK_LEVELS[Math.min(n, SKILL_UNLOCK_LEVELS.length - 1)] || 1;
+}
+
+/** The level a specific skill unlocks at, or 1 if it is not in the order. */
+export function unlockLevelOf(cls, skillId) {
+  const i = unlockOrder(cls).findIndex((s) => s.id === skillId);
+  return i < 0 ? 1 : unlockLevelForSlot(i);
+}
 
 export const CLASSES = [
   // -------------------------------------------------------------------------
@@ -94,6 +159,21 @@ export const CLASSES = [
         desc: 'Become a titan for 12s: +50% damage and 30% less damage taken.',
         power: { duration: 12, damageBonus: 0.50, damageTaken: 0.70, rooted: false },
       },
+      {
+        id: 'shockwave', name: 'Shockwave', kind: 'cone', cost: 26, cooldown: 10, icon: '〰',
+        desc: 'A cone of splitting earth that staggers everything it crosses.',
+        power: { damage: 58, range: 12, arc: 0.75, stun: 0.9, color: '#e0714f' },
+      },
+      {
+        id: 'berserk', name: 'Berserker Rage', kind: 'buff', cost: 22, cooldown: 20, icon: '😤',
+        desc: 'For 8s you take 20% more damage but deal 55% more.',
+        power: { duration: 8, damageBonus: 0.55, damageTaken: 1.20 },
+      },
+      {
+        id: 'earthsplitter', name: 'Earthsplitter', kind: 'aoe_target', cost: 34, cooldown: 12, icon: '⛰',
+        desc: 'Bring the ground up under a target area.',
+        power: { damage: 78, radius: 5.2, range: 16, delay: 0.5, knockback: 9, color: '#c9a06a' },
+      },
     ],
     talents: [
       {
@@ -132,12 +212,12 @@ export const CLASSES = [
       // your character better, this one makes a *build*.
       {
         name: 'Mastery', school: 'holy', color: '#ffd24a', nodes: [
-          { id: 'w_m1', name: 'Unstoppable Charge', skill: 'charge', desc: 'Charge hits 22% harder and reaches 12% further, per rank.', max: 4, effect: { skillDamage: 0.22, skillRadius: 0.12 } },
+          { id: 'w_m1', name: 'Unstoppable Charge', skill: 'charge', desc: 'Charge hits 22% harder and reaches 12% further, per rank.', max: 4, effect: { skillDamage: 0.08, skillRadius: 0.12 } },
           { id: 'w_m2', name: 'Endless Whirl', skill: 'whirlwind', desc: 'Whirlwind costs 12% less and its cooldown drops 8%, per rank.', max: 5, effect: { skillCost: 0.12, skillCooldown: 0.08 } },
-          { id: 'w_m3', name: 'Bloodletting', skill: 'rend', desc: 'Rend bleeds 25% harder and 1s longer, per rank.', max: 5, effect: { skillDamage: 0.25, skillDuration: 1 } },
-          { id: 'w_m4', name: 'Headsman', skill: 'execute', desc: 'Execute hits 20% harder and costs 10% less, per rank.', max: 4, effect: { skillDamage: 0.20, skillCost: 0.10 } },
+          { id: 'w_m3', name: 'Bloodletting', skill: 'rend', desc: 'Rend bleeds 25% harder and 1s longer, per rank.', max: 5, effect: { skillDamage: 0.09, skillDuration: 1 } },
+          { id: 'w_m4', name: 'Headsman', skill: 'execute', desc: 'Execute hits 20% harder and costs 10% less, per rank.', max: 4, effect: { skillDamage: 0.07, skillCost: 0.10 } },
           { id: 'w_m5', name: 'Iron Resolve', skill: 'shieldwall', desc: 'Shield Wall lasts 1.5s longer and its cooldown drops 9%, per rank.', max: 4, effect: { skillDuration: 1.5, skillCooldown: 0.09 } },
-          { id: 'w_m6', name: 'Thunderlord', skill: 'thunderclap', desc: 'Thunder Clap starts at rank 3, reaches 25% wider and hits 30% harder.', max: 1, effect: { startRank: 3, skillRadius: 0.25, skillDamage: 0.30 } },
+          { id: 'w_m6', name: 'Thunderlord', skill: 'thunderclap', desc: 'Thunder Clap starts at rank 3, reaches 25% wider and hits 30% harder.', max: 1, effect: { startRank: 3, skillRadius: 0.25, skillDamage: 0.10 } },
         ],
       },
     ],
@@ -206,6 +286,21 @@ export const CLASSES = [
         desc: 'Encase yourself for 4s, taking 90% less damage.',
         power: { duration: 4, damageTaken: 0.10, rooted: false },
       },
+      {
+        id: 'frostbolt', name: 'Frostbolt', kind: 'projectile', cost: 16, cooldown: 2, icon: '❄',
+        desc: 'A shard of ice that slows whatever it hits.',
+        power: { damage: 46, speed: 46, radius: 1.4, slow: 0.35, slowDuration: 3, color: '#8fe3ff', size: 0.24 },
+      },
+      {
+        id: 'manashield', name: 'Mana Shield', kind: 'buff', cost: 24, cooldown: 20, icon: '🔵',
+        desc: 'Absorb 140 damage for 10s.',
+        power: { duration: 10, absorb: 140 },
+      },
+      {
+        id: 'arcaneblast', name: 'Arcane Blast', kind: 'aoe_self', cost: 30, cooldown: 7, icon: '💠',
+        desc: 'A ring of raw arcane force that throws everything back.',
+        power: { radius: 6.4, damage: 54, knockback: 10, color: '#c98fff' },
+      },
     ],
     talents: [
       {
@@ -244,12 +339,12 @@ export const CLASSES = [
       // your character better, this one makes a *build*.
       {
         name: 'Mastery', school: 'holy', color: '#ffd24a', nodes: [
-          { id: 'm_m1', name: 'Improved Fireball', skill: 'fireball', desc: 'Fireball hits 18% harder and costs 10% less, per rank.', max: 6, effect: { skillDamage: 0.18, skillCost: 0.10 } },
+          { id: 'm_m1', name: 'Improved Fireball', skill: 'fireball', desc: 'Fireball hits 18% harder and costs 10% less, per rank.', max: 6, effect: { skillDamage: 0.06, skillCost: 0.10 } },
           { id: 'm_m2', name: 'Deep Freeze', skill: 'frostnova', desc: 'Frost Nova reaches 14% wider and its cooldown drops 8%, per rank.', max: 5, effect: { skillRadius: 0.14, skillCooldown: 0.08 } },
-          { id: 'm_m3', name: 'Cataclysm', skill: 'meteor', desc: 'Meteor hits 30% harder and lands 12% wider, per rank.', max: 5, effect: { skillDamage: 0.30, skillRadius: 0.12 } },
-          { id: 'm_m4', name: 'Perpetual Blizzard', skill: 'blizzard', desc: 'Blizzard lasts 1.2s longer and ticks 22% harder, per rank.', max: 4, effect: { skillDuration: 1.2, skillDamage: 0.22 } },
+          { id: 'm_m3', name: 'Cataclysm', skill: 'meteor', desc: 'Meteor hits 30% harder and lands 12% wider, per rank.', max: 5, effect: { skillDamage: 0.10, skillRadius: 0.12 } },
+          { id: 'm_m4', name: 'Perpetual Blizzard', skill: 'blizzard', desc: 'Blizzard lasts 1.2s longer and ticks 22% harder, per rank.', max: 4, effect: { skillDuration: 1.2, skillDamage: 0.08 } },
           { id: 'm_m5', name: 'Slipstream', skill: 'blink', desc: 'Blink\'s cooldown drops 12% and it costs 15% less, per rank.', max: 4, effect: { skillCooldown: 0.12, skillCost: 0.15 } },
-          { id: 'm_m6', name: 'Sun King', skill: 'pyroblast', desc: 'Pyroblast starts at rank 3 and hits 40% harder.', max: 1, effect: { startRank: 3, skillDamage: 0.40 } },
+          { id: 'm_m6', name: 'Sun King', skill: 'pyroblast', desc: 'Pyroblast starts at rank 3 and hits 40% harder.', max: 1, effect: { startRank: 3, skillDamage: 0.14 } },
         ],
       },
     ],
@@ -318,6 +413,21 @@ export const CLASSES = [
         desc: 'Step through the void, appearing 12 blocks away and briefly untouchable.',
         power: { distance: 12, speed: 90, damage: 0, phase: true, invuln: 0.6 },
       },
+      {
+        id: 'felflame', name: 'Fel Flame', kind: 'projectile', cost: 16, cooldown: 2.5, icon: '🟢',
+        desc: 'A bolt of fel fire that burns on contact.',
+        power: { damage: 40, speed: 42, radius: 1.6, burn: 12, color: '#9dff7a', size: 0.24 },
+      },
+      {
+        id: 'darkpact', name: 'Dark Pact', kind: 'heal', cost: 26, cooldown: 18, icon: '🖤',
+        desc: 'Tear health from the void: a large instant mend.',
+        power: { instant: 70, healPerSecond: 0, duration: 0 },
+      },
+      {
+        id: 'doomguard', name: 'Doomguard', kind: 'summon', cost: 36, cooldown: 30, icon: '👿',
+        desc: 'Call a greater fiend that fights until it falls.',
+        power: { hp: 320, damage: 38, duration: 40, maxPets: 1, speed: 6.2, color: '#a35cff' },
+      },
     ],
     talents: [
       {
@@ -356,12 +466,12 @@ export const CLASSES = [
       // your character better, this one makes a *build*.
       {
         name: 'Mastery', school: 'holy', color: '#ffd24a', nodes: [
-          { id: 'k_m1', name: 'Festering Corruption', skill: 'corruption', desc: 'Corruption ticks 26% harder and lasts 1s longer, per rank.', max: 6, effect: { skillDamage: 0.26, skillDuration: 1 } },
+          { id: 'k_m1', name: 'Festering Corruption', skill: 'corruption', desc: 'Corruption ticks 26% harder and lasts 1s longer, per rank.', max: 6, effect: { skillDamage: 0.09, skillDuration: 1 } },
           { id: 'k_m2', name: 'Endless Drain', skill: 'drainlife', desc: 'Drain Life costs 12% less and its cooldown drops 9%, per rank.', max: 5, effect: { skillCost: 0.12, skillCooldown: 0.09 } },
-          { id: 'k_m3', name: 'Greater Fiend', skill: 'summonimp', desc: 'Your Fiend is 25% stronger and arrives 10% sooner, per rank.', max: 5, effect: { skillDamage: 0.25, skillCooldown: 0.10 } },
-          { id: 'k_m4', name: 'Cataclysmic Rain', skill: 'rainoffire', desc: 'Rain of Fire covers 15% more ground and burns 24% harder, per rank.', max: 4, effect: { skillRadius: 0.15, skillDamage: 0.24 } },
-          { id: 'k_m5', name: 'Unstable Mind', skill: 'unstable', desc: 'Unstable Affliction hits 28% harder and costs 10% less, per rank.', max: 4, effect: { skillDamage: 0.28, skillCost: 0.10 } },
-          { id: 'k_m6', name: 'Lord of Chaos', skill: 'chaosbolt', desc: 'Chaos Bolt starts at rank 3 and hits 35% harder.', max: 1, effect: { startRank: 3, skillDamage: 0.35 } },
+          { id: 'k_m3', name: 'Greater Fiend', skill: 'summonimp', desc: 'Your Fiend is 25% stronger and arrives 10% sooner, per rank.', max: 5, effect: { skillDamage: 0.09, skillCooldown: 0.10 } },
+          { id: 'k_m4', name: 'Cataclysmic Rain', skill: 'rainoffire', desc: 'Rain of Fire covers 15% more ground and burns 24% harder, per rank.', max: 4, effect: { skillRadius: 0.15, skillDamage: 0.08 } },
+          { id: 'k_m5', name: 'Unstable Mind', skill: 'unstable', desc: 'Unstable Affliction hits 28% harder and costs 10% less, per rank.', max: 4, effect: { skillDamage: 0.10, skillCost: 0.10 } },
+          { id: 'k_m6', name: 'Lord of Chaos', skill: 'chaosbolt', desc: 'Chaos Bolt starts at rank 3 and hits 35% harder.', max: 1, effect: { startRank: 3, skillDamage: 0.12 } },
         ],
       },
     ],
@@ -430,6 +540,21 @@ export const CLASSES = [
         desc: 'Bind your spirit to the earth: heal 60 instantly and 12 hp/s for 8s.',
         power: { instant: 60, healPerSecond: 12, duration: 8 },
       },
+      {
+        id: 'frostshock', name: 'Frost Shock', kind: 'projectile', cost: 18, cooldown: 4, icon: '🧊',
+        desc: 'A bolt of ice that roots what it hits.',
+        power: { damage: 44, speed: 44, radius: 1.4, freeze: 1.6, color: '#8fe3ff', size: 0.24 },
+      },
+      {
+        id: 'ancestral', name: 'Ancestral Spirit', kind: 'heal', cost: 28, cooldown: 20, icon: '🌀',
+        desc: 'A surge of ancestral healing over 6s.',
+        power: { instant: 30, healPerSecond: 14, duration: 6 },
+      },
+      {
+        id: 'earthquake', name: 'Earthquake', kind: 'zone', cost: 34, cooldown: 14, icon: '🌋',
+        desc: 'The ground itself turns against them for 8s.',
+        power: { radius: 7.0, dps: 32, duration: 8, range: 18, delay: 0.4, slow: 0.3, color: '#c9a06a' },
+      },
     ],
     talents: [
       {
@@ -468,12 +593,12 @@ export const CLASSES = [
       // your character better, this one makes a *build*.
       {
         name: 'Mastery', school: 'holy', color: '#ffd24a', nodes: [
-          { id: 's_m1', name: 'Forked Lightning', skill: 'chainlightning', desc: 'Chain Lightning hits 20% harder and costs 10% less, per rank.', max: 6, effect: { skillDamage: 0.20, skillCost: 0.10 } },
-          { id: 's_m2', name: 'Molten Core', skill: 'lavaburst', desc: 'Lava Burst hits 24% harder and its cooldown drops 8%, per rank.', max: 5, effect: { skillDamage: 0.24, skillCooldown: 0.08 } },
-          { id: 's_m3', name: 'Enduring Totem', skill: 'searingtotem', desc: 'Your Searing Totem lasts 2s longer and hits 22% harder, per rank.', max: 5, effect: { skillDuration: 2, skillDamage: 0.22 } },
-          { id: 's_m4', name: 'Wellspring', skill: 'healingtotem', desc: 'Your Healing Totem lasts 2s longer and mends 20% more, per rank.', max: 4, effect: { skillDuration: 2, skillDamage: 0.20 } },
+          { id: 's_m1', name: 'Forked Lightning', skill: 'chainlightning', desc: 'Chain Lightning hits 20% harder and costs 10% less, per rank.', max: 6, effect: { skillDamage: 0.07, skillCost: 0.10 } },
+          { id: 's_m2', name: 'Molten Core', skill: 'lavaburst', desc: 'Lava Burst hits 24% harder and its cooldown drops 8%, per rank.', max: 5, effect: { skillDamage: 0.08, skillCooldown: 0.08 } },
+          { id: 's_m3', name: 'Enduring Totem', skill: 'searingtotem', desc: 'Your Searing Totem lasts 2s longer and hits 22% harder, per rank.', max: 5, effect: { skillDuration: 2, skillDamage: 0.08 } },
+          { id: 's_m4', name: 'Wellspring', skill: 'healingtotem', desc: 'Your Healing Totem lasts 2s longer and mends 20% more, per rank.', max: 4, effect: { skillDuration: 2, skillDamage: 0.07 } },
           { id: 's_m5', name: 'Rolling Thunder', skill: 'thunderstorm', desc: 'Thunderstorm reaches 15% wider and its cooldown drops 9%, per rank.', max: 4, effect: { skillRadius: 0.15, skillCooldown: 0.09 } },
-          { id: 's_m6', name: 'Elemental Fury', skill: 'elementalblast', desc: 'Elemental Blast starts at rank 3 and hits 35% harder.', max: 1, effect: { startRank: 3, skillDamage: 0.35 } },
+          { id: 's_m6', name: 'Elemental Fury', skill: 'elementalblast', desc: 'Elemental Blast starts at rank 3 and hits 35% harder.', max: 1, effect: { startRank: 3, skillDamage: 0.12 } },
         ],
       },
     ],
@@ -542,6 +667,21 @@ export const CLASSES = [
         desc: 'A scream that breaks the minds around you, rooting them for 3s.',
         power: { radius: 9, damage: 30, root: 3, color: '#9a7fd8' },
       },
+      {
+        id: 'shadowword', name: 'Shadow Word: Pain', kind: 'projectile', cost: 16, cooldown: 3, icon: '🕳',
+        desc: 'A word that rots for heavy damage over 10s.',
+        power: { damage: 24, speed: 46, radius: 1.2, dot: { dps: 19, duration: 10 }, color: '#a35cff', size: 0.22 },
+      },
+      {
+        id: 'pwfortitude', name: 'Fortitude', kind: 'buff', cost: 24, cooldown: 26, icon: '📗',
+        desc: 'For 14s you take 25% less damage and regenerate.',
+        power: { duration: 14, damageTaken: 0.75, regen: 5 },
+      },
+      {
+        id: 'lightwell', name: 'Lightwell', kind: 'zone', cost: 30, cooldown: 16, icon: '⛲',
+        desc: 'A font of light that mends you while you stand in it.',
+        power: { radius: 4.6, dps: -26, duration: 10, range: 12, delay: 0.2, heals: true, color: '#ffe9a8' },
+      },
     ],
     talents: [
       {
@@ -580,12 +720,12 @@ export const CLASSES = [
       // your character better, this one makes a *build*.
       {
         name: 'Mastery', school: 'holy', color: '#ffd24a', nodes: [
-          { id: 'p_m1', name: 'Focused Will', skill: 'smite', desc: 'Smite hits 18% harder and costs 12% less, per rank.', max: 6, effect: { skillDamage: 0.18, skillCost: 0.12 } },
-          { id: 'p_m2', name: 'Greater Shield', skill: 'shield', desc: 'Power Word: Shield absorbs 24% more and its cooldown drops 8%, per rank.', max: 5, effect: { skillDamage: 0.24, skillCooldown: 0.08 } },
-          { id: 'p_m3', name: 'Renewed Hope', skill: 'renew', desc: 'Renew mends 22% more and lasts 1.5s longer, per rank.', max: 5, effect: { skillDamage: 0.22, skillDuration: 1.5 } },
-          { id: 'p_m4', name: 'Divine Radiance', skill: 'holynova', desc: 'Holy Nova reaches 15% wider and hits 22% harder, per rank.', max: 4, effect: { skillRadius: 0.15, skillDamage: 0.22 } },
-          { id: 'p_m5', name: 'Twisted Thoughts', skill: 'mindblast', desc: 'Mind Blast hits 26% harder and its cooldown drops 10%, per rank.', max: 4, effect: { skillDamage: 0.26, skillCooldown: 0.10 } },
-          { id: 'p_m6', name: 'Voice of the Void', skill: 'mindsear', desc: 'Mind Sear starts at rank 3 and hits 35% harder.', max: 1, effect: { startRank: 3, skillDamage: 0.35 } },
+          { id: 'p_m1', name: 'Focused Will', skill: 'smite', desc: 'Smite hits 18% harder and costs 12% less, per rank.', max: 6, effect: { skillDamage: 0.06, skillCost: 0.12 } },
+          { id: 'p_m2', name: 'Greater Shield', skill: 'shield', desc: 'Power Word: Shield absorbs 24% more and its cooldown drops 8%, per rank.', max: 5, effect: { skillDamage: 0.08, skillCooldown: 0.08 } },
+          { id: 'p_m3', name: 'Renewed Hope', skill: 'renew', desc: 'Renew mends 22% more and lasts 1.5s longer, per rank.', max: 5, effect: { skillDamage: 0.08, skillDuration: 1.5 } },
+          { id: 'p_m4', name: 'Divine Radiance', skill: 'holynova', desc: 'Holy Nova reaches 15% wider and hits 22% harder, per rank.', max: 4, effect: { skillRadius: 0.15, skillDamage: 0.08 } },
+          { id: 'p_m5', name: 'Twisted Thoughts', skill: 'mindblast', desc: 'Mind Blast hits 26% harder and its cooldown drops 10%, per rank.', max: 4, effect: { skillDamage: 0.09, skillCooldown: 0.10 } },
+          { id: 'p_m6', name: 'Voice of the Void', skill: 'mindsear', desc: 'Mind Sear starts at rank 3 and hits 35% harder.', max: 1, effect: { startRank: 3, skillDamage: 0.12 } },
         ],
       },
     ],
@@ -654,6 +794,21 @@ export const CLASSES = [
         desc: 'Wrap yourself in shadow for 6s: 85% dodge and 25% more speed.',
         power: { duration: 6, dodge: 0.85, moveSpeed: 0.25 },
       },
+      {
+        id: 'backstab', name: 'Backstab', kind: 'strike', cost: 18, cooldown: 3, icon: '🔪',
+        desc: 'A quick blade that crits far more often than it should.',
+        power: { damage: 48, range: 3.2, arc: 0.7, forceCrit: true },
+      },
+      {
+        id: 'adrenaline', name: 'Adrenaline Rush', kind: 'buff', cost: 26, cooldown: 26, icon: '💉',
+        desc: 'For 10s your energy returns twice as fast.',
+        power: { duration: 10, resourceRegen: 22, attackSpeedBonus: 0.30 },
+      },
+      {
+        id: 'poisonbomb', name: 'Poison Bomb', kind: 'aoe_target', cost: 28, cooldown: 10, icon: '☣',
+        desc: 'A flask that shatters into a cloud of venom.',
+        power: { damage: 44, radius: 5.0, range: 16, delay: 0.4, burn: 16, color: '#8ce06a' },
+      },
     ],
     talents: [
       {
@@ -692,12 +847,12 @@ export const CLASSES = [
       // your character better, this one makes a *build*.
       {
         name: 'Mastery', school: 'holy', color: '#ffd24a', nodes: [
-          { id: 'r_m1', name: 'Perfected Ambush', skill: 'ambush', desc: 'Ambush hits 22% harder and costs 12% less, per rank.', max: 6, effect: { skillDamage: 0.22, skillCost: 0.12 } },
-          { id: 'r_m2', name: 'Whirling Steel', skill: 'fanofknives', desc: 'Fan of Knives reaches 14% wider and hits 20% harder, per rank.', max: 5, effect: { skillRadius: 0.14, skillDamage: 0.20 } },
-          { id: 'r_m3', name: 'Deeper Cuts', skill: 'eviscerate', desc: 'Eviscerate hits 26% harder and its cooldown drops 9%, per rank.', max: 5, effect: { skillDamage: 0.26, skillCooldown: 0.09 } },
+          { id: 'r_m1', name: 'Perfected Ambush', skill: 'ambush', desc: 'Ambush hits 22% harder and costs 12% less, per rank.', max: 6, effect: { skillDamage: 0.08, skillCost: 0.12 } },
+          { id: 'r_m2', name: 'Whirling Steel', skill: 'fanofknives', desc: 'Fan of Knives reaches 14% wider and hits 20% harder, per rank.', max: 5, effect: { skillRadius: 0.14, skillDamage: 0.07 } },
+          { id: 'r_m3', name: 'Deeper Cuts', skill: 'eviscerate', desc: 'Eviscerate hits 26% harder and its cooldown drops 9%, per rank.', max: 5, effect: { skillDamage: 0.09, skillCooldown: 0.09 } },
           { id: 'r_m4', name: 'Lingering Smoke', skill: 'smokebomb', desc: 'Smoke Bomb lasts 1.5s longer and covers 12% more ground, per rank.', max: 4, effect: { skillDuration: 1.5, skillRadius: 0.12 } },
           { id: 'r_m5', name: 'Elusive', skill: 'evasion', desc: 'Evasion lasts 1.5s longer and its cooldown drops 10%, per rank.', max: 4, effect: { skillDuration: 1.5, skillCooldown: 0.10 } },
-          { id: 'r_m6', name: 'Bloodbath', skill: 'crimsontempest', desc: 'Crimson Tempest starts at rank 3 and hits 35% harder.', max: 1, effect: { startRank: 3, skillDamage: 0.35 } },
+          { id: 'r_m6', name: 'Bloodbath', skill: 'crimsontempest', desc: 'Crimson Tempest starts at rank 3 and hits 35% harder.', max: 1, effect: { startRank: 3, skillDamage: 0.12 } },
         ],
       },
     ],
@@ -765,6 +920,21 @@ export const CLASSES = [
         desc: 'Shroud yourself for 8s: 60% dodge and 20% less damage taken.',
         power: { duration: 8, dodge: 0.60, damageTaken: 0.80 },
       },
+      {
+        id: 'shear', name: 'Shear', kind: 'strike', cost: 14, cooldown: 2.5, icon: '🗡',
+        desc: 'A fast cut that feeds on Hatred and returns it.',
+        power: { damage: 42, range: 3.4, arc: 0.8, lifesteal: 0.15 },
+      },
+      {
+        id: 'blur', name: 'Blur', kind: 'buff', cost: 22, cooldown: 20, icon: '🌫',
+        desc: 'For 8s you dodge 35% of everything and move faster.',
+        power: { duration: 8, dodge: 0.35, moveSpeed: 0.22 },
+      },
+      {
+        id: 'annihilation', name: 'Annihilation', kind: 'aoe_self', cost: 34, cooldown: 11, icon: '💢',
+        desc: 'Detonate the fel around you in a wide, brutal ring.',
+        power: { radius: 6.8, damage: 66, knockback: 8, lifesteal: 0.2, color: '#9dff7a' },
+      },
     ],
     talents: [
       {
@@ -803,11 +973,11 @@ export const CLASSES = [
       // your character better, this one makes a *build*.
       {
         name: 'Mastery', school: 'holy', color: '#ffd24a', nodes: [
-          { id: 'd_m1', name: 'Momentum', skill: 'felrush', desc: 'Fel Rush hits 22% harder and its cooldown drops 10%, per rank.', max: 6, effect: { skillDamage: 0.22, skillCooldown: 0.10 } },
-          { id: 'd_m2', name: 'Burning Aura', skill: 'immolation', desc: 'Immolation Aura reaches 15% wider and burns 22% harder, per rank.', max: 5, effect: { skillRadius: 0.15, skillDamage: 0.22 } },
-          { id: 'd_m3', name: 'Voracious Cleave', skill: 'soulcleave', desc: 'Soul Cleave hits 24% harder and costs 12% less, per rank.', max: 5, effect: { skillDamage: 0.24, skillCost: 0.12 } },
-          { id: 'd_m4', name: 'Burning Sigil', skill: 'sigilofflame', desc: 'Sigil of Flame lasts 1.5s longer and burns 22% harder, per rank.', max: 4, effect: { skillDuration: 1.5, skillDamage: 0.22 } },
-          { id: 'd_m5', name: 'Blind Fury', skill: 'eyebeam', desc: 'Eye Beam hits 26% harder and its cooldown drops 9%, per rank.', max: 4, effect: { skillDamage: 0.26, skillCooldown: 0.09 } },
+          { id: 'd_m1', name: 'Momentum', skill: 'felrush', desc: 'Fel Rush hits 22% harder and its cooldown drops 10%, per rank.', max: 6, effect: { skillDamage: 0.08, skillCooldown: 0.10 } },
+          { id: 'd_m2', name: 'Burning Aura', skill: 'immolation', desc: 'Immolation Aura reaches 15% wider and burns 22% harder, per rank.', max: 5, effect: { skillRadius: 0.15, skillDamage: 0.08 } },
+          { id: 'd_m3', name: 'Voracious Cleave', skill: 'soulcleave', desc: 'Soul Cleave hits 24% harder and costs 12% less, per rank.', max: 5, effect: { skillDamage: 0.08, skillCost: 0.12 } },
+          { id: 'd_m4', name: 'Burning Sigil', skill: 'sigilofflame', desc: 'Sigil of Flame lasts 1.5s longer and burns 22% harder, per rank.', max: 4, effect: { skillDuration: 1.5, skillDamage: 0.08 } },
+          { id: 'd_m5', name: 'Blind Fury', skill: 'eyebeam', desc: 'Eye Beam hits 26% harder and its cooldown drops 9%, per rank.', max: 4, effect: { skillDamage: 0.09, skillCooldown: 0.09 } },
           { id: 'd_m6', name: 'Demon Within', skill: 'metamorphosis', desc: 'Metamorphosis starts at rank 3 and lasts 4s longer.', max: 1, effect: { startRank: 3, skillDuration: 4 } },
         ],
       },
@@ -880,6 +1050,21 @@ export const CLASSES = [
         desc: 'For 12s: +45% damage, +25% attack speed and constant self-healing.',
         power: { duration: 12, damageBonus: 0.45, attackSpeedBonus: 0.25, regen: 6 },
       },
+      {
+        id: 'holystrike', name: 'Holy Strike', kind: 'strike', cost: 14, cooldown: 2.5, icon: '✝',
+        desc: 'A swift blow of light that always returns Faith.',
+        power: { damage: 40, range: 3.4, arc: 0.85, lifesteal: 0.15 },
+      },
+      {
+        id: 'sacredshield', name: 'Sacred Shield', kind: 'buff', cost: 24, cooldown: 20, icon: '🔰',
+        desc: 'Absorb 160 damage for 12s.',
+        power: { duration: 12, absorb: 160 },
+      },
+      {
+        id: 'wordofglory', name: 'Word of Glory', kind: 'heal', cost: 26, cooldown: 16, icon: '📖',
+        desc: 'A word of light that mends you over 5s.',
+        power: { instant: 40, healPerSecond: 12, duration: 5 },
+      },
     ],
     talents: [
       {
@@ -918,12 +1103,12 @@ export const CLASSES = [
       // your character better, this one makes a *build*.
       {
         name: 'Mastery', school: 'holy', color: '#ffd24a', nodes: [
-          { id: 'l_m1', name: 'Zealous Strike', skill: 'crusaderstrike', desc: 'Crusader Strike hits 20% harder and costs 12% less, per rank.', max: 6, effect: { skillDamage: 0.20, skillCost: 0.12 } },
-          { id: 'l_m2', name: 'Hallowed Ground', skill: 'consecration', desc: 'Consecration lasts 1.5s longer and burns 22% harder, per rank.', max: 5, effect: { skillDuration: 1.5, skillDamage: 0.22 } },
+          { id: 'l_m1', name: 'Zealous Strike', skill: 'crusaderstrike', desc: 'Crusader Strike hits 20% harder and costs 12% less, per rank.', max: 6, effect: { skillDamage: 0.07, skillCost: 0.12 } },
+          { id: 'l_m2', name: 'Hallowed Ground', skill: 'consecration', desc: 'Consecration lasts 1.5s longer and burns 22% harder, per rank.', max: 5, effect: { skillDuration: 1.5, skillDamage: 0.08 } },
           { id: 'l_m3', name: 'Unbreakable', skill: 'divineshield', desc: 'Divine Shield lasts 1s longer and its cooldown drops 10%, per rank.', max: 5, effect: { skillDuration: 1, skillCooldown: 0.10 } },
-          { id: 'l_m4', name: 'Swift Verdict', skill: 'judgement', desc: 'Judgement hits 24% harder and its cooldown drops 9%, per rank.', max: 4, effect: { skillDamage: 0.24, skillCooldown: 0.09 } },
-          { id: 'l_m5', name: 'Wrathful', skill: 'hammerofwrath', desc: 'Hammer of Wrath lands 14% wider and hits 24% harder, per rank.', max: 4, effect: { skillRadius: 0.14, skillDamage: 0.24 } },
-          { id: 'l_m6', name: 'Eternal Flame', skill: 'divinestorm', desc: 'Divine Storm starts at rank 3 and hits 35% harder.', max: 1, effect: { startRank: 3, skillDamage: 0.35 } },
+          { id: 'l_m4', name: 'Swift Verdict', skill: 'judgement', desc: 'Judgement hits 24% harder and its cooldown drops 9%, per rank.', max: 4, effect: { skillDamage: 0.08, skillCooldown: 0.09 } },
+          { id: 'l_m5', name: 'Wrathful', skill: 'hammerofwrath', desc: 'Hammer of Wrath lands 14% wider and hits 24% harder, per rank.', max: 4, effect: { skillRadius: 0.14, skillDamage: 0.08 } },
+          { id: 'l_m6', name: 'Eternal Flame', skill: 'divinestorm', desc: 'Divine Storm starts at rank 3 and hits 35% harder.', max: 1, effect: { startRank: 3, skillDamage: 0.12 } },
         ],
       },
     ],
@@ -995,6 +1180,21 @@ export const CLASSES = [
         desc: 'A single aimed shot. Triple damage against anything below 35% health.',
         power: { damage: 90, speed: 70, radius: 1.6, executeThreshold: 0.35, executeMult: 3, color: '#ff9a7a', size: 0.26 },
       },
+      {
+        id: 'steadyshot', name: 'Steady Shot', kind: 'projectile', cost: 10, cooldown: 1.8, icon: '🎯',
+        desc: 'A patient shot that hits harder than it costs.',
+        power: { damage: 50, speed: 60, radius: 1.2, color: '#cdf5a8', size: 0.2 },
+      },
+      {
+        id: 'mendpet', name: 'Mend Pet', kind: 'heal', cost: 22, cooldown: 18, icon: '💚',
+        desc: 'Patch yourself and your beast back together.',
+        power: { instant: 45, healPerSecond: 10, duration: 5 },
+      },
+      {
+        id: 'rapidfire', name: 'Rapid Fire', kind: 'buff', cost: 28, cooldown: 26, icon: '🏹',
+        desc: 'For 10s you shoot 70% faster.',
+        power: { duration: 10, attackSpeedBonus: 0.70 },
+      },
     ],
     talents: [
       {
@@ -1031,12 +1231,12 @@ export const CLASSES = [
       // that skill is one of your four.
       {
         name: 'Mastery', school: 'holy', color: '#ffd24a', nodes: [
-          { id: 'h_y1', name: 'Improved Arcane Shot', skill: 'arcaneshot', desc: 'Arcane Shot hits 18% harder and costs 12% less, per rank.', max: 6, effect: { skillDamage: 0.18, skillCost: 0.12 } },
-          { id: 'h_y2', name: 'Barrage', skill: 'multishot', desc: 'Multi-Shot hits 22% harder and its cooldown drops 9%, per rank.', max: 5, effect: { skillDamage: 0.22, skillCooldown: 0.09 } },
-          { id: 'h_y3', name: 'Lingering Venom', skill: 'serpentsting', desc: "Serpent's Sting poisons 26% harder and 1s longer, per rank.", max: 5, effect: { skillDamage: 0.26, skillDuration: 1 } },
+          { id: 'h_y1', name: 'Improved Arcane Shot', skill: 'arcaneshot', desc: 'Arcane Shot hits 18% harder and costs 12% less, per rank.', max: 6, effect: { skillDamage: 0.06, skillCost: 0.12 } },
+          { id: 'h_y2', name: 'Barrage', skill: 'multishot', desc: 'Multi-Shot hits 22% harder and its cooldown drops 9%, per rank.', max: 5, effect: { skillDamage: 0.08, skillCooldown: 0.09 } },
+          { id: 'h_y3', name: 'Lingering Venom', skill: 'serpentsting', desc: "Serpent's Sting poisons 26% harder and 1s longer, per rank.", max: 5, effect: { skillDamage: 0.09, skillDuration: 1 } },
           { id: 'h_y4', name: 'Endless Volley', skill: 'volley', desc: 'Volley lasts 1.2s longer and covers 12% more ground, per rank.', max: 4, effect: { skillDuration: 1.2, skillRadius: 0.12 } },
-          { id: 'h_y5', name: 'Bigger Bombs', skill: 'explosiveshot', desc: 'Explosive Shot lands 15% wider and hits 24% harder, per rank.', max: 4, effect: { skillRadius: 0.15, skillDamage: 0.24 } },
-          { id: 'h_y6', name: 'Executioner', skill: 'killshot', desc: 'Kill Shot starts at rank 3 and hits 40% harder.', max: 1, effect: { startRank: 3, skillDamage: 0.40 } },
+          { id: 'h_y5', name: 'Bigger Bombs', skill: 'explosiveshot', desc: 'Explosive Shot lands 15% wider and hits 24% harder, per rank.', max: 4, effect: { skillRadius: 0.15, skillDamage: 0.08 } },
+          { id: 'h_y6', name: 'Executioner', skill: 'killshot', desc: 'Kill Shot starts at rank 3 and hits 40% harder.', max: 1, effect: { startRank: 3, skillDamage: 0.14 } },
         ],
       },
     ],
@@ -1063,14 +1263,22 @@ export function totalTalentRanks(cls) {
 export const SKILL_BY_ID = {};
 for (const cls of CLASSES) for (const s of cls.skills) SKILL_BY_ID[s.id] = s;
 
-/** Every skill a class can slot. Nothing is gated. */
-export function unlockedSkills(cls) {
-  return cls.skills;
+/**
+ * The skills a class has actually learned at a given level.
+ *
+ * Defaults to the cap so anything that does not know or care about levels —
+ * the balance harness, a test fixture — still sees the whole pool.
+ */
+export function unlockedSkills(cls, level = 60) {
+  const order = unlockOrder(cls);
+  let n = 0;
+  while (n < order.length && unlockLevelForSlot(n) <= level) n++;
+  return order.slice(0, Math.max(1, n));
 }
 
-/** The four skills every class starts with. */
-export function defaultLoadout(cls) {
-  return cls.skills.slice(0, LOADOUT_SIZE).map((s) => s.id);
+/** The skills a class starts a fresh run with at that level. */
+export function defaultLoadout(cls, level = 60) {
+  return unlockedSkills(cls, level).slice(0, LOADOUT_SIZE).map((s) => s.id);
 }
 
 /**
@@ -1078,9 +1286,13 @@ export function defaultLoadout(cls) {
  * Anything unknown or duplicated is replaced from the default kit, so a save
  * written by an older build can never produce an empty skill slot.
  */
-export function resolveLoadout(cls, ids) {
-  const allowed = new Set(cls.skills.map((s) => s.id));
-  const byId = Object.fromEntries(cls.skills.map((s) => [s.id, s]));
+export function resolveLoadout(cls, ids, level = 60) {
+  // Only what has been learned. A stored loadout from a save where the class
+  // was higher level — or from a build with a different unlock order — must
+  // not smuggle a locked skill into the arena.
+  const pool = unlockedSkills(cls, level);
+  const allowed = new Set(pool.map((s) => s.id));
+  const byId = Object.fromEntries(pool.map((s) => [s.id, s]));
   const out = [];
   const used = new Set();
   for (const id of ids || []) {
@@ -1089,7 +1301,9 @@ export function resolveLoadout(cls, ids) {
     used.add(id);
     out.push(byId[id]);
   }
-  for (const s of cls.skills) {
+  // Fill any empty slots from what is left. Below level 4 there are only two
+  // skills to fill four slots, and that is correct — the bar grows with you.
+  for (const s of pool) {
     if (out.length >= LOADOUT_SIZE) break;
     if (used.has(s.id)) continue;
     used.add(s.id);

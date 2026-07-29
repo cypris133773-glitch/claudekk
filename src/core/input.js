@@ -11,7 +11,10 @@ export const isTouchDevice = () =>
  * long stretches; the skill buttons are taps and would only make the view
  * lurch if a stray drag counted.
  */
-const DRAG_THROUGH = new Set(['attack', 'sprint']);
+// Buttons a finger may start on and still keep driving the look. Only jump is
+// left in the cluster, and jumping mid-drag is exactly what a player expects
+// to be able to do.
+const DRAG_THROUGH = new Set(['jump']);
 
 export class Input {
   constructor(canvas, settings) {
@@ -300,10 +303,11 @@ export class Input {
       // A quick stab on the look side that never turned into a drag is a tap:
       // treat it as an attack, so the right thumb can aim and swing without
       // travelling to the button. Any real look drag disqualifies it.
+      // A stab that never became a drag is a swing. Kept even though holding
+      // already attacks: with hold-to-attack turned off in settings, this tap
+      // is the only way to swing at all.
       const held = performance.now() - (this.touch.lookStart || 0);
-      if (this.settings.tapAttack !== false && this.touch.lookMoved < 14 && held < 260) {
-        this.tapAttack = true;
-      }
+      if (this.touch.lookMoved < 14 && held < 260) this.tapAttack = true;
       this.touch.lookId = null;
     }
   }
@@ -443,14 +447,22 @@ export class Input {
 
     s.jump = this.keys.has('Space') || this.heldButtons.has('jump')
       || this.buttonHits.has('jump') || this.padJump;
-    s.sprint = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') || s.sprint
-      || this.heldButtons.has('sprint') || this.padSprint;
-    // "Hold to attack" gates only the held sources: a press always swings.
-    // This used to be applied in the frame loop *after* the simulation had
-    // already consumed the state, so the setting did nothing at all.
+    // Sprint has no button any more. On a keyboard it is still Shift; on touch
+    // it is the joystick pushed to the rim, which is the gesture a player
+    // already makes when they want to move faster and costs no screen space.
+    const stickHard = Math.hypot(s.moveX, s.moveY) > 0.92;
+    s.sprint = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')
+      || this.padSprint || (this.touch.moveId !== null && stickHard);
+
+    // Attacking is a touch on the view, not a button.
+    //
+    // A quick stab is one swing; holding the look finger down keeps swinging,
+    // which is what lets you aim and attack with the same thumb — the thing
+    // the old button could never do, because it was somewhere else.
     const hold = this.settings.autoAttack !== false;
-    s.attack = this.buttonHits.has('attack') || this.tapAttack || this.padAttack
-      || (hold && (this.mouseDown || this.heldButtons.has('attack')));
+    const lookHeld = this.touch.lookId !== null;
+    s.attack = this.tapAttack || this.padAttack
+      || (hold && (this.mouseDown || lookHeld));
     this.tapAttack = false;
 
     for (let i = 0; i < 4; i++) {

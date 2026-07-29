@@ -1,4 +1,4 @@
-// The Forge: permanent, account-wide upgrades bought with Souls in the main
+// The Forge: permanent, account-wide upgrades bought with gold in the main
 // menu. Every level is kept in save data and applies to every future run.
 
 /**
@@ -21,7 +21,7 @@ export const PERMANENT = [
   { id: 'p_res', name: 'Reservoir', icon: '🫙', desc: '+4 max resource per level.', max: 100, baseCost: 42, growth: 1.075, effect: { resourceMax: 4 } },
   { id: 'p_regen', name: 'Flow', icon: '💧', desc: '+0.8 resource regen per level.', max: 100, baseCost: 65, growth: 1.08, effect: { resourceRegen: 0.8 } },
   { id: 'p_speed', name: 'Swiftness', icon: '👟', desc: '+0.8% move speed per level.', max: 100, baseCost: 58, growth: 1.08, effect: { moveSpeed: 0.008 } },
-  { id: 'p_souls', name: 'Soul Harvest', icon: '💠', desc: '+4% souls earned per level.', max: 100, baseCost: 80, growth: 1.09, effect: { soulGain: 0.04 } },
+  { id: 'p_souls', name: 'Prospector', icon: '🪙', desc: '+4% gold earned per level.', max: 100, baseCost: 80, growth: 1.09, effect: { soulGain: 0.04 } },
   { id: 'p_luck', name: 'Fortune', icon: '🍀', desc: '+1% chance of a bonus skill rank per level.', max: 100, baseCost: 90, growth: 1.09, effect: { luck: 0.01 } },
   { id: 'p_thorns', name: 'Bramble', icon: '🌵', desc: 'Reflect 1.6% of damage taken per level.', max: 100, baseCost: 72, growth: 1.085, effect: { thorns: 0.016 } },
   { id: 'p_boss', name: 'Titanbane', icon: '🗿', desc: '+2.4% damage to bosses per level.', max: 100, baseCost: 85, growth: 1.088, effect: { bossDamage: 0.024 } },
@@ -45,10 +45,10 @@ export const PERMANENT = [
 export const PERMANENT_BY_ID = Object.fromEntries(PERMANENT.map((p) => [p.id, p]));
 
 /**
- * Global price multiplier on everything bought with diamonds. Kept here, as
+ * Global price multiplier on everything bought with gold. Kept here, as
  * one number both shops import, so a price change is a single edit that cannot
  * miss a shop — and so a test can assert it is actually applied rather than
- * declared. Raising it makes every diamond a run earns worth more, which is
+ * declared. Raising it makes every gold coin a run earns worth more, which is
  * what stretches the grind rather than shortening the game.
  */
 export const PRICE_MULTIPLIER = 1.5;

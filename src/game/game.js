@@ -693,7 +693,7 @@ export class Game {
       this.hitstop = Math.max(this.hitstop, 0.28);
       this.impactFlash('#ffd24a', 0.85);
       this.audio.play('explode');
-      this.notify('BOSS SLAIN  +' + Math.round(souls) + ' 💠', 2.6);
+      this.notify('BOSS SLAIN  +' + Math.round(souls) + ' 🪙', 2.6);
     }
 
     // Chain Reaction / Living Bomb
@@ -1129,7 +1129,7 @@ export class Game {
       this.awardXp(xpForWave(this.wave));
       const bonus = Math.round(waveClearBonus(this.wave) * (1 + affixSoulBonus(this.affixes)));
       this.soulsEarned += bonus * (1 + (this.player.mods.soulGain || 0));
-      this.notify(`Wave ${this.wave} cleared  +${bonus} 💠`, 2.2);
+      this.notify(`Wave ${this.wave} cleared  +${bonus} 🪙`, 2.2);
       this.player.heal(this.player.maxHp * 0.25);
       this.rerollsLeft = this.permMods.rerolls || 0;
       this.player.cheatDeathUsed = false;

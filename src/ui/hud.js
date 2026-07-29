@@ -408,7 +408,7 @@ export class Hud {
     this.font(15);
     c.textAlign = 'right';
     c.fillStyle = '#c9a6ff';
-    c.fillText('💠 ' + Math.round(g.soulsEarned), rightEdge, top);
+    c.fillText('🪙 ' + Math.round(g.soulsEarned), rightEdge, top);
     this.font(13);
     c.fillStyle = 'rgba(255,255,255,0.6)';
     c.fillText(`${g.player.kills} kills`, rightEdge, top + 22);
@@ -469,7 +469,7 @@ export class Hud {
     c.fillText(`${g.combo}`, x, y);
     this.font(12);
     c.fillStyle = 'rgba(255,255,255,0.8)';
-    c.fillText(`×${g.comboMult.toFixed(2)} souls`, x, y + 20 + heat * 10);
+    c.fillText(`×${g.comboMult.toFixed(2)} gold`, x, y + 20 + heat * 10);
     c.shadowBlur = 0;
 
     // Time left, as a bar that drains.
@@ -924,15 +924,21 @@ export class Hud {
     }
 
     if (touch) {
-      // Attack/jump/sprint stay in the thumb corner, outboard of the skill row
-      // and above the home indicator; mirrored for left-handed play.
+      // Jump is the only action button left in the thumb corner.
+      //
+      // Attacking is a tap on the view instead. The attack button was the
+      // largest control on the screen and it did the one thing the game
+      // already does when you touch anything that is not a control — so it
+      // spent its space competing with the look drag it sat next to.
+      //
+      // Sprint went for the same reason from the other direction: it was on
+      // by default, nobody turned it off mid-fight, and a button nobody
+      // presses is a button in the way of the ones they do.
       const dir = lefty ? 1 : -1;                     // toward the screen edge
       const edge = lefty ? s.l : this.w - s.r;
       const ax = edge + dir * (18 + ar);
       const ay = this.h - s.b - 22 - ar;
-      this.touchButton(ax, ay, ar, '⚔', 'attack', rects, '#ff8a5c');
-      this.touchButton(ax, ay - ar - 44, 26, '⤒', 'jump', rects, '#8fd8ff');
-      this.touchButton(ax + dir * (ar + 26), ay - ar - 30, 23, '»', 'sprint', rects, '#c9ffb0');
+      this.touchButton(ax, ay, ar, '⤒', 'jump', rects, '#8fd8ff');
       // Pause, top centre. On a phone there was no way to reach the menu at
       // all — Esc and the gamepad Start button are the only other routes, and
       // neither exists on a touchscreen. Top centre is the one area no thumb

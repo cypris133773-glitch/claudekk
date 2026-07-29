@@ -14,7 +14,7 @@ import {
   ARMOR_SLOTS, armorCost, armorTierName, ARMOR_MAX_TIER, armorRating,
   armorSets, nextArmorSet, qualityFor,
 } from '../data/armor.js';
-import { skillCost } from '../game/skills.js';
+import { skillCost, skillCooldown } from '../game/skills.js';
 import { storage } from '../core/save.js';
 import { DIFFICULTIES } from '../data/difficulty.js';
 import { skillIconElement, iconElement, schoolFor, SCHOOLS } from './icons.js';
@@ -170,8 +170,8 @@ export class Menus {
   soulsBadge() {
     // Icon and number only. Spelling the currency out here pushed the back bar
     // onto two lines on a 320px phone, which cost more than the word was worth
-    // — every price in the game already carries the same 💠.
-    return el('div', 'souls-badge', `<span>💠</span> ${this.profile.souls.toLocaleString()}`);
+    // — every price in the game already carries the same 🪙.
+    return el('div', 'souls-badge', `<span>🪙</span> ${this.profile.souls.toLocaleString()}`);
   }
 
   /**
@@ -338,7 +338,7 @@ export class Menus {
       b.style.setProperty('--accent', d.accent);
       b.appendChild(iconElement(d.icon, 26, { ready: d.id === current }));
       b.appendChild(el('span', 'diff-name', d.name));
-      b.appendChild(el('span', 'diff-souls', `×${d.souls} 💠`));
+      b.appendChild(el('span', 'diff-souls', `×${d.souls} 🪙`));
       b.title = d.blurb;
       this.click(b, () => {
         this.profile.settings.difficulty = d.id;
@@ -459,7 +459,7 @@ export class Menus {
     const quests = this.profile.activeQuests();
     const ready = quests.filter((q) => q.done).length;
     const p = this.panel('Quests',
-      `${st.completed} of ${QUEST_COUNT} complete · ${st.earned.toLocaleString()} diamonds earned`);
+      `${st.completed} of ${QUEST_COUNT} complete · ${st.earned.toLocaleString()} gold earned`);
 
     const list = el('div', 'quest-list');
     for (const q of quests) {
@@ -469,7 +469,7 @@ export class Menus {
       const body = el('div', 'quest-body');
       const head = el('div', 'quest-head');
       head.appendChild(el('b', null, q.title));
-      head.appendChild(el('span', 'quest-reward', `💠 ${q.reward.toLocaleString()}`));
+      head.appendChild(el('span', 'quest-reward', `🪙 ${q.reward.toLocaleString()}`));
       body.appendChild(head);
       body.appendChild(el('p', 'quest-blurb', q.blurb));
 
@@ -498,7 +498,7 @@ export class Menus {
         // sitting in a slot while your best is 20 blocks a third of the board
         // for as long as it takes to get there.
         const cost = this.profile.rerollCost(q);
-        const skip = el('button', 'ghost-btn small', `Skip · 💠${cost.toLocaleString()}`);
+        const skip = el('button', 'ghost-btn small', `Skip · 🪙${cost.toLocaleString()}`);
         skip.disabled = this.profile.souls < cost;
         actions.appendChild(this.click(skip, () => {
           if (this.profile.rerollQuest(q.index)) {
@@ -707,7 +707,7 @@ export class Menus {
     const wrap = el('div', 'screen');
     wrap.appendChild(this.backBar('title'));
     const p = this.panel('The Forge',
-      'Permanent upgrades bought with diamonds. They apply to every class, forever.');
+      'Permanent upgrades bought with gold. They apply to every class, forever.');
 
     const grid = el('div', 'forge-grid');
     p.appendChild(this.paged('forge', PERMANENT, byHeight(3, 4, 10), grid, (def) => {
@@ -724,7 +724,7 @@ export class Menus {
           <div class="forge-pips">${Array.from({ length: def.max }, (_, i) =>
             `<i class="${i < level ? 'on' : ''}"></i>`).join('')}</div>
         </div>`;
-      const buy = el('button', 'buy-btn', maxed ? 'MAX' : `💠 ${cost}`);
+      const buy = el('button', 'buy-btn', maxed ? 'MAX' : `🪙 ${cost}`);
       buy.disabled = maxed || !afford;
       this.click(buy, () => {
         const lv = this.profile.data.permanent[def.id] || 0;
@@ -803,7 +803,7 @@ export class Menus {
           ? ` · <b>T${tier}</b> · ${this.armorSummary(def, tier)}`
           : ''}</div>`;
       card.appendChild(body);
-      const buy = el('button', 'buy-btn', maxed ? 'MAX' : `💠 ${cost}`);
+      const buy = el('button', 'buy-btn', maxed ? 'MAX' : `🪙 ${cost}`);
       buy.disabled = maxed || !afford;
       this.click(buy, () => {
         const t = this.profile.armor[def.id] || 0;
@@ -854,7 +854,7 @@ export class Menus {
       ['Best wave', s.bestWave],
       ['Total runs', s.runs],
       ['Total kills', s.kills.toLocaleString()],
-      ['Diamonds earned', this.profile.data.lifetimeSouls.toLocaleString()],
+      ['Gold earned', this.profile.data.lifetimeSouls.toLocaleString()],
       ['Time played', fmtTime(s.timePlayed)],
     ];
     for (const [k, v] of rows) {
@@ -940,8 +940,7 @@ export class Menus {
       () => toggle('Invert look Y', 'invertY'),
       () => toggle('Damage numbers', 'showDamage'),
       () => toggle('Left-handed layout', 'leftHanded', 'Swaps the stick and the buttons'),
-      () => toggle('Hold to attack', 'autoAttack', 'Keep swinging while the button is held'),
-      () => toggle('Tap to attack', 'tapAttack', 'A quick tap on the look side swings'),
+      () => toggle('Hold to attack', 'autoAttack', 'Keep swinging while you hold the view'),
       () => toggle('Aim assist', 'aimAssist', 'Eases your aim onto what it is already near'),
       () => toggle('Fancy graphics', 'fancyGraphics', 'Sky, shadows and debris; turn off for frame rate'),
       () => toggle('Fullscreen on play', 'fullscreenOnPlay', 'Go fullscreen when a run starts'),
@@ -986,7 +985,8 @@ export class Menus {
       `<h3>Phone</h3><ul>
         <li><b>Left half</b> — drag to move; the stick appears under your thumb</li>
         <li><b>Right half</b> — drag to look, tap to swing</li>
-        <li><b>⚔</b> attack · <b>⤒</b> jump · <b>»</b> sprint</li>
+        <li><b>Touch the view</b> to attack — tap to swing, hold to keep swinging</li>
+        <li><b>⤒</b> jump · push the stick to the rim to sprint</li>
         <li><b>Bottom centre</b> — your four skills, with cooldown rings</li>
       </ul>`,
       `<h3>Keyboard & mouse</h3><ul>
@@ -1004,7 +1004,7 @@ export class Menus {
       `<h3>The loop</h3><ul>
         <li>Waves never stop. Every 5th wave is a boss.</li>
         <li>Clear a wave, pick <b>one of three upgrades</b> for this run.</li>
-        <li>Dying banks <b>Diamonds</b> — spend them in the <b>Forge</b>, <b>Armoury</b> and on quest skips.</li>
+        <li>Dying banks <b>Gold</b> — spend them in the <b>Forge</b>, <b>Armoury</b> and on quest skips.</li>
         <li>Deeper waves grant <b>talent points</b> and <b>mastery</b> for that class.</li>
         <li>Each class has <b>eight skills</b>; four are equipped at a time.</li>
       </ul>`,
@@ -1104,29 +1104,47 @@ export class Menus {
 
   buildPause() {
     const wrap = el('div', 'screen overlay');
-    const p = this.panel('Paused', `Wave ${this.ctx.game.wave} · ${Math.round(this.ctx.game.soulsEarned)} diamonds this run`);
+    const p = this.panel('Paused', `Wave ${this.ctx.game.wave} · ${Math.round(this.ctx.game.soulsEarned)} gold this run`);
     const menu = el('div', 'main-menu');
     menu.appendChild(this.click(el('button', 'menu-btn primary', '<span class="menu-label">RESUME</span>'),
       () => this.ctx.resumeRun()));
     menu.appendChild(this.click(el('button', 'menu-btn', '<span class="menu-label">SETTINGS</span>'),
       () => this.show('settings')));
-    menu.appendChild(this.click(el('button', 'menu-btn', '<span class="menu-label">ABANDON RUN</span><span class="menu-hint">Bank your diamonds and return to the menu</span>'),
+    menu.appendChild(this.click(el('button', 'menu-btn', '<span class="menu-label">ABANDON RUN</span><span class="menu-hint">Bank your gold and return to the menu</span>'),
       () => this.ctx.quitRun()));
     p.appendChild(menu);
 
     const g = this.ctx.game;
     if (g.player) {
+      // Your four skills, and what they do. Mid-run is exactly when a player
+      // wants to check what a skill they picked three waves ago actually does,
+      // and until now the only place that text existed was the loadout screen,
+      // which you cannot reach without abandoning the run.
       const list = el('div', 'run-build');
       const chips = el('div', 'kit-icons');
+      const detail = el('div', 'kit-detail');
+      const describe = (sk, i) => {
+        const rank = g.player.rankOf(i);
+        detail.innerHTML = `<b>${sk.name}</b>`
+          + `<span class="kit-rank">rank ${rank}</span>`
+          + `<p>${sk.desc}</p>`
+          + `<i>${Math.round(skillCost(g.player, sk))} ${g.cls.resource.name}`
+          + ` · ${skillCooldown(g.player, sk, rank).toFixed(1)}s</i>`;
+        for (const el2 of chips.children) el2.classList.remove('on');
+        chips.children[i].classList.add('on');
+      };
       g.player.skills.forEach((sk, i) => {
-        const slot = el('div', 'kit-icon rank');
+        const slot = el('button', 'kit-icon rank');
         slot.appendChild(skillIconElement(sk, 34));
         slot.appendChild(el('span', 'rank-pip', String(g.player.rankOf(i))));
         slot.title = `${sk.name} — rank ${g.player.rankOf(i)}`;
+        this.click(slot, () => describe(sk, i));
         chips.appendChild(slot);
       });
       list.appendChild(chips);
+      list.appendChild(detail);
       p.appendChild(list);
+      if (g.player.skills.length) describe(g.player.skills[0], 0);
     }
 
     // The HUD chips say which rules are running; this is the one place with
@@ -1184,7 +1202,7 @@ export class Menus {
     const grid = el('div', 'stat-grid');
     const cd = this.profile.classData(g.cls.id);
     const rows = [
-      ['Diamonds', '💠 ' + res.souls],
+      ['Gold', '🪙 ' + res.souls],
       ['Experience', '+' + (res.xp || 0).toLocaleString()],
       ['Best streak', g.comboBest || 0],
       ['Class best', 'wave ' + cd.bestWave],
