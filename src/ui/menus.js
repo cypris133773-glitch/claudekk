@@ -14,6 +14,8 @@ import { ARMOR_SLOTS, armorCost, armorTierName, ARMOR_MAX_TIER, armorRating } fr
 import { RARITY } from '../data/upgrades.js';
 import { skillCost } from '../game/skills.js';
 import { storage } from '../core/save.js';
+import { DIFFICULTIES } from '../data/difficulty.js';
+import { skillIconElement, iconElement, schoolFor } from './icons.js';
 
 const el = (tag, cls, html) => {
   const n = document.createElement(tag);
@@ -261,25 +263,43 @@ export class Menus {
     const cls = CLASSES.find((c) => c.id === this.selectedClass);
     const detail = el('div', 'class-detail');
     detail.innerHTML = `<h3 style="color:${cls.color}">${cls.name} — ${cls.tagline}</h3>`;
-    const stats = el('div', 'stat-row');
-    stats.innerHTML = `
-      <div><b>${cls.base.hp}</b><span>Health</span></div>
-      <div><b>${Math.round(cls.base.armor * 100)}%</b><span>Armor</span></div>
-      <div><b>${cls.base.attackDamage}</b><span>Attack</span></div>
-      <div><b>${cls.base.attackSpeed.toFixed(2)}/s</b><span>Speed</span></div>
-      <div><b>${Math.round(cls.base.critChance * 100)}%</b><span>Crit</span></div>
-      <div><b>${cls.base.attackRange < 6 ? 'Melee' : 'Ranged'}</b><span>Range</span></div>`;
-    detail.appendChild(stats);
-    detail.appendChild(this.masteryBar(cls.id));
-
-    // Equipped kit, as a compact strip — the full pool lives on the loadout
-    // screen so this one never grows past a phone.
-    const strip = el('div', 'kit-strip');
-    for (const s of this.profile.loadout(cls)) {
-      strip.appendChild(el('span', 'kit-chip', `${s.icon} ${s.name}`));
+    // The equipped kit as four icons. The six-number stat table this replaced
+    // was the densest block of text on the screen and told a player less than
+    // seeing which four skills they are taking in.
+    const strip = el('div', 'kit-icons');
+    for (const sk of this.profile.loadout(cls)) {
+      const slot = el('div', 'kit-icon');
+      slot.appendChild(skillIconElement(sk, 34));
+      slot.title = `${sk.name} — ${sk.desc}`;
+      strip.appendChild(slot);
     }
+    const edit = this.click(el('button', 'kit-edit', '✎'), () => this.show('loadout'));
+    edit.title = 'Change skills';
+    strip.appendChild(edit);
     detail.appendChild(strip);
+    detail.appendChild(this.masteryBar(cls.id));
     p.appendChild(detail);
+
+    // Difficulty, as three buttons rather than a slider buried in Settings:
+    // it is the single biggest choice a player makes before a run, and it
+    // decides the soul rate as well as the danger.
+    const diffRow = el('div', 'diff-row');
+    const current = this.profile.settings.difficulty || 2;
+    for (const d of DIFFICULTIES) {
+      const b = el('button', 'diff-btn' + (d.id === current ? ' on' : ''));
+      b.style.setProperty('--accent', d.accent);
+      b.appendChild(iconElement(d.icon, 26, { ready: d.id === current }));
+      b.appendChild(el('span', 'diff-name', d.name));
+      b.appendChild(el('span', 'diff-souls', `×${d.souls} 💠`));
+      b.title = d.blurb;
+      this.click(b, () => {
+        this.profile.settings.difficulty = d.id;
+        this.profile.save();
+        this.refresh();
+      });
+      diffRow.appendChild(b);
+    }
+    p.appendChild(diffRow);
 
     const actions = el('div', 'actions');
     actions.appendChild(this.click(el('button', 'ghost-btn', 'Skills'), () => this.show('loadout')));
@@ -310,36 +330,42 @@ export class Menus {
     const p = this.panel(`${cls.name} skills`,
       `Equip ${LOADOUT_SIZE} of ${cls.skills.length}. ${open} unlocked — reach deeper waves with this class for the rest.`);
 
-    const grid = el('div', 'skill-grid');
-    const makeCard = (s) => {
-      const on = equipped.includes(s.id);
-      const locked = (s.unlock || 0) > cd.bestWave;
-      const card = el('div', 'skill-card' + (on ? ' on' : '') + (locked ? ' locked' : ''));
-      card.style.setProperty('--accent', cls.accent);
-      card.innerHTML = `
-        <div class="sc-icon">${locked ? '🔒' : s.icon}</div>
-        <div class="sc-body">
-          <div class="sc-name">${s.name}${on ? ' <em>equipped</em>' : ''}</div>
-          <div class="sc-desc">${s.desc}</div>
-          <div class="sc-nums">${locked
-            ? `Unlocks at wave ${s.unlock} with ${cls.name}`
-            : `${s.cost} ${cls.resource.name} · ${s.cooldown}s cooldown`}</div>
-        </div>`;
-      if (!locked) {
-        this.click(card, () => {
-          const next = equipped.includes(s.id)
-            ? equipped.filter((id) => id !== s.id)
-            // Replacing the oldest slot keeps the swap to one tap; dropping a
-            // skill first and then picking one would be two.
-            : [...equipped.slice(equipped.length >= LOADOUT_SIZE ? 1 : 0), s.id];
-          if (!next.length) { this.ctx.audio.play('deny'); return; }
-          this.profile.setLoadout(cls, next);
-          this.refresh();
-        });
-      }
-      return card;
+    // Ten icon buttons. The full description belongs on the detail line under
+    // the grid, not repeated ten times: a wall of prose is exactly what makes
+    // a picker unreadable on a phone.
+    const grid = el('div', 'skill-picker');
+    const detail = el('div', 'skill-detail');
+    const describe = (sk, locked) => {
+      detail.innerHTML = `<b>${sk.name}</b>`
+        + `<span>${locked ? `Unlocks at wave ${sk.unlock}` : sk.desc}</span>`
+        + `<i>${locked ? '' : `${sk.cost} ${cls.resource.name} · ${sk.cooldown}s`}</i>`;
     };
-    p.appendChild(this.paged('loadout', cls.skills, byHeight(3, 5, 8), grid, makeCard));
+
+    for (const sk of cls.skills) {
+      const on = equipped.includes(sk.id);
+      const locked = (sk.unlock || 0) > cd.bestWave;
+      const btn = el('button', 'skill-slot' + (on ? ' on' : '') + (locked ? ' locked' : ''));
+      btn.appendChild(skillIconElement(sk, 46, { ready: !locked }));
+      btn.appendChild(el('span', 'slot-name', locked ? `🔒 ${sk.unlock}` : sk.name));
+      btn.title = `${sk.name} — ${sk.desc}`;
+      btn.addEventListener('pointerenter', () => describe(sk, locked));
+      this.click(btn, () => {
+        describe(sk, locked);
+        if (locked) { this.ctx.audio.play('deny'); return; }
+        const next = equipped.includes(sk.id)
+          ? equipped.filter((id) => id !== sk.id)
+          // Replacing the oldest slot keeps the swap to one tap; dropping a
+          // skill first and then picking one would be two.
+          : [...equipped.slice(equipped.length >= LOADOUT_SIZE ? 1 : 0), sk.id];
+        if (!next.length) { this.ctx.audio.play('deny'); return; }
+        this.profile.setLoadout(cls, next);
+        this.refresh();
+      });
+      grid.appendChild(btn);
+    }
+    describe(this.profile.loadout(cls)[0], false);
+    p.appendChild(grid);
+    p.appendChild(detail);
 
     const actions = el('div', 'actions');
     actions.appendChild(this.click(el('button', 'ghost-btn', 'Reset to default'), () => {

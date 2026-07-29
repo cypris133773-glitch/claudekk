@@ -10,6 +10,7 @@ import { TEAM } from './entity.js';
 import { WaveDirector, waveScaling, waveClearBonus, isBossWave } from './waves.js';
 import { rollUpgrades } from '../data/upgrades.js';
 import { permanentMods, masteryMods, masteryRank } from '../data/permanent.js';
+import { difficultyFor } from '../data/difficulty.js';
 import { armorMods } from '../data/armor.js';
 import { forwardVec, clamp, rand, dist2 } from '../core/math.js';
 import { T } from '../render/atlas.js';
@@ -70,6 +71,10 @@ export class Game {
       perm[k] = (perm[k] || 0) + v;
     }
     this.permMods = perm;
+    // The tier is fixed for the whole run: changing it mid-run would let a
+    // player bank the higher soul rate and then dial the danger back down.
+    this.difficulty = difficultyFor(
+      opts.difficulty !== undefined ? opts.difficulty : this.profile.settings.difficulty);
     this.loadout = this.profile.loadout(classDef);
     this.baseMods = () => buildMods(classDef, cd.talents, perm, this.runUpgrades);
 
@@ -84,7 +89,7 @@ export class Game {
     this.r.setTheme(this.theme);
 
     this.player = new Player(classDef, this.baseMods(), this.world, this.loadout);
-    this.director = new WaveDirector();
+    this.director = new WaveDirector(this.difficulty);
     this.rerollsLeft = perm.rerolls || 0;
     this.running = true;
     this.over = false;
@@ -496,7 +501,7 @@ export class Game {
   }
 
   spawnMob(typeId, x, y, z, elite = false) {
-    const scaling = waveScaling(this.wave);
+    const scaling = waveScaling(this.wave, this.difficulty);
     const mob = new Mob(typeId, this.wave, x, y, z, scaling);
     if (elite) mob.makeElite();
     this.mobs.push(mob);

@@ -77,6 +77,16 @@ export const CLASSES = [
         desc: 'Roar for 10s: +35% damage and +25% attack speed.',
         power: { duration: 10, damageBonus: 0.35, attackSpeedBonus: 0.25 },
       },
+      {
+        id: 'bladestorm', name: 'Bladestorm', kind: 'aoe_self', cost: 34, cooldown: 16, icon: '🌪', unlock: 20,
+        desc: 'Become a whirling storm of steel, striking everything around you four times.',
+        power: { radius: 5.4, damage: 40, ticks: 4, tickDelay: 0.30, knockback: 3 },
+      },
+      {
+        id: 'avatar', name: 'Avatar', kind: 'buff', cost: 36, cooldown: 40, icon: '🗿', unlock: 25,
+        desc: 'Become a titan for 12s: +50% damage and 30% less damage taken.',
+        power: { duration: 12, damageBonus: 0.50, damageTaken: 0.70, rooted: false },
+      },
     ],
     talents: [
       {
@@ -164,6 +174,16 @@ export const CLASSES = [
         id: 'timewarp', name: 'Time Warp', kind: 'buff', cost: 32, cooldown: 30, icon: '⏳', unlock: 15,
         desc: 'Bend time for 8s: +40% move and +40% attack speed.',
         power: { duration: 8, moveSpeed: 0.40, attackSpeedBonus: 0.40 },
+      },
+      {
+        id: 'pyroblast', name: 'Pyroblast', kind: 'projectile', cost: 42, cooldown: 9, icon: '☄', unlock: 20,
+        desc: 'A slow, enormous ball of fire. Everything it touches keeps burning.',
+        power: { damage: 135, speed: 22, radius: 4.6, gravity: 1.5, burn: 34, color: '#ff6a2c', size: 0.56 },
+      },
+      {
+        id: 'iceblock', name: 'Ice Block', kind: 'buff', cost: 20, cooldown: 34, icon: '🧊', unlock: 25,
+        desc: 'Encase yourself for 4s, taking 90% less damage.',
+        power: { duration: 4, damageTaken: 0.10, rooted: false },
       },
     ],
     talents: [
@@ -253,6 +273,16 @@ export const CLASSES = [
         desc: 'Devour stolen souls: heal 45 instantly and 9 hp/s for 8s.',
         power: { instant: 45, healPerSecond: 9, duration: 8 },
       },
+      {
+        id: 'unstable', name: 'Unstable Affliction', kind: 'projectile', cost: 30, cooldown: 6, icon: '🧪', unlock: 20,
+        desc: 'A curse that eats a target alive for 10s and spreads when it dies.',
+        power: { damage: 20, speed: 32, radius: 1.6, dot: { dps: 30, duration: 10 }, spread: 1, color: '#8f4dff', size: 0.32 },
+      },
+      {
+        id: 'demongate', name: 'Demonic Gateway', kind: 'dash', cost: 18, cooldown: 14, icon: '🌀', unlock: 25,
+        desc: 'Step through the void, appearing 12 blocks away and briefly untouchable.',
+        power: { distance: 12, speed: 90, damage: 0, phase: true, invuln: 0.6 },
+      },
     ],
     talents: [
       {
@@ -340,6 +370,16 @@ export const CLASSES = [
         id: 'ghostwolf', name: 'Spirit Wolf', kind: 'buff', cost: 20, cooldown: 20, icon: '🐺', unlock: 15,
         desc: 'Take spirit form for 8s: +50% move speed and 25% dodge.',
         power: { duration: 8, moveSpeed: 0.5, dodge: 0.25 },
+      },
+      {
+        id: 'elementalblast', name: 'Elemental Blast', kind: 'projectile', cost: 34, cooldown: 8, icon: '💠', unlock: 20,
+        desc: 'All four elements at once, detonating on impact.',
+        power: { damage: 110, speed: 34, radius: 4.0, burn: 20, color: '#7ef0ff', size: 0.44 },
+      },
+      {
+        id: 'spiritlink', name: 'Spirit Link', kind: 'heal', cost: 30, cooldown: 24, icon: '🔗', unlock: 25,
+        desc: 'Bind your spirit to the earth: heal 60 instantly and 12 hp/s for 8s.',
+        power: { instant: 60, healPerSecond: 12, duration: 8 },
       },
     ],
     talents: [
@@ -429,6 +469,16 @@ export const CLASSES = [
         desc: 'Enter the void for 10s: +40% damage, but you take 15% more.',
         power: { duration: 10, damageBonus: 0.40, damageTaken: 1.15 },
       },
+      {
+        id: 'holyword', name: 'Holy Word: Sanctify', kind: 'heal', cost: 34, cooldown: 20, icon: '🕊', unlock: 20,
+        desc: 'A word of power: heal 70 instantly and 14 hp/s for 8s.',
+        power: { instant: 70, healPerSecond: 14, duration: 8 },
+      },
+      {
+        id: 'psychicscream', name: 'Psychic Scream', kind: 'aoe_self', cost: 26, cooldown: 15, icon: '😱', unlock: 25,
+        desc: 'A scream that breaks the minds around you, rooting them for 3s.',
+        power: { radius: 9, damage: 30, root: 3, color: '#9a7fd8' },
+      },
     ],
     talents: [
       {
@@ -517,6 +567,16 @@ export const CLASSES = [
         desc: 'For 6s you strike 55% faster and move 20% quicker.',
         power: { duration: 6, attackSpeedBonus: 0.55, moveSpeed: 0.20 },
       },
+      {
+        id: 'bladeflurry', name: 'Blade Flurry', kind: 'aoe_self', cost: 30, cooldown: 12, icon: '🌀', unlock: 20,
+        desc: 'Strike everything within reach five times in as many heartbeats.',
+        power: { radius: 4.8, damage: 26, ticks: 5, tickDelay: 0.16, color: '#d6ffb8' },
+      },
+      {
+        id: 'cloak', name: 'Cloak of Shadows', kind: 'buff', cost: 22, cooldown: 30, icon: '🕶', unlock: 25,
+        desc: 'Wrap yourself in shadow for 6s: 85% dodge and 25% more speed.',
+        power: { duration: 6, dodge: 0.85, moveSpeed: 0.25 },
+      },
     ],
     talents: [
       {
@@ -603,6 +663,16 @@ export const CLASSES = [
         id: 'metamorphosis', name: 'Metamorphosis', kind: 'buff', cost: 30, cooldown: 30, icon: '😈', unlock: 15,
         desc: 'Take demon form for 10s: +40% damage, +25% speed, and 20% less damage taken.',
         power: { duration: 10, damageBonus: 0.40, moveSpeed: 0.25, damageTaken: 0.80 },
+      },
+      {
+        id: 'feldevastation', name: 'Fel Devastation', kind: 'cone', cost: 36, cooldown: 14, icon: '☢', unlock: 20,
+        desc: 'Unleash a torrent of fel energy, healing you for a third of the ruin it causes.',
+        power: { damage: 104, range: 12, angle: 0.5, lifesteal: 0.33, color: '#7dff5a' },
+      },
+      {
+        id: 'darkness', name: 'Darkness', kind: 'buff', cost: 28, cooldown: 32, icon: '🌑', unlock: 25,
+        desc: 'Shroud yourself for 8s: 60% dodge and 20% less damage taken.',
+        power: { duration: 8, dodge: 0.60, damageTaken: 0.80 },
       },
     ],
     talents: [

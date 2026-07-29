@@ -61,11 +61,11 @@ check('class ids are unique', () => {
   assert(ids.size === CLASSES.length, 'duplicate class id');
 });
 
-check('every class has a pool of 8 skills with valid kinds', () => {
+check('every class has a pool of 10 skills with valid kinds', () => {
   const kinds = new Set(['projectile', 'aoe_self', 'aoe_target', 'dash', 'buff',
     'heal', 'summon', 'cone', 'chain', 'strike', 'zone']);
   for (const c of CLASSES) {
-    assert(c.skills.length === 8, `${c.id} has ${c.skills.length} skills`);
+    assert(c.skills.length === 10, `${c.id} has ${c.skills.length} skills`);
     for (const s of c.skills) {
       assert(kinds.has(s.kind), `${c.id}/${s.id} unknown kind "${s.kind}"`);
       assert(s.cost >= 0, `${c.id}/${s.id} negative cost`);
@@ -323,8 +323,8 @@ check('resolveLoadout always yields four distinct unlocked skills', () => {
   for (const c of CLASSES) {
     for (const [ids, best] of [
       [undefined, 0], [[], 0], [['nonsense'], 0],
-      [[c.skills[7].id], 0],                       // locked at wave 0
-      [[c.skills[7].id], 99],                      // unlocked deep in
+      [[c.skills[9].id], 0],                       // locked at wave 0
+      [[c.skills[9].id], 99],                      // unlocked deep in
       [[c.skills[0].id, c.skills[0].id], 0],       // duplicate
       [c.skills.map((s) => s.id), 99],             // too many
     ]) {

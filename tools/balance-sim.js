@@ -47,7 +47,7 @@ function stubProfile(forgeLevel = 0, armorTier = 0) {
   if (armorTier > 0) for (const s of ARMOR_SLOTS) armor[s.id] = armorTier;
   return {
     data: { permanent, armor, classes, souls: 0, stats: {} },
-    settings: { showDamage: false },
+    settings: { showDamage: false, difficulty: DIFFICULTY },
     classData: (id) => classes[id],
     // The bot always fights with the default kit; unlockable skills are a
     // player choice, and simulating them would measure the harness's taste.
@@ -181,13 +181,18 @@ function simulateRun(classId, { forge = 0, armor = 0, talentPoints = 0, layout }
 
 // --- CLI --------------------------------------------------------------------
 
-const args = process.argv.slice(2);
+const args = process.argv.slice(2).filter((a, i, arr) =>
+  a !== '--difficulty' && arr[i - 1] !== '--difficulty');
 let forge = 0;
 const forgeIdx = args.indexOf('--forge');
 if (forgeIdx >= 0) {
   forge = Number.isFinite(Number(args[forgeIdx + 1])) ? Number(args[forgeIdx + 1]) : 3;
   args.splice(forgeIdx, 2);
 }
+let DIFFICULTY = 2;
+const diffIdx = process.argv.indexOf('--difficulty');
+if (diffIdx >= 0) DIFFICULTY = Number(process.argv[diffIdx + 1]) || 2;
+
 let armor = 0;
 const armorIdx = args.indexOf('--armor');
 if (armorIdx >= 0) {
@@ -212,6 +217,7 @@ const median = (xs) => {
 console.log(`\nBLOCKFRAY balance simulation — ${runs} run(s) per class`
   + (forge ? `, Forge level ${forge}` : ', no permanent upgrades')
   + (armor ? `, armour tier ${armor}` : '')
+  + `, difficulty ${DIFFICULTY}`
   + (layout === undefined ? ', mixed layouts' : `, ${LAYOUT_NAMES[layout % LAYOUT_NAMES.length]} layout`)
   + '\n');
 console.log('class        median  best  worst   kills   min   peak  upg');

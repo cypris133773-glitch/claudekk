@@ -3,6 +3,7 @@
 
 import { skillCooldown, skillCost } from '../game/skills.js';
 import { clamp } from '../core/math.js';
+import { drawSkillIcon } from './icons.js';
 
 const FONT = "700 %spx 'Segoe UI', system-ui, -apple-system, sans-serif";
 
@@ -473,19 +474,9 @@ export class Hud {
       const cost = skillCost(p, skill);
       const ready = cd <= 0 && p.resource >= cost;
 
-      c.fillStyle = ready ? 'rgba(18,22,32,0.78)' : 'rgba(10,12,18,0.72)';
-      this.roundRect(x, y, size, size, 12); c.fill();
-      c.strokeStyle = ready ? p.cls.accent : 'rgba(255,255,255,0.14)';
-      c.lineWidth = ready ? 2.5 : 1.5;
-      this.roundRect(x + 1, y + 1, size - 2, size - 2, 11); c.stroke();
-
-      this.font(Math.round(size * 0.42));
-      c.textAlign = 'center';
-      c.textBaseline = 'middle';
-      c.globalAlpha = ready ? 1 : 0.4;
-      c.fillStyle = '#fff';
-      c.fillText(skill.icon, x + size / 2, y + size / 2 - 2);
-      c.globalAlpha = 1;
+      // Framed slot in the skill's own school colour; readiness is carried by
+      // the art itself rather than a separate indicator.
+      drawSkillIcon(c, skill, x, y, size, { ready });
 
       if (cd > 0) {
         // Radial cooldown sweep.

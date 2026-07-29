@@ -66,6 +66,7 @@ function emptyProfile() {
       autoAttack: true,
       tapAttack: true,
       fancyGraphics: true,
+      difficulty: 2,
       hapticFeedback: true,
       fullscreenOnPlay: true,
     },

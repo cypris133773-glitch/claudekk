@@ -9,17 +9,18 @@ export const BOSS_EVERY = 5;
  * Health climbs faster than damage: later waves should mean longer, more
  * dangerous fights rather than instant deaths.
  */
-export function waveScaling(wave) {
+export function waveScaling(wave, diff = null) {
   // Clamped at zero: a fractional power of a negative base is NaN, and wave 0
   // is reachable — anything spawned during the opening intermission, or by a
   // harness priming a fight, would come out with NaN damage and quietly
   // poison every hit point it touched.
   const w = Math.max(0, wave - 1);
+  const d = diff || { hp: 1, damage: 1, souls: 1 };
   return {
-    hp: 1 + w * 0.16 + Math.pow(w, 1.42) * 0.012,
-    damage: 1 + w * 0.075 + Math.pow(w, 1.30) * 0.008,
+    hp: (1 + w * 0.16 + Math.pow(w, 1.42) * 0.012) * d.hp,
+    damage: (1 + w * 0.075 + Math.pow(w, 1.30) * 0.008) * d.damage,
     speed: Math.min(1.55, 1 + w * 0.012),
-    souls: 1 + w * 0.09,
+    souls: (1 + w * 0.09) * d.souls,
   };
 }
 
@@ -33,16 +34,18 @@ export function waveBudget(wave) {
  * surrounded is what kills new players — and it doubles as the performance
  * ceiling that keeps phones smooth on deep waves.
  */
-export function waveConcurrent(wave, cap = 30) {
-  return Math.min(cap, 4 + Math.floor(wave * 0.7));
+export function waveConcurrent(wave, cap = 30, diff = null) {
+  const bonus = diff ? diff.concurrent : 0;
+  return Math.min(cap + bonus, 4 + bonus + Math.floor(wave * 0.7));
 }
 
 export function isBossWave(wave) {
   return wave % BOSS_EVERY === 0;
 }
 
-export function eliteChance(wave) {
-  return Math.min(0.35, Math.max(0, (wave - 6) * 0.018));
+export function eliteChance(wave, diff = null) {
+  const bonus = diff ? diff.elite : 0;
+  return Math.min(0.55, Math.max(0, (wave - 6) * 0.018) + bonus);
 }
 
 /**
@@ -61,10 +64,10 @@ export function bossForWave(wave) {
 /**
  * Build the spawn queue for a wave: a list of { typeId, elite } entries.
  */
-export function buildWaveQueue(wave) {
+export function buildWaveQueue(wave, diff = null) {
   const queue = [];
   let budget = waveBudget(wave);
-  const chance = eliteChance(wave);
+  const chance = eliteChance(wave, diff);
 
   if (isBossWave(wave)) {
     const bosses = 1 + Math.floor((wave - BOSS_EVERY) / (BOSS_EVERY * 4));
@@ -107,7 +110,8 @@ export function waveClearBonus(wave) {
 }
 
 export class WaveDirector {
-  constructor() {
+  constructor(difficulty = null) {
+    this.difficulty = difficulty;
     this.wave = 0;
     this.queue = [];
     this.spawnTimer = 0;
@@ -118,7 +122,7 @@ export class WaveDirector {
 
   startWave(wave) {
     this.wave = wave;
-    this.queue = buildWaveQueue(wave);
+    this.queue = buildWaveQueue(wave, this.difficulty);
     this.total = this.queue.length;
     this.spawnedThisWave = 0;
     this.spawnTimer = 0.6;
@@ -130,7 +134,7 @@ export class WaveDirector {
     const out = [];
     if (this.state !== 'spawning') return out;
     this.spawnTimer -= dt;
-    const limit = waveConcurrent(this.wave);
+    const limit = waveConcurrent(this.wave, 30, this.difficulty);
     while (this.spawnTimer <= 0 && this.queue.length && aliveCount + out.length < limit) {
       out.push(this.queue.shift());
       this.spawnedThisWave++;
