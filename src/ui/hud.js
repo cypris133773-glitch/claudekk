@@ -493,7 +493,6 @@ export class Hud {
     const range = 46;                      // world blocks the radar covers
 
     c.save();
-    // Dish.
     c.beginPath();
     c.arc(cx, cy, r, 0, Math.PI * 2);
     c.fillStyle = 'rgba(8,10,16,0.62)';
@@ -502,7 +501,7 @@ export class Hud {
     c.lineWidth = 1.5;
     c.stroke();
 
-    // Facing wedge, so the map reads as a view cone rather than a circle.
+    // Facing wedge, so the dish reads as a view cone rather than a circle.
     c.beginPath();
     c.moveTo(cx, cy);
     c.arc(cx, cy, r, -Math.PI / 2 - 0.62, -Math.PI / 2 + 0.62);
@@ -510,27 +509,42 @@ export class Hud {
     c.fillStyle = 'rgba(255,255,255,0.07)';
     c.fill();
 
-    // Clip so nothing spills out of the dish.
+    // Range rings, so distance is readable rather than merely implied.
+    c.strokeStyle = 'rgba(255,255,255,0.09)';
+    c.lineWidth = 1;
+    for (const frac of [0.35, 0.68]) {
+      c.beginPath();
+      c.arc(cx, cy, r * frac, 0, Math.PI * 2);
+      c.stroke();
+    }
+
     c.beginPath();
     c.arc(cx, cy, r - 1, 0, Math.PI * 2);
     c.clip();
 
+    const k = (r - 5) / range;
     const cos = Math.cos(p.yaw), sin = Math.sin(p.yaw);
+    /**
+     * World delta -> radar pixel. `fwd` is how far ahead of the player the
+     * point is; canvas Y grows downward, so it is *subtracted*. Adding it
+     * mirrored the whole dish and drew everything in front of you behind you,
+     * which is what made the first version useless.
+     */
+    const project = (dx, dz) => {
+      const right = dx * cos - dz * sin;
+      const fwd = -dx * sin - dz * cos;
+      return { x: cx + right * k, y: cy - fwd * k, dist: Math.hypot(right, fwd) };
+    };
+
     for (const m of g.mobs) {
       if (m.dead) continue;
-      const dx = m.x - p.x, dz = m.z - p.z;
-      // Into view space: the player's facing becomes straight up.
-      const rx = dx * cos - dz * sin;
-      const rz = -dx * sin - dz * cos;
-      const dist = Math.hypot(rx, rz);
-      const k = (r - 5) / range;
-      let px = cx + rx * k;
-      let py = cy + rz * k;
-      const outside = dist > range;
+      const q = project(m.x - p.x, m.z - p.z);
+      let { x: px, y: py } = q;
+      const outside = q.dist > range;
       if (outside) {
-        // Pinned to the rim: an off-radar boss still has to be findable.
+        // Pinned to the rim: an off-radar boss must still be findable.
         if (!m.def.boss && !m.elite) continue;
-        const a = Math.atan2(rz, rx);
+        const a = Math.atan2(py - cy, px - cx);
         px = cx + Math.cos(a) * (r - 5);
         py = cy + Math.sin(a) * (r - 5);
       }
@@ -543,16 +557,13 @@ export class Hud {
       c.globalAlpha = 1;
     }
 
-    // Allies, so a summoned fiend or totem is not mistaken for a threat.
+    // Allies, so a summoned fiend is not mistaken for a threat.
     for (const pet of g.pets) {
       if (pet.dead) continue;
-      const dx = pet.x - p.x, dz = pet.z - p.z;
-      const rx = dx * cos - dz * sin;
-      const rz = -dx * sin - dz * cos;
-      if (Math.hypot(rx, rz) > range) continue;
-      const k = (r - 5) / range;
+      const q = project(pet.x - p.x, pet.z - p.z);
+      if (q.dist > range) continue;
       c.beginPath();
-      c.arc(cx + rx * k, cy + rz * k, 2, 0, Math.PI * 2);
+      c.arc(q.x, q.y, 2, 0, Math.PI * 2);
       c.fillStyle = '#7dff9d';
       c.fill();
     }
@@ -566,6 +577,16 @@ export class Hud {
     c.closePath();
     c.fillStyle = '#ffffff';
     c.fill();
+  }
+
+  /**
+   * The radar's world-to-dish projection, exposed so it can be tested without
+   * a canvas. A mirrored radar is worse than none: it points you away from
+   * every threat, confidently.
+   */
+  static radarProject(yaw, dx, dz) {
+    const cos = Math.cos(yaw), sin = Math.sin(yaw);
+    return { right: dx * cos - dz * sin, forward: -dx * sin - dz * cos };
   }
 
   /** Skill buttons — clickable on touch, keybind hints on desktop. */

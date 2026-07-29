@@ -622,6 +622,70 @@ check('the kill combo rewards pressing forward and decays if you stop', async ()
   assert(game.combo === 0, 'the combo never decays');
 });
 
+
+// --- Radar -----------------------------------------------------------------
+
+check('the radar puts what is in front of you above the centre', async () => {
+  const { Hud } = await import('../src/ui/hud.js');
+  const { forwardVec } = await import('../src/core/math.js');
+
+  for (const yaw of [0, 0.7, 1.9, -2.4, Math.PI]) {
+    const f = forwardVec(yaw, 0);
+    // Directly ahead.
+    let q = Hud.radarProject(yaw, f[0] * 10, f[2] * 10);
+    assert(q.forward > 9.9, `ahead reads as ${q.forward.toFixed(2)} at yaw ${yaw}`);
+    assert(Math.abs(q.right) < 1e-9, `ahead drifts sideways at yaw ${yaw}`);
+
+    // Directly behind must be the other sign, or the dish is mirrored — which
+    // points the player away from every threat, confidently.
+    q = Hud.radarProject(yaw, -f[0] * 10, -f[2] * 10);
+    assert(q.forward < -9.9, `behind reads as ${q.forward.toFixed(2)} at yaw ${yaw}`);
+
+    // And to the right: right = (cos, -sin), the same basis the player moves on.
+    q = Hud.radarProject(yaw, Math.cos(yaw) * 10, -Math.sin(yaw) * 10);
+    assert(q.right > 9.9, `right reads as ${q.right.toFixed(2)} at yaw ${yaw}`);
+    assert(Math.abs(q.forward) < 1e-9, `right drifts forward at yaw ${yaw}`);
+  }
+});
+
+
+// --- Arenas ----------------------------------------------------------------
+// A layout that looks good and cannot be played is worse than one fewer
+// layout. These are the properties a run silently depends on.
+
+check('every arena layout is actually playable', async () => {
+  const { createArena, LAYOUT_COUNT, LAYOUT_NAMES } = await import('../src/world/world.js');
+  const { BLOCKS } = await import('../src/world/blocks.js');
+
+  for (let layout = 0; layout < LAYOUT_COUNT; layout++) {
+    for (const seed of [1, 4242, 90210]) {
+      const w = createArena(seed % 4, seed, layout);
+      const name = `${LAYOUT_NAMES[layout]}#${seed}`;
+
+      // Enough spawn points that a wave arrives from several directions
+      // instead of trickling out of one corner.
+      assert(w.spawnPoints.length >= 12,
+        `${name} has only ${w.spawnPoints.length} spawn points`);
+
+      // The player must not start inside or on top of geometry, and must not
+      // start standing in lava.
+      const ps = w.playerSpawn;
+      assert(!w.isSolid(ps.x, ps.y + 0.1, ps.z), `${name} spawns the player inside a block`);
+      assert(!w.isSolid(ps.x, ps.y + 1.2, ps.z), `${name} spawns the player in a ceiling`);
+      const under = BLOCKS[w.blockAt(ps.x, ps.y - 0.5, ps.z)];
+      assert(!under || !under.damage, `${name} spawns the player on lava`);
+
+      // Every spawn point must be somewhere a mob can stand.
+      for (const sp of w.spawnPoints) {
+        assert(!w.isSolid(sp.x, sp.y + 0.1, sp.z), `${name} has a spawn point inside a block`);
+      }
+
+      // And there has to be a world to look at.
+      assert(w.mesh.length > 6 * 3000, `${name} meshed to almost nothing`);
+    }
+  }
+});
+
 // --- Math ------------------------------------------------------------------
 
 check('clamp behaves', () => {

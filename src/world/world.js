@@ -192,6 +192,9 @@ export class World {
       (c) => this.layoutFortress(c),
       (c) => this.layoutCrucible(c),
       (c) => this.layoutSpires(c),
+      (c) => this.layoutColosseum(c),
+      (c) => this.layoutLabyrinth(c),
+      (c) => this.layoutCauseway(c),
     ];
     this.layout = layout % builders.length;
     builders[this.layout](ctx);
@@ -204,8 +207,27 @@ export class World {
       const pz = cz + Math.sin(a) * r;
       if (!inArena(Math.round(px), Math.round(pz))) continue;
       if (this.blockAt(px, FLOOR_Y - 1, pz) === B.LAVA) continue;
-      this.spawnPoints.push({ x: px, y: FLOOR_Y, z: pz });
+      // The ring is laid down after the layout has built its towers and
+      // walls, so a point can land inside one. Stand on whatever is actually
+      // there, and drop the point entirely if there is no room to stand.
+      const y = this.groundAt(px, pz, FLOOR_Y + 8) + 1;
+      if (this.isSolid(px, y + 0.1, pz) || this.isSolid(px, y + 1.2, pz)) continue;
+      this.spawnPoints.push({ x: px, y, z: pz });
     }
+
+    // Every layout pushes its own spawn points, and several sit exactly where
+    // that layout then puts a beacon block on a tower top. Rather than trust
+    // six builders to each get it right, snap them all to standable ground
+    // here and drop the ones with no room — a mob spawned inside geometry is
+    // stuck from its first frame.
+    this.spawnPoints = this.spawnPoints.filter((sp) => {
+      const y = this.groundAt(sp.x, sp.z, sp.y + 4) + 1;
+      if (this.isSolid(sp.x, y + 0.1, sp.z) || this.isSolid(sp.x, y + 1.2, sp.z)) return false;
+      const under = BLOCKS[this.blockAt(sp.x, y - 0.5, sp.z)];
+      if (under && under.damage) return false;            // never spawn into lava
+      sp.y = y;
+      return true;
+    });
 
     this.playerSpawn = { x: cx + 0.5, y: FLOOR_Y + 3, z: cz + 0.5 };
     // The middle is raised or molten in some layouts; drop the spawn onto
@@ -383,6 +405,153 @@ export class World {
       const pz = Math.round(cz + Math.sin(a) * r);
       this.lavaDisc(px, pz, 2 + Math.floor(hash2(i, 61, seed) * 2), inArena);
     }
+  }
+
+  /**
+   * Colosseum: a sunken sand pit ringed by tiered seating. Nothing to hide
+   * behind and nowhere to back off to — the only cover is distance, so it is
+   * the arena that punishes standing still and rewards kiting in circles.
+   */
+  layoutColosseum({ P, FLOOR_Y, cx, cz, R, seed, inArena }) {
+    // Tiered banks stepping down toward the middle, like seating rows.
+    for (let tier = 0; tier < 4; tier++) {
+      const inner = R - 6 - tier * 4;
+      const h = 4 - tier;
+      if (inner < 6) break;
+      for (let x = cx - R; x <= cx + R; x++) {
+        for (let z = cz - R; z <= cz + R; z++) {
+          if (!inArena(x, z)) continue;
+          const d = Math.hypot(x - cx, z - cz);
+          if (d < inner || d > inner + 2.2) continue;
+          this.fill(x, FLOOR_Y, z, x, FLOOR_Y + h - 1, z, tier % 2 ? P.wall : P.accent);
+          if (hash2(x, z, seed + tier) > 0.9) this.set(x, FLOOR_Y + h, z, B.GLOW);
+        }
+      }
+    }
+    // Four gates cut through every tier, so the pit is reachable and the
+    // spawn ring outside is not walled off from the fight.
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      for (let t = 6; t < R; t++) {
+        for (let w = -2; w <= 2; w++) {
+          const x = Math.round(cx + dx * t + (dz ? w : 0));
+          const z = Math.round(cz + dz * t + (dx ? w : 0));
+          if (!inArena(x, z)) continue;
+          this.fill(x, FLOOR_Y, z, x, FLOOR_Y + 4, z, B.AIR);
+        }
+      }
+    }
+    // Landmarks to orient by, offset from the middle — an obelisk *on* the
+    // centre is exactly where the player spawns, and the run would start on
+    // top of a one-block pillar.
+    for (const [ox, oz] of [[-5, -5], [5, 5]]) {
+      const px = cx + ox, pz = cz + oz;
+      this.fill(px, FLOOR_Y, pz, px, FLOOR_Y + 5, pz, P.trim);
+      this.set(px, FLOOR_Y + 6, pz, B.CRYSTAL);
+    }
+  }
+
+  /**
+   * Labyrinth: chest-high walls in a loose grid. Line of sight breaks
+   * constantly, so ranged enemies have to reposition and melee can be lost
+   * track of — the arena where the radar earns its place.
+   */
+  layoutLabyrinth({ P, FLOOR_Y, cx, cz, R, seed, inArena }) {
+    const CELL = 7;
+    for (let gx = -3; gx <= 3; gx++) {
+      for (let gz = -3; gz <= 3; gz++) {
+        const bx = cx + gx * CELL;
+        const bz = cz + gz * CELL;
+        // Each cell drops one or two of its four walls, so the grid is a maze
+        // rather than a set of sealed boxes.
+        const roll = hash2(gx, gz, seed);
+        if (roll > 0.82) continue;                       // open plaza
+        const len = 5;
+        const walls = [
+          [1, 0], [0, 1],
+        ];
+        for (let w = 0; w < walls.length; w++) {
+          if (hash2(gx * 7 + w, gz * 13, seed + 5) > 0.62) continue;
+          const [dx, dz] = walls[w];
+          for (let i = 0; i < len; i++) {
+            const x = Math.round(bx + dx * i);
+            const z = Math.round(bz + dz * i);
+            if (!inArena(x, z)) continue;
+            if (Math.hypot(x - cx, z - cz) < 5) continue;   // keep the middle clear
+            this.fill(x, FLOOR_Y, z, x, FLOOR_Y + 1, z, P.wall);
+            if (hash2(x, z, seed + 11) > 0.88) this.set(x, FLOOR_Y + 2, z, B.GLOW);
+          }
+        }
+      }
+    }
+    // Raised centre so there is one place with sightlines over the whole maze,
+    // worth fighting to hold.
+    this.plateau(cx, cz, 5, 3, P.accent, P.trim, [[1, 0], [-1, 0], [0, 1], [0, -1]]);
+    this.set(cx, FLOOR_Y + 3, cz, B.CRYSTAL);
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + 0.4;
+      this.lavaDisc(Math.round(cx + Math.cos(a) * 15), Math.round(cz + Math.sin(a) * 15), 2, inArena);
+    }
+  }
+
+  /**
+   * Causeway: raised walkways over a lava field. Falling is a real threat, so
+   * knockback matters far more here than anywhere else — both yours and
+   * theirs.
+   */
+  layoutCauseway({ P, FLOOR_Y, cx, cz, R, seed, inArena }) {
+    // Flood the floor, then lay the paths back over it.
+    // Flood the interior only. The spawn ring lives at R-4, and flooding that
+    // far out left four usable spawn points out of twenty-four — every wave
+    // then trickled in from the same corner.
+    for (let x = cx - R; x <= cx + R; x++) {
+      for (let z = cz - R; z <= cz + R; z++) {
+        if (!inArena(x, z)) continue;
+        if (Math.hypot(x - cx, z - cz) > R - 7) continue;
+        this.set(x, FLOOR_Y - 1, z, B.LAVA);
+      }
+    }
+    const bridge = (x0, z0, x1, z1, halfWidth) => {
+      const steps = Math.max(Math.abs(x1 - x0), Math.abs(z1 - z0));
+      for (let i = 0; i <= steps; i++) {
+        const t = steps ? i / steps : 0;
+        const x = Math.round(x0 + (x1 - x0) * t);
+        const z = Math.round(z0 + (z1 - z0) * t);
+        for (let ox = -halfWidth; ox <= halfWidth; ox++) {
+          for (let oz = -halfWidth; oz <= halfWidth; oz++) {
+            if (!inArena(x + ox, z + oz)) continue;
+            this.set(x + ox, FLOOR_Y - 1, z + oz, P.floor);
+            this.set(x + ox, FLOOR_Y, z + oz, B.AIR);
+          }
+        }
+      }
+    };
+    // A hub with spokes out to the spawn ring, plus a linking ring so you are
+    // never forced through the middle.
+    const hub = 6;
+    for (let x = cx - hub; x <= cx + hub; x++) {
+      for (let z = cz - hub; z <= cz + hub; z++) {
+        if (Math.hypot(x - cx, z - cz) > hub) continue;
+        this.set(x, FLOOR_Y - 1, z, P.floor);
+      }
+    }
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + hash2(i, 3, seed) * 0.3;
+      bridge(cx, cz, Math.round(cx + Math.cos(a) * (R - 3)), Math.round(cz + Math.sin(a) * (R - 3)), 1);
+    }
+    for (let i = 0; i < 40; i++) {
+      const a0 = (i / 40) * Math.PI * 2;
+      const a1 = ((i + 1) / 40) * Math.PI * 2;
+      const rr = R - 11;
+      bridge(Math.round(cx + Math.cos(a0) * rr), Math.round(cz + Math.sin(a0) * rr),
+        Math.round(cx + Math.cos(a1) * rr), Math.round(cz + Math.sin(a1) * rr), 1);
+    }
+    // Pillars on the hub for cover, and a beacon to navigate by.
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + 0.78;
+      const px = Math.round(cx + Math.cos(a) * 4), pz = Math.round(cz + Math.sin(a) * 4);
+      this.fill(px, FLOOR_Y, pz, px, FLOOR_Y + 3, pz, P.accent);
+    }
+    this.set(cx, FLOOR_Y, cz, B.GLOW);
   }
 
   // -------------------------------------------------------------------------
@@ -563,8 +732,10 @@ export class World {
   }
 }
 
-export const LAYOUT_COUNT = 3;
-export const LAYOUT_NAMES = ['Fortress', 'Crucible', 'Spires'];
+export const LAYOUT_COUNT = 6;
+export const LAYOUT_NAMES = [
+  'Fortress', 'Crucible', 'Spires', 'Colosseum', 'Labyrinth', 'Causeway',
+];
 
 export function createArena(theme, seed, layout = 0) {
   return new World().generate(theme, clamp(seed, 1, 99999), layout);
