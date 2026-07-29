@@ -623,22 +623,145 @@ button:disabled { opacity: 0.35; cursor: default; }
 }
 .talent-branch span { color: var(--dim); }
 
-.talent-node {
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 10px;
+/* The tree. Uniform cells on a fixed 3-wide grid, with arrows drawn upward out
+   of the cell they point into — that way an arrow never needs a grid track of
+   its own and cannot drift out of line with the icons it connects. */
+.talent-tree {
+  --cell: 52px;
+  --tgap: 14px;
+  /* The branch's own colour, bled in behind the grid. Classic trees carry a
+     painted backdrop per specialisation; this is the same idea at the budget
+     of one gradient, and it is what stops four tabs of grey squares from
+     looking like the same screen four times. */
   position: relative;
+  padding: 16px 22px 18px;
+  border-radius: 14px;
+  background:
+    radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 72%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(0, 0, 0, 0.28));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  display: grid;
+  grid-template-columns: repeat(3, var(--cell));
+  grid-auto-rows: var(--cell);
+  gap: var(--tgap);
+  justify-content: center;
+  margin: 10px 0 4px;
 }
-.talent-node.has-rank { border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
-.talent-node.maxed { background: color-mix(in srgb, var(--accent) 14%, rgba(0, 0, 0, 0.3)); }
-.talent-node.locked { opacity: 0.5; }
-.talent-head { display: flex; justify-content: space-between; align-items: baseline; }
-.talent-name { font-weight: 700; font-size: 13px; }
-.talent-rank { font-size: 12px; color: var(--accent); font-weight: 800; }
-.talent-desc { font-size: 11.5px; color: var(--dim); line-height: 1.45; margin-top: 3px; }
-.talent-lock { font-size: 10.5px; color: #ff9a7a; margin-top: 4px; }
-.talent-btns { display: flex; gap: 6px; margin-top: 8px; }
+.tt-cell { position: relative; width: var(--cell); height: var(--cell); }
+
+.tt-arrow {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  width: 3px;
+  margin-left: -1.5px;
+  /* A node at row r sits at r*(cell+gap); the arrow spans from the bottom of
+     the source cell to the top of this one. */
+  height: calc(var(--span) * (var(--cell) + var(--tgap)) - var(--cell));
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 2px;
+}
+/* Lit once the node it comes from is maxed — which is the moment the path it
+   represents actually opens. */
+.tt-arrow.lit { background: var(--gold); box-shadow: 0 0 7px rgba(255, 210, 74, 0.55); }
+.tt-arrow::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -7px;
+  margin-left: -6px;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 8px solid rgba(255, 255, 255, 0.16);
+}
+.tt-arrow.lit::after { border-top-color: var(--gold); }
+
+.tt-node {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 2px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.45);
+  line-height: 0;
+  overflow: visible;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.10),
+    0 2px 0 rgba(0, 0, 0, 0.5);
+  transition: transform 0.08s ease, box-shadow 0.1s ease, border-color 0.15s ease;
+}
+.tt-node canvas { width: 100%; height: 100%; display: block; position: static; border-radius: 8px; }
+.tt-node:hover { transform: translateY(-2px); }
+.tt-node.has-rank { border-color: color-mix(in srgb, var(--gold) 65%, transparent); }
+/* Maxed is the state a player scans for, so it gets the loudest treatment on
+   the screen: full gold rim and a glow that survives a dark backdrop. */
+.tt-node.maxed {
+  border-color: var(--gold);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.28),
+    0 0 12px rgba(255, 210, 74, 0.5),
+    0 2px 0 rgba(120, 88, 12, 0.7);
+}
+/* Dimmed, not desaturated. A Classic tree shows every talent in full colour
+   whether or not you can afford it — greying them out made the whole screen
+   read as disabled rather than as a plan you have not paid for yet. */
+.tt-node.locked { opacity: 0.55; }
+.tt-node.locked canvas { filter: brightness(0.75); }
+.tt-node.unequipped canvas { opacity: 0.55; }
+.tt-node.selected { border-color: var(--accent); transform: translateY(-2px); }
+.tt-node.selected::before {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border-radius: 13px;
+  border: 1.5px solid var(--accent);
+  pointer-events: none;
+}
+
+/* Rank in the corner, exactly where a Classic tree puts it. */
+.tt-pip {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  min-width: 20px;
+  padding: 0 4px;
+  border-radius: 7px;
+  background: #14161d;
+  border: 1.5px solid rgba(255, 255, 255, 0.22);
+  color: var(--dim);
+  font-size: 9.5px;
+  font-weight: 900;
+  line-height: 15px;
+  text-align: center;
+}
+.tt-node.has-rank .tt-pip { color: var(--gold); border-color: var(--gold); }
+.tt-node.maxed .tt-pip { background: var(--gold); color: #14161d; border-color: #fff2c4; }
+
+/* The one place on the screen with words on it, and the only two buttons. */
+.tt-detail {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tt-detail-head { display: flex; align-items: baseline; gap: 8px; }
+.tt-detail-head b { font-size: 14px; }
+.tt-detail-rank { margin-left: auto; font-size: 12px; font-weight: 800; color: var(--gold); }
+.tt-detail-desc { margin: 0; font-size: 12px; color: var(--dim); line-height: 1.45; min-height: 2.9em; }
+.tt-btns { display: flex; gap: 8px; margin-top: 2px; }
+.tt-btns .tiny-btn { width: 42px; height: 34px; font-size: 19px; }
+
+@media (max-height: 600px) {
+  .talent-tree { --cell: 42px; --tgap: 11px; margin: 6px 0 2px; }
+  .tt-detail { padding: 7px 10px; }
+  .tt-detail-desc { font-size: 11px; min-height: 2.6em; }
+  .tt-btns .tiny-btn { height: 30px; }
+}
 
 /* Which skill a Mastery node is about, and whether it is one of your four.
    Dimming the whole node when the skill is unequipped would read as "locked";
@@ -1529,4 +1652,64 @@ body.show-popout-btn #popout-btn { display: block; }
   .logo { margin-bottom: 2px; }
   .class-picker .pill { padding: 5px 9px; font-size: 11.5px; }
   .branch-tabs .pill { padding: 5px 9px; font-size: 11.5px; }
+}
+
+.tt-layout { display: flex; flex-direction: column; }
+/* A landscape phone has under 400px of height, and a four-row tree stacked on
+   top of a detail panel does not fit in it. Side by side, both do — and the
+   tree is the thing that wants the space, so it goes first and the words
+   take what is left. */
+@media (max-height: 560px) {
+  .tt-layout { flex-direction: row; align-items: flex-start; gap: 14px; }
+  .tt-layout .talent-tree { flex: 0 0 auto; margin: 4px 0 0; }
+  .tt-layout .tt-detail { flex: 1 1 auto; margin-top: 4px; }
+  .talent-tree { --cell: 38px; --tgap: 9px; padding: 8px 11px 9px; }
+  .mastery { display: none; }
+  /* The class picker is nine pills wide; on a 375px-tall landscape phone that
+     row costs more than it is worth next to the tree it is there to switch. */
+  .talents-screen .class-picker .pill { padding: 3px 7px; font-size: 10.5px; }
+}
+@media (max-height: 600px) {
+  .talent-tree { padding: 10px 14px 11px; }
+}
+@media (max-width: 360px) {
+  .talent-tree { padding: 10px 12px 11px; }
+}
+
+/* 320x568: the smallest phone still worth supporting, and the only viewport
+   where a nine-class picker, four branch tabs, a mastery bar, a four-row tree
+   and a detail panel all want the same 568 pixels. The tree keeps its size —
+   it is the screen — and everything around it gives ground. */
+@media (max-width: 360px) {
+  .talents-screen .mastery { display: none; }
+  .talents-screen .panel-head h1 { font-size: 20px; }
+  .talents-screen .panel { padding: 12px; }
+  .talent-tree { --cell: 44px; --tgap: 11px; margin: 6px 0 2px; }
+  .tt-detail-desc { min-height: 2.6em; font-size: 11px; }
+  .class-picker { gap: 4px; }
+  .class-picker .pill { padding: 4px 8px; font-size: 11px; }
+}
+
+
+/* Desktop and tablet have the room, and a talent tree is the one screen worth
+   spending it on — at phone size on a 1440px panel it read as a diagram of a
+   tree rather than as the tree. */
+@media (min-width: 900px) and (min-height: 700px) {
+  .talent-tree { --cell: 66px; --tgap: 18px; padding: 22px 30px 24px; }
+  .tt-pip { min-width: 24px; font-size: 11px; line-height: 17px; }
+  .tt-detail { padding: 12px 15px; }
+  .tt-detail-head b { font-size: 15px; }
+}
+
+/* The last few pixels on the two tightest viewports. Everything trimmed here
+   is chrome around the tree — the subtitle restates the points counter that is
+   already in the header, and the description strip does not need to reserve
+   two lines when the text is usually one. */
+@media (max-height: 560px), (max-width: 360px) {
+  .talents-screen .panel-head .sub { display: none; }
+  .talents-screen .panel-head h1 { margin-bottom: 2px; }
+  .talents-screen .actions { margin-top: 8px; }
+  .talents-screen .branch-tabs { margin: 4px 0; }
+  .tt-detail-desc { min-height: 0; }
+  .tt-detail { gap: 3px; }
 }

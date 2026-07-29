@@ -10,21 +10,21 @@
 // of four out of ten is the interesting decision — not the wait.
 
 export const RESOURCE = {
-  MANA: { key: 'mana', name: 'Mana', color: '#4aa3ff', max: 100, regen: 7, startFull: true },
-  RAGE: { key: 'rage', name: 'Rage', color: '#ff5a3c', max: 100, regen: -3, startFull: false, onHitGain: 9, onTakeGain: 6 },
-  ENERGY: { key: 'energy', name: 'Energy', color: '#ffd24a', max: 100, regen: 18, startFull: true },
-  SOUL: { key: 'soul', name: 'Soul Shards', color: '#a35cff', max: 100, regen: 5, startFull: true, onKillGain: 12 },
+  MANA: { key: 'mana', name: 'Mana', school: 'physical', color: '#4aa3ff', max: 100, regen: 7, startFull: true },
+  RAGE: { key: 'rage', name: 'Rage', school: 'physical', color: '#ff5a3c', max: 100, regen: -3, startFull: false, onHitGain: 9, onTakeGain: 6 },
+  ENERGY: { key: 'energy', name: 'Energy', school: 'physical', color: '#ffd24a', max: 100, regen: 18, startFull: true },
+  SOUL: { key: 'soul', name: 'Soul Shards', school: 'physical', color: '#a35cff', max: 100, regen: 5, startFull: true, onKillGain: 12 },
   // Hatred neither regenerates on its own nor starts full: it is built by
   // fighting and spent immediately, which is what makes the Demonslayer a
   // class you play forwards.
-  HATRED: { key: 'hatred', name: 'Hatred', color: '#ff3ca0', max: 100, regen: 0, startFull: false, onHitGain: 7, onKillGain: 14 },
+  HATRED: { key: 'hatred', name: 'Hatred', school: 'physical', color: '#ff3ca0', max: 100, regen: 0, startFull: false, onHitGain: 7, onKillGain: 14 },
   // Faith trickles rather than pours, and is topped up by both dealing and
   // taking hits. A Paladin who disengages runs dry, which is the point: the
   // armour exists to let you hold ground, not to let you walk away from it.
-  FAITH: { key: 'faith', name: 'Faith', color: '#ffe9a8', max: 110, regen: 3, startFull: true, onHitGain: 5, onTakeGain: 8 },
+  FAITH: { key: 'faith', name: 'Faith', school: 'physical', color: '#ffe9a8', max: 110, regen: 3, startFull: true, onHitGain: 5, onTakeGain: 8 },
   // Focus is the most generous pool in the game because the Hunter's limit is
   // never the resource — it is whether there is still room to back into.
-  FOCUS: { key: 'focus', name: 'Focus', color: '#8ce06a', max: 100, regen: 22, startFull: true },
+  FOCUS: { key: 'focus', name: 'Focus', school: 'physical', color: '#8ce06a', max: 100, regen: 22, startFull: true },
 };
 
 /** How many skills are equipped at once — four buttons, four keys. */
@@ -97,7 +97,7 @@ export const CLASSES = [
     ],
     talents: [
       {
-        name: 'Arms', color: '#e0714f', nodes: [
+        name: 'Arms', school: 'physical', color: '#e0714f', nodes: [
           { id: 'w_a1', name: 'Heavy Blade', desc: '+6% melee damage per rank.', max: 8, effect: { meleeDamage: 0.06 } },
           { id: 'w_a2', name: 'Deep Wounds', desc: 'Crits apply a bleed for 30% weapon damage over 3s.', max: 4, effect: { bleedPct: 0.30 } },
           { id: 'w_a3', name: 'Sharpen', desc: '+3% crit chance per rank.', max: 6, effect: { critChance: 0.03 } },
@@ -107,7 +107,7 @@ export const CLASSES = [
         ],
       },
       {
-        name: 'Fury', color: '#ff9d5c', nodes: [
+        name: 'Fury', school: 'physical', color: '#ff9d5c', nodes: [
           { id: 'w_f1', name: 'Frenzy', desc: '+5% attack speed per rank.', max: 8, effect: { attackSpeed: 0.05 } },
           { id: 'w_f2', name: 'Blood Craze', desc: 'Heal 3% of damage dealt per rank.', max: 5, effect: { lifesteal: 0.03 } },
           { id: 'w_f3', name: 'Unbridled', desc: '+15 max Rage and +2 Rage per hit, per rank.', max: 4, effect: { resourceMax: 15, onHitGain: 2 } },
@@ -117,7 +117,7 @@ export const CLASSES = [
         ],
       },
       {
-        name: 'Protection', color: '#8fb3ff', nodes: [
+        name: 'Protection', school: 'frost', color: '#8fb3ff', nodes: [
           { id: 'w_p1', name: 'Toughness', desc: '+22 max health per rank.', max: 8, effect: { maxHp: 22 } },
           { id: 'w_p2', name: 'Plate Skin', desc: '+3% armor per rank.', max: 6, effect: { armor: 0.03 } },
           { id: 'w_p3', name: 'Second Wind', desc: 'Regenerate 1 hp/s per rank out of combat.', max: 4, effect: { regen: 1 } },
@@ -131,7 +131,7 @@ export const CLASSES = [
       // and the tree one decision instead of two: the generic branches make
       // your character better, this one makes a *build*.
       {
-        name: 'Mastery', color: '#ffd24a', nodes: [
+        name: 'Mastery', school: 'holy', color: '#ffd24a', nodes: [
           { id: 'w_m1', name: 'Unstoppable Charge', skill: 'charge', desc: 'Charge hits 22% harder and reaches 12% further, per rank.', max: 4, effect: { skillDamage: 0.22, skillRadius: 0.12 } },
           { id: 'w_m2', name: 'Endless Whirl', skill: 'whirlwind', desc: 'Whirlwind costs 12% less and its cooldown drops 8%, per rank.', max: 5, effect: { skillCost: 0.12, skillCooldown: 0.08 } },
           { id: 'w_m3', name: 'Bloodletting', skill: 'rend', desc: 'Rend bleeds 25% harder and 1s longer, per rank.', max: 5, effect: { skillDamage: 0.25, skillDuration: 1 } },
@@ -209,7 +209,7 @@ export const CLASSES = [
     ],
     talents: [
       {
-        name: 'Fire', color: '#ff8a3c', nodes: [
+        name: 'Fire', school: 'fire', color: '#ff8a3c', nodes: [
           { id: 'm_f1', name: 'Ignite', desc: 'Burn effects deal 16% more damage per rank.', max: 6, effect: { burnDamage: 0.16 } },
           { id: 'm_f2', name: 'Combustion', desc: '+4% crit chance per rank.', max: 5, effect: { critChance: 0.04 } },
           { id: 'm_f3', name: 'Pyroclasm', desc: 'Explosion radius +8% per rank.', max: 5, effect: { aoeRadius: 0.08 } },
@@ -219,7 +219,7 @@ export const CLASSES = [
         ],
       },
       {
-        name: 'Frost', color: '#8fe3ff', nodes: [
+        name: 'Frost', school: 'frost', color: '#8fe3ff', nodes: [
           { id: 'm_i1', name: 'Permafrost', desc: 'Slows last 0.5s longer per rank.', max: 5, effect: { slowDuration: 0.5 } },
           { id: 'm_i2', name: 'Ice Barrier', desc: 'Gain a 30 point absorb shield per rank on Blink.', max: 4, effect: { blinkShield: 30 } },
           { id: 'm_i3', name: 'Shatter', desc: '+25% damage to frozen targets per rank.', max: 5, effect: { frozenDamage: 0.25 } },
@@ -229,7 +229,7 @@ export const CLASSES = [
         ],
       },
       {
-        name: 'Arcane', color: '#c98fff', nodes: [
+        name: 'Arcane', school: 'arcane', color: '#c98fff', nodes: [
           { id: 'm_a1', name: 'Clarity', desc: '+3 mana regen per rank.', max: 6, effect: { resourceRegen: 3 } },
           { id: 'm_a2', name: 'Arcane Mind', desc: '+15 max mana per rank.', max: 6, effect: { resourceMax: 15 } },
           { id: 'm_a3', name: 'Focus', desc: '-5% skill cooldowns per rank.', max: 6, effect: { cooldownReduction: 0.05 } },
@@ -243,7 +243,7 @@ export const CLASSES = [
       // and the tree one decision instead of two: the generic branches make
       // your character better, this one makes a *build*.
       {
-        name: 'Mastery', color: '#ffd24a', nodes: [
+        name: 'Mastery', school: 'holy', color: '#ffd24a', nodes: [
           { id: 'm_m1', name: 'Improved Fireball', skill: 'fireball', desc: 'Fireball hits 18% harder and costs 10% less, per rank.', max: 6, effect: { skillDamage: 0.18, skillCost: 0.10 } },
           { id: 'm_m2', name: 'Deep Freeze', skill: 'frostnova', desc: 'Frost Nova reaches 14% wider and its cooldown drops 8%, per rank.', max: 5, effect: { skillRadius: 0.14, skillCooldown: 0.08 } },
           { id: 'm_m3', name: 'Cataclysm', skill: 'meteor', desc: 'Meteor hits 30% harder and lands 12% wider, per rank.', max: 5, effect: { skillDamage: 0.30, skillRadius: 0.12 } },
@@ -321,7 +321,7 @@ export const CLASSES = [
     ],
     talents: [
       {
-        name: 'Affliction', color: '#8f4dff', nodes: [
+        name: 'Affliction', school: 'shadow', color: '#8f4dff', nodes: [
           { id: 'k_a1', name: 'Virulence', desc: 'Damage-over-time effects tick 10% harder per rank.', max: 8, effect: { dotDamage: 0.10 } },
           { id: 'k_a2', name: 'Contagion', desc: 'Rot spreads to 1 extra enemy per rank on death.', max: 3, effect: { spread: 1 } },
           { id: 'k_a3', name: 'Siphon', desc: 'DoTs heal you for 5% of their damage per rank.', max: 4, effect: { dotLifesteal: 0.05 } },
@@ -331,7 +331,7 @@ export const CLASSES = [
         ],
       },
       {
-        name: 'Demonology', color: '#ff6bb5', nodes: [
+        name: 'Demonology', school: 'shadow', color: '#ff6bb5', nodes: [
           { id: 'k_d1', name: 'Fel Bond', desc: 'Fiends gain +16% health and damage per rank.', max: 8, effect: { petPower: 0.16 } },
           { id: 'k_d2', name: 'Master Summoner', desc: '+1 max Fiend per rank.', max: 3, effect: { maxPets: 1 } },
           { id: 'k_d3', name: 'Soul Link', desc: 'Redirect 8% of damage taken to your fiends per rank.', max: 4, effect: { soulLink: 0.08 } },
@@ -341,7 +341,7 @@ export const CLASSES = [
         ],
       },
       {
-        name: 'Destruction', color: '#ff8a3c', nodes: [
+        name: 'Destruction', school: 'fire', color: '#ff8a3c', nodes: [
           { id: 'k_s1', name: 'Ruin', desc: '+10% crit damage per rank.', max: 6, effect: { critMult: 0.10 } },
           { id: 'k_s2', name: 'Backdraft', desc: '-6% cooldowns per rank.', max: 5, effect: { cooldownReduction: 0.06 } },
           { id: 'k_s3', name: 'Harvester', desc: 'Kills restore +6 Soul Shards per rank.', max: 4, effect: { onKillGain: 6 } },
@@ -355,7 +355,7 @@ export const CLASSES = [
       // and the tree one decision instead of two: the generic branches make
       // your character better, this one makes a *build*.
       {
-        name: 'Mastery', color: '#ffd24a', nodes: [
+        name: 'Mastery', school: 'holy', color: '#ffd24a', nodes: [
           { id: 'k_m1', name: 'Festering Corruption', skill: 'corruption', desc: 'Corruption ticks 26% harder and lasts 1s longer, per rank.', max: 6, effect: { skillDamage: 0.26, skillDuration: 1 } },
           { id: 'k_m2', name: 'Endless Drain', skill: 'drainlife', desc: 'Drain Life costs 12% less and its cooldown drops 9%, per rank.', max: 5, effect: { skillCost: 0.12, skillCooldown: 0.09 } },
           { id: 'k_m3', name: 'Greater Fiend', skill: 'summonimp', desc: 'Your Fiend is 25% stronger and arrives 10% sooner, per rank.', max: 5, effect: { skillDamage: 0.25, skillCooldown: 0.10 } },
@@ -433,7 +433,7 @@ export const CLASSES = [
     ],
     talents: [
       {
-        name: 'Elemental', color: '#7ef0ff', nodes: [
+        name: 'Elemental', school: 'storm', color: '#7ef0ff', nodes: [
           { id: 's_e1', name: 'Concussion', desc: '+7% spell damage per rank.', max: 7, effect: { spellDamage: 0.07 } },
           { id: 's_e2', name: 'Elemental Focus', desc: '+4% crit chance per rank.', max: 5, effect: { critChance: 0.04 } },
           { id: 's_e3', name: 'Storm Reach', desc: 'Chain Lightning gains +1 jump per rank.', max: 4, effect: { jumps: 1 } },
@@ -443,7 +443,7 @@ export const CLASSES = [
         ],
       },
       {
-        name: 'Enhancement', color: '#ffd98a', nodes: [
+        name: 'Enhancement', school: 'physical', color: '#ffd98a', nodes: [
           { id: 's_h1', name: 'Flurry', desc: '+6% attack speed per rank.', max: 7, effect: { attackSpeed: 0.06 } },
           { id: 's_h2', name: 'Windfury', desc: '15% chance per rank for melee to strike twice.', max: 3, effect: { doubleStrike: 0.15 } },
           { id: 's_h3', name: 'Ghost Wolf', desc: '+5% move speed per rank.', max: 5, effect: { moveSpeed: 0.05 } },
@@ -453,7 +453,7 @@ export const CLASSES = [
         ],
       },
       {
-        name: 'Restoration', color: '#9dffe0', nodes: [
+        name: 'Restoration', school: 'nature', color: '#9dffe0', nodes: [
           { id: 's_r1', name: 'Totemic Mastery', desc: 'Totems last 3s longer per rank.', max: 4, effect: { totemDuration: 3 } },
           { id: 's_r2', name: 'Tidal Waves', desc: '+18% healing done per rank.', max: 5, effect: { healing: 0.18 } },
           { id: 's_r3', name: 'Ancestral Fortitude', desc: '+18 max health per rank.', max: 7, effect: { maxHp: 18 } },
@@ -467,7 +467,7 @@ export const CLASSES = [
       // and the tree one decision instead of two: the generic branches make
       // your character better, this one makes a *build*.
       {
-        name: 'Mastery', color: '#ffd24a', nodes: [
+        name: 'Mastery', school: 'holy', color: '#ffd24a', nodes: [
           { id: 's_m1', name: 'Forked Lightning', skill: 'chainlightning', desc: 'Chain Lightning hits 20% harder and costs 10% less, per rank.', max: 6, effect: { skillDamage: 0.20, skillCost: 0.10 } },
           { id: 's_m2', name: 'Molten Core', skill: 'lavaburst', desc: 'Lava Burst hits 24% harder and its cooldown drops 8%, per rank.', max: 5, effect: { skillDamage: 0.24, skillCooldown: 0.08 } },
           { id: 's_m3', name: 'Enduring Totem', skill: 'searingtotem', desc: 'Your Searing Totem lasts 2s longer and hits 22% harder, per rank.', max: 5, effect: { skillDuration: 2, skillDamage: 0.22 } },
@@ -545,7 +545,7 @@ export const CLASSES = [
     ],
     talents: [
       {
-        name: 'Holy', color: '#ffe9a8', nodes: [
+        name: 'Holy', school: 'holy', color: '#ffe9a8', nodes: [
           { id: 'p_h1', name: 'Divine Fury', desc: '+7% holy damage per rank.', max: 8, effect: { spellDamage: 0.07 } },
           { id: 'p_h2', name: 'Blessed Recovery', desc: '+18% healing done per rank.', max: 5, effect: { healing: 0.18 } },
           { id: 'p_h3', name: 'Surge of Light', desc: 'Crits reduce Holy Nova cooldown by 0.6s per rank.', max: 4, effect: { critCdr: 0.6 } },
@@ -555,7 +555,7 @@ export const CLASSES = [
         ],
       },
       {
-        name: 'Discipline', color: '#bcd4ff', nodes: [
+        name: 'Discipline', school: 'arcane', color: '#bcd4ff', nodes: [
           { id: 'p_d1', name: 'Mental Strength', desc: '+18 max mana per rank.', max: 6, effect: { resourceMax: 18 } },
           { id: 'p_d2', name: 'Reinforce', desc: 'Shield absorbs +25 more per rank.', max: 5, effect: { absorb: 25 } },
           { id: 'p_d3', name: 'Rapture', desc: 'When a shield breaks, restore 15 mana per rank.', max: 4, effect: { rapture: 15 } },
@@ -565,7 +565,7 @@ export const CLASSES = [
         ],
       },
       {
-        name: 'Shadow', color: '#9a7fd8', nodes: [
+        name: 'Shadow', school: 'shadow', color: '#9a7fd8', nodes: [
           { id: 'p_s1', name: 'Shadow Weaving', desc: 'Smite applies a rot for 8 dps per rank (4s).', max: 4, effect: { smiteDot: 8 } },
           { id: 'p_s2', name: 'Spirit Tap', desc: 'Kills restore 8 mana per rank.', max: 4, effect: { onKillGain: 8 } },
           { id: 'p_s3', name: 'Shadowform', desc: '+7% damage, -5% healing per rank.', max: 5, effect: { spellDamage: 0.07, healing: -0.05 } },
@@ -579,7 +579,7 @@ export const CLASSES = [
       // and the tree one decision instead of two: the generic branches make
       // your character better, this one makes a *build*.
       {
-        name: 'Mastery', color: '#ffd24a', nodes: [
+        name: 'Mastery', school: 'holy', color: '#ffd24a', nodes: [
           { id: 'p_m1', name: 'Focused Will', skill: 'smite', desc: 'Smite hits 18% harder and costs 12% less, per rank.', max: 6, effect: { skillDamage: 0.18, skillCost: 0.12 } },
           { id: 'p_m2', name: 'Greater Shield', skill: 'shield', desc: 'Power Word: Shield absorbs 24% more and its cooldown drops 8%, per rank.', max: 5, effect: { skillDamage: 0.24, skillCooldown: 0.08 } },
           { id: 'p_m3', name: 'Renewed Hope', skill: 'renew', desc: 'Renew mends 22% more and lasts 1.5s longer, per rank.', max: 5, effect: { skillDamage: 0.22, skillDuration: 1.5 } },
@@ -657,7 +657,7 @@ export const CLASSES = [
     ],
     talents: [
       {
-        name: 'Assassination', color: '#8ce06a', nodes: [
+        name: 'Assassination', school: 'nature', color: '#8ce06a', nodes: [
           { id: 'r_a1', name: 'Lethality', desc: '+8% crit damage per rank.', max: 7, effect: { critMult: 0.08 } },
           { id: 'r_a2', name: 'Deadly Poison', desc: 'Poison ticks 12% harder per rank.', max: 6, effect: { dotDamage: 0.12 } },
           { id: 'r_a3', name: 'Vile Toxins', desc: 'Poison lasts 1s longer per rank.', max: 4, effect: { dotDuration: 1 } },
@@ -667,7 +667,7 @@ export const CLASSES = [
         ],
       },
       {
-        name: 'Combat', color: '#ffd24a', nodes: [
+        name: 'Combat', school: 'physical', color: '#ffd24a', nodes: [
           { id: 'r_c1', name: 'Precision', desc: '+4% crit chance per rank.', max: 6, effect: { critChance: 0.04 } },
           { id: 'r_c2', name: 'Blade Flurry', desc: '+7% attack speed per rank.', max: 7, effect: { attackSpeed: 0.07 } },
           { id: 'r_c3', name: 'Adrenaline', desc: '+5 energy regen per rank.', max: 5, effect: { resourceRegen: 5 } },
@@ -677,7 +677,7 @@ export const CLASSES = [
         ],
       },
       {
-        name: 'Subtlety', color: '#9fd8ff', nodes: [
+        name: 'Subtlety', school: 'shadow', color: '#9fd8ff', nodes: [
           { id: 'r_s1', name: 'Fleet Footed', desc: '+6% move speed per rank.', max: 5, effect: { moveSpeed: 0.06 } },
           { id: 'r_s2', name: 'Elusive', desc: '+4% dodge chance per rank.', max: 5, effect: { dodge: 0.04 } },
           { id: 'r_s3', name: 'Shadowstep', desc: 'Ambush cooldown -0.7s per rank.', max: 4, effect: { ambushCdr: 0.7 } },
@@ -691,7 +691,7 @@ export const CLASSES = [
       // and the tree one decision instead of two: the generic branches make
       // your character better, this one makes a *build*.
       {
-        name: 'Mastery', color: '#ffd24a', nodes: [
+        name: 'Mastery', school: 'holy', color: '#ffd24a', nodes: [
           { id: 'r_m1', name: 'Perfected Ambush', skill: 'ambush', desc: 'Ambush hits 22% harder and costs 12% less, per rank.', max: 6, effect: { skillDamage: 0.22, skillCost: 0.12 } },
           { id: 'r_m2', name: 'Whirling Steel', skill: 'fanofknives', desc: 'Fan of Knives reaches 14% wider and hits 20% harder, per rank.', max: 5, effect: { skillRadius: 0.14, skillDamage: 0.20 } },
           { id: 'r_m3', name: 'Deeper Cuts', skill: 'eviscerate', desc: 'Eviscerate hits 26% harder and its cooldown drops 9%, per rank.', max: 5, effect: { skillDamage: 0.26, skillCooldown: 0.09 } },
@@ -768,7 +768,7 @@ export const CLASSES = [
     ],
     talents: [
       {
-        name: 'Havoc', color: '#7dff5a', nodes: [
+        name: 'Havoc', school: 'fire', color: '#7dff5a', nodes: [
           { id: 'd_h1', name: 'Demonic Presence', desc: '+6% melee damage per rank.', max: 8, effect: { meleeDamage: 0.06 } },
           { id: 'd_h2', name: 'Critical Chaos', desc: '+4% crit chance per rank.', max: 6, effect: { critChance: 0.04 } },
           { id: 'd_h3', name: 'Unbound Chaos', desc: '+9% crit damage per rank.', max: 7, effect: { critMult: 0.09 } },
@@ -778,7 +778,7 @@ export const CLASSES = [
         ],
       },
       {
-        name: 'Vengeance', color: '#ff5a3c', nodes: [
+        name: 'Vengeance', school: 'shadow', color: '#ff5a3c', nodes: [
           { id: 'd_v1', name: 'Charred Flesh', desc: '+18 max health per rank.', max: 8, effect: { maxHp: 18 } },
           { id: 'd_v2', name: 'Fiery Brand', desc: '+3% armor per rank.', max: 6, effect: { armor: 0.03 } },
           { id: 'd_v3', name: 'Demon Hide', desc: 'Take 3% less damage per rank.', max: 5, effect: { damageReduction: 0.03 } },
@@ -788,7 +788,7 @@ export const CLASSES = [
         ],
       },
       {
-        name: 'Felblood', color: '#a35cff', nodes: [
+        name: 'Felblood', school: 'nature', color: '#a35cff', nodes: [
           { id: 'd_f1', name: 'Thirst', desc: 'Heal 3% of damage dealt per rank.', max: 6, effect: { lifesteal: 0.03 } },
           { id: 'd_f2', name: 'Blind Fury', desc: '+12 max Hatred and +2 Hatred per hit, per rank.', max: 5, effect: { resourceMax: 12, onHitGain: 2 } },
           { id: 'd_f3', name: 'Burning Hatred', desc: 'Kills restore +6 Hatred per rank.', max: 4, effect: { onKillGain: 6 } },
@@ -802,7 +802,7 @@ export const CLASSES = [
       // and the tree one decision instead of two: the generic branches make
       // your character better, this one makes a *build*.
       {
-        name: 'Mastery', color: '#ffd24a', nodes: [
+        name: 'Mastery', school: 'holy', color: '#ffd24a', nodes: [
           { id: 'd_m1', name: 'Momentum', skill: 'felrush', desc: 'Fel Rush hits 22% harder and its cooldown drops 10%, per rank.', max: 6, effect: { skillDamage: 0.22, skillCooldown: 0.10 } },
           { id: 'd_m2', name: 'Burning Aura', skill: 'immolation', desc: 'Immolation Aura reaches 15% wider and burns 22% harder, per rank.', max: 5, effect: { skillRadius: 0.15, skillDamage: 0.22 } },
           { id: 'd_m3', name: 'Voracious Cleave', skill: 'soulcleave', desc: 'Soul Cleave hits 24% harder and costs 12% less, per rank.', max: 5, effect: { skillDamage: 0.24, skillCost: 0.12 } },
@@ -883,7 +883,7 @@ export const CLASSES = [
     ],
     talents: [
       {
-        name: 'Retribution', color: '#ffd98a', nodes: [
+        name: 'Retribution', school: 'holy', color: '#ffd98a', nodes: [
           { id: 'l_r1', name: 'Zeal', desc: '+6% melee damage per rank.', max: 8, effect: { meleeDamage: 0.06 } },
           { id: 'l_r2', name: 'Vengeance', desc: '+4% crit chance per rank.', max: 6, effect: { critChance: 0.04 } },
           { id: 'l_r3', name: 'Sanctified Wrath', desc: '+0.08 crit damage per rank.', max: 5, effect: { critMult: 0.08 } },
@@ -893,7 +893,7 @@ export const CLASSES = [
         ],
       },
       {
-        name: 'Protection', color: '#8fb3ff', nodes: [
+        name: 'Protection', school: 'frost', color: '#8fb3ff', nodes: [
           { id: 'l_p1', name: 'Stoneforged', desc: '+26 max health per rank.', max: 8, effect: { maxHp: 26 } },
           { id: 'l_p2', name: 'Sanctuary', desc: '+3% armor per rank.', max: 6, effect: { armor: 0.03 } },
           { id: 'l_p3', name: 'Reckoning', desc: 'Reflect 12% of damage taken per rank.', max: 5, effect: { thorns: 0.12 } },
@@ -903,7 +903,7 @@ export const CLASSES = [
         ],
       },
       {
-        name: 'Holy', color: '#ffe9a8', nodes: [
+        name: 'Holy', school: 'holy', color: '#ffe9a8', nodes: [
           { id: 'l_h1', name: 'Illumination', desc: '+8% healing done per rank.', max: 6, effect: { healing: 0.08 } },
           { id: 'l_h2', name: 'Benediction', desc: 'Heal 3% of damage dealt per rank.', max: 6, effect: { lifesteal: 0.03 } },
           { id: 'l_h3', name: 'Devotion', desc: 'Regenerate 1.5 hp/s per rank out of combat.', max: 5, effect: { regen: 1.5 } },
@@ -917,7 +917,7 @@ export const CLASSES = [
       // and the tree one decision instead of two: the generic branches make
       // your character better, this one makes a *build*.
       {
-        name: 'Mastery', color: '#ffd24a', nodes: [
+        name: 'Mastery', school: 'holy', color: '#ffd24a', nodes: [
           { id: 'l_m1', name: 'Zealous Strike', skill: 'crusaderstrike', desc: 'Crusader Strike hits 20% harder and costs 12% less, per rank.', max: 6, effect: { skillDamage: 0.20, skillCost: 0.12 } },
           { id: 'l_m2', name: 'Hallowed Ground', skill: 'consecration', desc: 'Consecration lasts 1.5s longer and burns 22% harder, per rank.', max: 5, effect: { skillDuration: 1.5, skillDamage: 0.22 } },
           { id: 'l_m3', name: 'Unbreakable', skill: 'divineshield', desc: 'Divine Shield lasts 1s longer and its cooldown drops 10%, per rank.', max: 5, effect: { skillDuration: 1, skillCooldown: 0.10 } },
@@ -998,7 +998,7 @@ export const CLASSES = [
     ],
     talents: [
       {
-        name: 'Marksmanship', color: '#cdf5a8', nodes: [
+        name: 'Marksmanship', school: 'nature', color: '#cdf5a8', nodes: [
           { id: 'h_m1', name: 'Steady Aim', desc: '+7% spell damage per rank.', max: 8, effect: { spellDamage: 0.07 } },
           { id: 'h_m2', name: 'Lethal Shots', desc: '+4% crit chance per rank.', max: 6, effect: { critChance: 0.04 } },
           { id: 'h_m3', name: 'Mortal Shots', desc: '+0.09 crit damage per rank.', max: 5, effect: { critMult: 0.09 } },
@@ -1008,7 +1008,7 @@ export const CLASSES = [
         ],
       },
       {
-        name: 'Beast Mastery', color: '#9dcf7a', nodes: [
+        name: 'Beast Mastery', school: 'nature', color: '#9dcf7a', nodes: [
           { id: 'h_b1', name: 'Ferocity', desc: 'Your beasts are 12% stronger per rank.', max: 6, effect: { petPower: 0.12 } },
           { id: 'h_b2', name: 'Pack Leader', desc: '+1 beast at a time.', max: 2, effect: { maxPets: 1 } },
           { id: 'h_b3', name: 'Endurance Training', desc: 'Beasts last 4s longer per rank.', max: 5, effect: { totemDuration: 4 } },
@@ -1018,7 +1018,7 @@ export const CLASSES = [
         ],
       },
       {
-        name: 'Survival', color: '#8fe3ff', nodes: [
+        name: 'Survival', school: 'frost', color: '#8fe3ff', nodes: [
           { id: 'h_s1', name: 'Toughened Hide', desc: '+18 max health per rank.', max: 8, effect: { maxHp: 18 } },
           { id: 'h_s2', name: 'Deterrence', desc: '+3% dodge per rank.', max: 6, effect: { dodge: 0.03 } },
           { id: 'h_s3', name: 'Wyvern Venom', desc: 'Damage over time deals 14% more per rank.', max: 6, effect: { dotDamage: 0.14 } },
@@ -1030,7 +1030,7 @@ export const CLASSES = [
       // Mastery. Every node here names one skill and does nothing at all unless
       // that skill is one of your four.
       {
-        name: 'Mastery', color: '#ffd24a', nodes: [
+        name: 'Mastery', school: 'holy', color: '#ffd24a', nodes: [
           { id: 'h_y1', name: 'Improved Arcane Shot', skill: 'arcaneshot', desc: 'Arcane Shot hits 18% harder and costs 12% less, per rank.', max: 6, effect: { skillDamage: 0.18, skillCost: 0.12 } },
           { id: 'h_y2', name: 'Barrage', skill: 'multishot', desc: 'Multi-Shot hits 22% harder and its cooldown drops 9%, per rank.', max: 5, effect: { skillDamage: 0.22, skillCooldown: 0.09 } },
           { id: 'h_y3', name: 'Lingering Venom', skill: 'serpentsting', desc: "Serpent's Sting poisons 26% harder and 1s longer, per rank.", max: 5, effect: { skillDamage: 0.26, skillDuration: 1 } },

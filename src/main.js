@@ -28,7 +28,7 @@ import { clamp } from './core/math.js';
     'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
 })();
 
-export const BUILD = '2026-07-29 19:12 UTC';
+export const BUILD = '2026-07-29 19:19 UTC';
 console.info('CRAFT ARENA build', BUILD);
 
 const glCanvas = document.getElementById('view');

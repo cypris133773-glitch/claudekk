@@ -20,6 +20,17 @@ import { DIFFICULTIES } from '../data/difficulty.js';
 import { skillIconElement, iconElement, schoolFor, SCHOOLS } from './icons.js';
 import { QUEST_COUNT } from '../data/quests.js';
 
+// Where each of a branch's six talent nodes sits, as [column, row] on a 3-wide
+// grid, and which earlier node gates it. The empty cells and the long arrows
+// that span them are the point: being able to read a tree's shape tells you
+// what a deep node costs before you tap it, which a flat list of cards never
+// did.
+const TALENT_LAYOUT = [[0, 0], [1, 0], [1, 1], [2, 1], [0, 2], [1, 3]];
+const TALENT_ARROWS = { 2: 1, 5: 2 };
+// One glyph per tier, so the six cells of a branch are distinguishable at a
+// glance even before you know what they do.
+const TALENT_GLYPHS = ['⚔', '🛡', '✦', '⚡', '☘', '★'];
+
 const el = (tag, cls, html) => {
   const n = document.createElement(tag);
   if (cls) n.className = cls;
@@ -492,7 +503,7 @@ export class Menus {
   }
 
   buildTalents() {
-    const wrap = el('div', 'screen');
+    const wrap = el('div', 'screen talents-screen');
     const picker = el('div', 'class-picker');
     for (const c of CLASSES) {
       const b = el('button', 'pill' + (c.id === this.talentClass ? ' active' : ''), c.name);
@@ -530,7 +541,7 @@ export class Menus {
 
     const branch = cls.talents[Math.min(this.talentBranch, cls.talents.length - 1)];
     const spent = branch.nodes.reduce((s, n) => s + (cd.talents[n.id] || 0), 0);
-    const cols = el('div', 'talent-grid');
+    const cols = el('div', 'talent-tree');
     cols.style.setProperty('--accent', branch.color);
 
     // Which four skills this class will take in. A Mastery node is worth
@@ -538,59 +549,117 @@ export class Menus {
     // to hold the loadout in their head while reading the tree.
     const equipped = new Set(this.profile.loadout(cls).map((s) => s.id));
 
-    const makeNode = (node) => {
-      const tier = branch.nodes.indexOf(node);
+    // A Classic-style tree: a fixed grid of icon cells with arrows running from
+    // a node to the one it gates. The old screen was a list of six description
+    // cards, which said the same things but read as a settings page — the
+    // shape of a talent tree *is* the information, because seeing that a node
+    // is three tiers deep is what tells you what it costs to get there.
+    //
+    // Cells are placed by TALENT_LAYOUT rather than flowed, so the empty
+    // squares and the long arrows that span them survive on every screen size.
+    const selectedId = this.talentNode && branch.nodes.some((n) => n.id === this.talentNode)
+      ? this.talentNode
+      : branch.nodes[0].id;
+
+    for (let i = 0; i < branch.nodes.length; i++) {
+      const node = branch.nodes[i];
+      const [col, row] = TALENT_LAYOUT[i];
       const rank = cd.talents[node.id] || 0;
-      const required = tier * 2;
+      const required = i * 2;
       const locked = spent < required;
       const target = node.skill ? cls.skills.find((s) => s.id === node.skill) : null;
       const inKit = target ? equipped.has(target.id) : true;
-      const row = el('div', 'talent-node'
-        + (rank ? ' has-rank' : '')
-        + (rank >= node.max ? ' maxed' : '')
-        + (locked ? ' locked' : '')
-        + (target && !inKit ? ' unequipped' : ''));
-      row.innerHTML = `
-        <div class="talent-head">
-          <span class="talent-name">${node.name}</span>
-          <span class="talent-rank">${rank}/${node.max}</span>
-        </div>
-        <div class="talent-desc">${locked
-          ? `Requires ${required} points in ${branch.name}`
-          : node.desc}</div>`;
-      if (target && !locked) {
-        const tag = el('div', 'talent-skill' + (inKit ? '' : ' off'));
-        tag.appendChild(skillIconElement(target, 22));
-        tag.appendChild(el('span', null,
-          inKit ? target.name : `${target.name} — not equipped`));
-        row.querySelector('.talent-desc').before(tag);
+
+      const cell = el('div', 'tt-cell');
+      cell.style.gridColumn = String(col + 1);
+      cell.style.gridRow = String(row + 1);
+
+      // The arrow into this node, drawn upward out of its own cell so it never
+      // needs a grid track of its own and cannot fall out of alignment with
+      // the icons it connects.
+      const from = TALENT_ARROWS[i];
+      if (from !== undefined) {
+        const span = row - TALENT_LAYOUT[from][1];
+        const arrow = el('div', 'tt-arrow' + ((cd.talents[branch.nodes[from].id] || 0) >= branch.nodes[from].max ? ' lit' : ''));
+        arrow.style.setProperty('--span', String(span));
+        cell.appendChild(arrow);
       }
-      const btns = el('div', 'talent-btns');
-      const minus = el('button', 'tiny-btn', '−');
-      const plus = el('button', 'tiny-btn', '+');
-      minus.disabled = rank <= 0;
-      plus.disabled = locked || rank >= node.max || avail <= 0;
-      this.click(minus, () => {
-        if ((cd.talents[node.id] || 0) <= 0) return;
-        cd.talents[node.id]--;
-        if (!cd.talents[node.id]) delete cd.talents[node.id];
-        this.profile.save();
-        this.refresh();
-      });
-      this.click(plus, () => {
-        if (this.profile.availableTalentPoints(cls.id) <= 0) { this.ctx.audio.play('deny'); return; }
-        cd.talents[node.id] = (cd.talents[node.id] || 0) + 1;
-        this.profile.save();
-        this.ctx.audio.play('buy');
-        this.refresh();
-      });
-      btns.appendChild(minus);
-      btns.appendChild(plus);
-      row.appendChild(btns);
-      return row;
-    };
-    p.appendChild(this.paged(`talents:${cls.id}:${this.talentBranch}`,
-      branch.nodes, byHeight(2, 3, 6), cols, makeNode));
+
+      const btn = el('button', 'tt-node'
+        + (rank >= node.max ? ' maxed' : rank ? ' has-rank' : '')
+        + (locked ? ' locked' : '')
+        + (node.id === selectedId ? ' selected' : '')
+        + (target && !inKit ? ' unequipped' : ''));
+      // A Mastery node borrows its skill's icon, so the tree and the skill bar
+      // speak the same language. Everything else gets a glyph in its branch's
+      // school colour.
+      btn.appendChild(target
+        ? skillIconElement(target, 40, { ready: true })
+        : iconElement(TALENT_GLYPHS[i], 40, { ready: true, school: SCHOOLS[branch.school] || SCHOOLS.physical }));
+      btn.appendChild(el('span', 'tt-pip', `${rank}/${node.max}`));
+      btn.title = `${node.name} — ${node.desc}`;
+      // One tap selects and reads; the detail strip below carries the spend
+      // buttons. A phone has no hover, and forty-pixel plus/minus buttons on
+      // every cell would double the height of the tree.
+      this.click(btn, () => { this.talentNode = node.id; this.refresh(); });
+      cell.appendChild(btn);
+      cols.appendChild(cell);
+    }
+    // Tree and detail live in one wrapper so a short landscape screen can put
+    // them side by side instead of stacking them into a column taller than the
+    // viewport.
+    const layout = el('div', 'tt-layout');
+    layout.appendChild(cols);
+
+    // The selected node, spelled out, with the only two spend buttons on the
+    // screen.
+    const sel = branch.nodes.find((n) => n.id === selectedId);
+    const selIndex = branch.nodes.indexOf(sel);
+    const selRank = cd.talents[sel.id] || 0;
+    const selRequired = selIndex * 2;
+    const selLocked = spent < selRequired;
+    const selTarget = sel.skill ? cls.skills.find((x) => x.id === sel.skill) : null;
+
+    const detail = el('div', 'tt-detail');
+    const dhead = el('div', 'tt-detail-head');
+    dhead.appendChild(el('b', null, sel.name));
+    dhead.appendChild(el('span', 'tt-detail-rank', `${selRank} / ${sel.max}`));
+    detail.appendChild(dhead);
+    detail.appendChild(el('p', 'tt-detail-desc', selLocked
+      ? `Requires ${selRequired} points in ${branch.name}.`
+      : sel.desc));
+    if (selTarget && !selLocked) {
+      const tag = el('div', 'talent-skill' + (equipped.has(selTarget.id) ? '' : ' off'));
+      tag.appendChild(skillIconElement(selTarget, 20));
+      tag.appendChild(el('span', null, equipped.has(selTarget.id)
+        ? selTarget.name
+        : `${selTarget.name} — not equipped`));
+      detail.appendChild(tag);
+    }
+    const btns = el('div', 'tt-btns');
+    const minus = el('button', 'tiny-btn', '−');
+    const plus = el('button', 'tiny-btn', '+');
+    minus.disabled = selRank <= 0;
+    plus.disabled = selLocked || selRank >= sel.max || avail <= 0;
+    this.click(minus, () => {
+      if ((cd.talents[sel.id] || 0) <= 0) return;
+      cd.talents[sel.id]--;
+      if (!cd.talents[sel.id]) delete cd.talents[sel.id];
+      this.profile.save();
+      this.refresh();
+    });
+    this.click(plus, () => {
+      if (this.profile.availableTalentPoints(cls.id) <= 0) { this.ctx.audio.play('deny'); return; }
+      cd.talents[sel.id] = (cd.talents[sel.id] || 0) + 1;
+      this.profile.save();
+      this.ctx.audio.play('buy');
+      this.refresh();
+    });
+    btns.appendChild(minus);
+    btns.appendChild(plus);
+    detail.appendChild(btns);
+    layout.appendChild(detail);
+    p.appendChild(layout);
 
     const actions = el('div', 'actions');
     actions.appendChild(this.click(el('button', 'ghost-btn', 'Reset points'), () => {
