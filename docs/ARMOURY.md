@@ -37,7 +37,8 @@ have actually played feels different from one you have not, which is exactly
 what an account-wide Armoury destroyed.
 
 The save shape follows: `data.souls` stays global, `data.classes[id].gear`
-holds `{ helm: 3, weapon: 2, ... }` per class.
+holds `{ helm: 3, weapon: 2, ... }` per class — one number per slot, because a
+slot is at exactly one tier and climbs one rung at a time.
 
 ## 2. Tiers unlock by level
 
@@ -62,6 +63,26 @@ keeps going.
 The surplus is deliberate. A player who out-earns their level has gold and
 nothing in the Armoury to spend it on; that gold goes to the Forge and to quest
 rerolls. Gold stops being the pacing mechanism, which is what it was bad at.
+
+### Tiers cannot be skipped
+
+Each slot climbs one tier at a time. A level-31 character cannot buy a T3 Ring
+outright — it must already own the T2 Ring, which needed T1, which needed T0.
+Level says *how high* a slot may go; the ladder says you walk up it.
+
+Two things follow, and both are wanted.
+
+**A slot is a commitment, not a purchase.** Without the ladder, a player sitting
+on gold at level 41 buys six T4 pieces the moment they ding and the six tiers
+below were content nobody ever saw. With it, gear is something you have been
+building the whole way up.
+
+**Catching up is cheap, and self-correcting.** Someone who levels hard and
+ignores gear until 31 pays the whole ladder for a Ring: 800 + 3,200 + 12,800 +
+51,200 = **68,000**. That looks like a penalty and is not — by level 31 a run
+pays about 21,000, so the three rungs they skipped cost them three quarters of
+one run. The ladder only ever bites at the top, where the rungs are expensive
+and the levels are far apart, which is exactly where a grind should bite.
 
 ## 3. Stats: what each slot does
 
