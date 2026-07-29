@@ -694,6 +694,7 @@ export class Menus {
       () => toggle('Left-handed layout', 'leftHanded', 'Swaps the stick and the buttons'),
       () => toggle('Hold to attack', 'autoAttack', 'Keep swinging while the button is held'),
       () => toggle('Tap to attack', 'tapAttack', 'A quick tap on the look side swings'),
+      () => toggle('Aim assist', 'aimAssist', 'Eases your aim onto what it is already near'),
       () => toggle('Fancy graphics', 'fancyGraphics', 'Sky, shadows and debris; turn off for frame rate'),
       () => toggle('Fullscreen on play', 'fullscreenOnPlay', 'Go fullscreen when a run starts'),
       () => this.fullscreenRow(),

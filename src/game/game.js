@@ -222,6 +222,21 @@ export class Game {
    * — a dozen particles — but it is what makes a cast feel like it left the
    * character rather than simply happening somewhere.
    */
+  /** A cone of sparks thrown along a hit direction. */
+  burstDirected(x, y, z, dx, dz, count, color) {
+    if (!this.r.fancy) return;
+    const len = Math.hypot(dx, dz) || 1;
+    const nx = dx / len, nz = dz / len;
+    for (let i = 0; i < count; i++) {
+      const spread = rand(0.7, -0.7);
+      const c = Math.cos(spread), s = Math.sin(spread);
+      const vx = (nx * c - nz * s) * rand(7, 2.5);
+      const vz = (nx * s + nz * c) * rand(7, 2.5);
+      this.particles.push(new Particle(x, y, z, vx, rand(3.4, 0.6), vz,
+        color, rand(0.34, 0.16), rand(0.10, 0.05), 16));
+    }
+  }
+
   castFlare(caster, color, rank = 0) {
     const n = 10 + Math.min(14, rank * 2);
     const spread = 1 + Math.min(1.4, rank * 0.12);
@@ -379,7 +394,16 @@ export class Game {
           Math.round(dealt).toString(), crit ? '#ffd24a' : '#ffffff', crit));
       }
       this.audio.play(crit ? 'crit' : 'hit');
-      if (crit) this.screenShake = Math.max(this.screenShake, 0.12);
+      if (crit) {
+        this.screenShake = Math.max(this.screenShake, 0.22);
+        // Sparks thrown along the blow, not scattered: the direction is what
+        // makes a critical read as a hit rather than a light show.
+        const kx = opts.kx || 0, kz = opts.kz || 0;
+        this.burstDirected(target.x, target.centerY, target.z, kx, kz, 10, '#ffd24a');
+      } else {
+        this.burstDirected(target.x, target.centerY, target.z,
+          opts.kx || 0, opts.kz || 0, 3, '#ffffff');
+      }
     }
 
     if (target.dead) this.onEnemyKilled(target, source, opts);
@@ -687,6 +711,7 @@ export class Game {
     this.drawShadows();
     for (const m of this.mobs) m.draw(this.r);
     for (const p of this.pets) p.draw(this.r);
+    this.drawAuras();
     // Sky fills the gaps left by the opaque pass, before anything blended.
     this.r.drawSky();
     for (const p of this.projectiles) p.draw(this.r);
@@ -705,6 +730,33 @@ export class Game {
    * dropped onto the first solid surface below the entity and fades with the
    * distance it had to fall, which reads as a jump.
    */
+  /**
+   * A slow ring of motes around elites and bosses. A health bar tells you
+   * something is dangerous only once you have already looked at it; an aura
+   * reads from the corner of the eye, which is where a threat in a crowd is
+   * actually noticed.
+   */
+  drawAuras() {
+    if (!this.r.fancy) return;
+    for (const m of this.mobs) {
+      if (m.dead || (!m.elite && !m.def.boss)) continue;
+      const boss = m.def.boss;
+      const color = boss ? [1.0, 0.35, 0.22] : [1.0, 0.82, 0.29];
+      const segs = boss ? 16 : 10;
+      const radius = (m.width || 0.6) * (boss ? 2.2 : 1.6);
+      const spin = this.time * (boss ? 0.9 : 1.4);
+      for (let i = 0; i < segs; i++) {
+        const a = (i / segs) * Math.PI * 2 + spin;
+        const bob = Math.sin(this.time * 3 + i) * 0.16;
+        const s = boss ? 0.20 : 0.13;
+        this.r.drawBox(
+          m.x + Math.cos(a) * radius, m.y + 0.25 + bob, m.z + Math.sin(a) * radius,
+          s, s, s,
+          { tile: T.BLANK, color, emissive: 1, alpha: 0.55 });
+      }
+    }
+  }
+
   drawShadows() {
     if (!this.r.fancy) return;
     const cast = (e, scale = 1) => {

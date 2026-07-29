@@ -27,7 +27,7 @@ import { clamp } from './core/math.js';
     'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
 })();
 
-export const BUILD = '2026-07-29 08:52 UTC';
+export const BUILD = '2026-07-29 09:45 UTC';
 console.info('BLOCKFRAY build', BUILD);
 
 const glCanvas = document.getElementById('view');
@@ -74,6 +74,12 @@ const game = new Game(renderer, audio, profile);
 const hud = new Hud(hudCanvas, game, input, profile);
 
 hud.touchMode = isTouchDevice();
+// Aim assist is for thumbs, not mice; a pointer already tracks precisely.
+const applyAimAssist = () => {
+  if (game.player) {
+    game.player.aimAssist = isTouchDevice() && profile.settings.aimAssist !== false;
+  }
+};
 renderer.renderScale = profile.settings.renderScale;
 renderer.fancy = profile.settings.fancyGraphics !== false;
 
@@ -109,6 +115,7 @@ const menus = new Menus(uiRoot, {
   resumeRun: () => resumeRun(),
   quitRun: () => quitRun(),
   onSettingsChanged: () => {
+    applyAimAssist();
     renderer.renderScale = profile.settings.renderScale;
     renderer.fancy = profile.settings.fancyGraphics !== false;
     audio.applySettings();
@@ -241,6 +248,7 @@ async function startRun(cls) {
     // Generating and meshing the arena blocks for a moment on a phone; the
     // loading screen above is already painted, so it reads as loading.
     game.startRun(cls);
+    applyAimAssist();
   } catch (err) {
     hideLoading();
     fatal('The arena failed to build.', String(err && err.message ? err.message : err));

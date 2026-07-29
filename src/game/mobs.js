@@ -560,12 +560,53 @@ export class Mob extends Entity {
     this.aiMelee(dt, game, target, dist, nx, nz, speed);
   }
 
+  /**
+   * Shared second phase. A boss that just keeps doing the same thing while its
+   * bar empties is a damage sponge; one that changes at a threshold makes the
+   * back half of the fight a different fight. Announced loudly, because a
+   * phase you did not notice is just a difficulty spike.
+   */
+  checkEnrage(game) {
+    if (this.enraged || !this.def.boss) return false;
+    if (this.hp / this.maxHp > 0.35) return false;
+    this.enraged = true;
+    this.speed *= 1.28;
+    this.damageAmount *= 1.25;
+    game.notify(`${this.def.name.toUpperCase()} ENRAGES`, 2.6);
+    game.sfx('roar');
+    game.screenShake = Math.max(game.screenShake, 0.5);
+    game.burst(this.x, this.centerY, this.z, 40, '#ff5a3c');
+    return true;
+  }
+
+  /**
+   * The enraged boss's own attack: a ring of shockwaves marching outward, so
+   * standing anywhere near it costs you. Telegraphed like everything else.
+   */
+  enrageNova(game, target) {
+    for (let ring = 0; ring < 3; ring++) {
+      const radius = 5 + ring * 3.5;
+      game.delay(ring * 0.42, () => {
+        if (this.dead) return;
+        game.telegraph(this.x, this.y, this.z, radius, 0.4, () => {
+          game.explode(this.x, this.y + 0.4, this.z, radius, this.damageAmount * 0.75, {
+            team: TEAM.ENEMY, source: this, color: '#ff7a3c', knockback: 8,
+          });
+        }, '#ff7a3c');
+      });
+    }
+    game.sfx('stomp');
+  }
+
   aiBoss(dt, game, target, dist, nx, nz, speed) {
+    this.checkEnrage(game);
     this.slamTimer -= dt;
     if (this.slamTimer <= 0) {
       this.slamTimer = rand(7, 5);
       const phase = this.hp / this.maxHp;
-      if (phase < 0.5 && Math.random() < 0.5) {
+      if (this.enraged && Math.random() < 0.45) {
+        this.enrageNova(game, target);
+      } else if (phase < 0.5 && Math.random() < 0.5) {
         // Enrage phase: summon adds.
         game.sfx('roar');
         for (let i = 0; i < 3; i++) {
@@ -590,12 +631,23 @@ export class Mob extends Entity {
    * which is exactly what the Colossus rewards.
    */
   aiWarden(dt, game, target, dist, nx, nz, speed) {
+    this.checkEnrage(game);
     const ideal = 13;
     if (dist > ideal + 4) this.moveToward(nx, nz, speed);
     else if (dist < ideal - 4) this.moveToward(-nx, -nz, speed);
     else this.strafe(nx, nz, speed * 0.8, this.id % 2 ? 1 : -1);
 
-    const enraged = this.hp / this.maxHp < 0.4;
+    const enraged = this.enraged;
+
+    // The enraged Warden stops zoning and starts detonating where it stands.
+    if (enraged && this.novaTimer === undefined) this.novaTimer = 4;
+    if (enraged) {
+      this.novaTimer -= dt;
+      if (this.novaTimer <= 0) {
+        this.novaTimer = rand(9, 6);
+        this.enrageNova(game, target);
+      }
+    }
 
     // Volley of projectiles in a fan.
     if (this.attackTimer <= 0 && dist < this.def.range) {
@@ -657,6 +709,7 @@ export class Mob extends Entity {
    * drown; it rewards anything with area damage.
    */
   aiBrood(dt, game, target, dist, nx, nz, speed) {
+    this.checkEnrage(game);
     const enraged = this.hp / this.maxHp < 0.5;
 
     // Charge: telegraphed, then a committed lunge.

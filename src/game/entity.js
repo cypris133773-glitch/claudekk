@@ -202,6 +202,24 @@ export function drawHumanoid(r, e, skin) {
 
   // Arms — the right arm also plays the attack swing.
   const swingPitch = -e.swing * 2.2;
+  // Swing trail: a short arc of fading blocks along the path the arm just
+  // travelled. A single-frame swing animation is invisible at 60fps in a
+  // crowd; the trail is what tells you an attack actually happened.
+  if (e.swing > 0.15 && skin.trail !== false) {
+    const tc = skin.trailColor || col(skin.arm);
+    for (let i = 1; i <= 4; i++) {
+      const t = i / 5;
+      const p = at((bodyW / 2 + limbW / 2), legTop + bodyH - limbW * 0.4, 0);
+      const arc = swingPitch * (1 - t * 0.75);
+      const reach = limbH * (0.85 + t * 0.5);
+      r.drawBox(
+        p[0] + fx * Math.cos(arc) * reach,
+        p[1] - Math.sin(-arc) * reach * 0.55,
+        p[2] + fz * Math.cos(arc) * reach,
+        limbW * (0.7 - t * 0.3), limbW * 0.22, limbW * (0.7 - t * 0.3),
+        { tile: T.BLANK, color: tc, emissive: 0.75, alpha: e.swing * (0.5 - t * 0.35) });
+    }
+  }
   for (let i = 0; i < 2; i++) {
     const side = i === 0 ? -1 : 1;
     const shoulderY = legTop + bodyH - limbW * 0.4;

@@ -171,9 +171,42 @@ export class Player extends Entity {
     }
   }
 
+  /**
+   * Aim assist. A thumb dragging on glass cannot hold a crosshair on a moving
+   * target the way a mouse can, so the view eases toward whatever is already
+   * roughly under it. It only ever *narrows* an aim the player has already
+   * taken — there is no snapping, and it stops entirely once the reticle is
+   * close, so a deliberate lead shot is still the player's.
+   */
+  applyAimAssist(dt, game) {
+    if (!this.aimAssist) return;
+    const range = this.isMelee ? 9 : 34;
+    const target = game.aimTarget(this, range);
+    if (!target) return;
+    const dx = target.x - this.x;
+    const dz = target.z - this.z;
+    const dy = target.centerY - this.eyeY;
+    const flat = Math.hypot(dx, dz) || 1;
+    const wantYaw = Math.atan2(-dx / flat, -dz / flat);
+    const wantPitch = Math.atan2(dy, flat);
+
+    // Shortest way round, so a target behind you does not spin the view.
+    let dyaw = ((wantYaw - this.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    const dpitch = wantPitch - this.pitch;
+    const off = Math.hypot(dyaw, dpitch);
+    // Already on target: leave it completely alone.
+    if (off < 0.05) return;
+    // Strength falls off with how far the aim is from the target, so it helps
+    // with tracking and never drags the view somewhere you did not point it.
+    const pull = Math.min(1, 0.055 / off) * Math.min(1, dt * 9);
+    this.yaw += dyaw * pull;
+    this.pitch = clamp(this.pitch + dpitch * pull, -1.45, 1.45);
+  }
+
   update(dt, game, input) {
     const wasHp = this.hp;
     this.updateBase(dt, game.world);
+    this.applyAimAssist(dt, game);
     this.dispersionTimer = Math.max(0, this.dispersionTimer - dt);
 
     // Buffs
