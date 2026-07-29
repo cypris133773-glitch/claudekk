@@ -171,6 +171,7 @@ export class Mob extends Entity {
     if (inLava) this.damage(inLava * dt, { source: null });
 
     this.avoidTimer = Math.max(0, this.avoidTimer - dt);
+    this.checkFrenzy(game);
     // A hit worth a fifth of its health staggers it. Cancelling the wind-up
     // is the point: interrupting a swing is what makes a big hit feel big,
     // and it gives melee a reason to commit rather than only trade.
@@ -566,6 +567,22 @@ export class Mob extends Entity {
    * back half of the fight a different fight. Announced loudly, because a
    * phase you did not notice is just a difficulty spike.
    */
+  /**
+   * The Frenzied affix, mob side. A boss already has its own enrage phase, so
+   * stacking a second threshold on top of it would just make the same fight
+   * spikier; this is the trash-only version, and it is what turns "leave them
+   * on a sliver and clean up later" from a safe play into a losing one.
+   */
+  checkFrenzy(game) {
+    if (!this.frenzyAffix || this.frenzied || this.def.boss) return;
+    if (this.hp / this.maxHp > 0.35) return;
+    this.frenzied = true;
+    this.speed *= 1.45;
+    this.damageAmount *= 1.35;
+    game.burst(this.x, this.centerY, this.z, 12, '#ff5a3c');
+    game.sfx('roar');
+  }
+
   checkEnrage(game) {
     if (this.enraged || !this.def.boss) return false;
     if (this.hp / this.maxHp > 0.35) return false;

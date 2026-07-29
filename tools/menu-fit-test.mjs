@@ -93,6 +93,10 @@ function primeRun() {
   if (!B.game.running) B.game.startRun(cls);
   B.game.wave = 7;
   B.game.soulsEarned = 420;
+  // The pause screen lists the wave's affixes with a blurb and a counterplay
+  // line each. Three is the maximum a wave can carry and therefore the only
+  // version worth measuring — a screen that fits with one proves nothing.
+  B.game.affixes = B.AFFIXES.slice(0, 3);
   B.game.offerUpgrades();
   B.game.result = {
     reachedWave: 7, wave: 6, kills: 88, souls: 420, duration: 305, damageDealt: 12345,

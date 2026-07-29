@@ -416,32 +416,12 @@ check('every armour and Forge effect is a modifier the player reads', () => {
 check('every skill in every class pool casts without throwing', async () => {
   const { Game } = await import('../src/game/game.js');
   const { castSkill } = await import('../src/game/skills.js');
-
-  const stubRenderer = {
-    setWorld() {}, setTheme() {}, project: () => null,
-    skyTint: [0, 0, 0], fancy: false,
-  };
-  const stubAudio = {
-    play() {}, startMusic() {}, stopMusic() {}, setMusicIntensity() {}, ensure() {},
-  };
+  const { makeHarness } = await import('./harness.js');
 
   for (const cls of CLASSES) {
     for (const skill of cls.skills) {
-      const classes = {};
-      for (const c of CLASSES) {
-        classes[c.id] = {
-          talents: {}, bestWave: 99, kills: 0, runs: 0, mastery: 0,
-          loadout: [skill.id],
-        };
-      }
-      const profile = {
-        data: { permanent: {}, armor: {}, classes, souls: 0, stats: {} },
-        settings: { showDamage: false },
-        classData: (id) => classes[id],
-        loadout: (c) => resolveLoadout(c, classes[c.id].loadout, 99),
-        finishRun() {}, save() {},
-      };
-      const game = new Game(stubRenderer, stubAudio, profile);
+      const h = makeHarness({ loadout: [skill.id], bestWave: 99 });
+      const game = new Game(h.renderer, h.audio, h.profile);
       game.startRun(cls, { layout: 0 });
       assert(game.player.skills[0].id === skill.id,
         `${cls.id}: ${skill.id} did not reach slot 0`);
@@ -457,7 +437,7 @@ check('every skill in every class pool casts without throwing', async () => {
       assert(cast === true, `${cls.id}/${skill.id} refused to cast with full resource and a target`);
       // Run the clock so delayed effects — telegraphs, meteor impacts, zone
       // ticks, multi-hit whirlwinds — all resolve inside the check.
-      const input = { moveX: 0, moveY: 0, attack: false, jump: false, sprint: false, skills: [false] };
+      const input = h.input();
       for (let i = 0; i < 150; i++) game.update(1 / 60, input);
       assert(Number.isFinite(p.hp), `${cls.id}/${skill.id} corrupted player hp`);
     }
@@ -581,24 +561,9 @@ check('the Armoury is deep enough to outlast the Forge', () => {
 
 check('the kill combo rewards pressing forward and decays if you stop', async () => {
   const { Game } = await import('../src/game/game.js');
-  const stubRenderer = {
-    setWorld() {}, setTheme() {}, project: () => null, skyTint: [0, 0, 0], fancy: false,
-  };
-  const stubAudio = {
-    play() {}, startMusic() {}, stopMusic() {}, setMusicIntensity() {}, ensure() {},
-  };
-  const classes = {};
-  for (const c of CLASSES) {
-    classes[c.id] = { talents: {}, bestWave: 0, kills: 0, runs: 0, mastery: 0, loadout: [] };
-  }
-  const profile = {
-    data: { permanent: {}, armor: {}, classes, souls: 0, stats: {} },
-    settings: { showDamage: false, difficulty: 1 },
-    classData: (id) => classes[id],
-    loadout: (cls) => resolveLoadout(cls, []),
-    finishRun() {}, save() {},
-  };
-  const game = new Game(stubRenderer, stubAudio, profile);
+  const { makeHarness } = await import('./harness.js');
+  const h = makeHarness();
+  const game = new Game(h.renderer, h.audio, h.profile);
   game.startRun(CLASSES[0], { layout: 0 });
 
   assert(game.comboMult === 1, 'a fresh run already has a multiplier');
@@ -684,6 +649,124 @@ check('every arena layout is actually playable', async () => {
       assert(w.mesh.length > 6 * 3000, `${name} meshed to almost nothing`);
     }
   }
+});
+
+// --- Wave affixes ----------------------------------------------------------
+// The properties the whole system rests on: a wave's rules must be stable,
+// legible, never self-contradictory, and never arrive before the player has
+// had a chance to learn the base game.
+
+check('affixes are a pure function of seed and wave', async () => {
+  const { affixesForWave } = await import('../src/data/affixes.js');
+  for (const seed of [1, 777, 0x5f3759df]) {
+    for (let wave = 1; wave <= 40; wave++) {
+      const a = affixesForWave(wave, seed).map((x) => x.id).join(',');
+      const b = affixesForWave(wave, seed).map((x) => x.id).join(',');
+      assert(a === b, `wave ${wave} rolled differently on a re-read: ${a} vs ${b}`);
+    }
+  }
+  // Different seeds must actually produce different runs, or every run is the
+  // same run and the system is decoration.
+  let differs = 0;
+  for (let wave = 4; wave <= 40; wave++) {
+    const a = affixesForWave(wave, 1).map((x) => x.id).join(',');
+    const b = affixesForWave(wave, 424242).map((x) => x.id).join(',');
+    if (a !== b) differs++;
+  }
+  assert(differs >= 10, `only ${differs}/37 waves differ between seeds`);
+});
+
+check('a wave never draws a duplicate or two affixes from one group', async () => {
+  const { affixesForWave, affixCount } = await import('../src/data/affixes.js');
+  const { DIFFICULTIES } = await import('../src/data/difficulty.js');
+  for (const diff of DIFFICULTIES) {
+    for (const seed of [3, 99, 12345]) {
+      for (let wave = 1; wave <= 60; wave++) {
+        const list = affixesForWave(wave, seed, diff);
+        const ids = new Set(list.map((a) => a.id));
+        assert(ids.size === list.length, `wave ${wave} drew a duplicate affix`);
+        const groups = new Set(list.map((a) => a.group));
+        assert(groups.size === list.length,
+          `wave ${wave} drew two affixes from one group: ${list.map((a) => a.id)}`);
+        // Never more than the ramp allows, and never an affix from before its
+        // tier — a rule the player has not been taught yet reads as a bug.
+        assert(list.length <= affixCount(wave, diff), `wave ${wave} drew too many affixes`);
+        for (const a of list) assert(wave >= a.tier, `${a.id} appeared at wave ${wave} < tier ${a.tier}`);
+      }
+    }
+  }
+});
+
+check('the opening waves are played under no rules at all', async () => {
+  const { affixesForWave } = await import('../src/data/affixes.js');
+  const { DIFFICULTIES } = await import('../src/data/difficulty.js');
+  for (let wave = 1; wave <= 3; wave++) {
+    assert(affixesForWave(wave, 1, DIFFICULTIES[0]).length === 0,
+      `wave ${wave} on Veteran already carries an affix`);
+  }
+  // And the ramp has to actually arrive, or the system never turns on.
+  assert(affixesForWave(12, 1, DIFFICULTIES[0]).length >= 1, 'wave 12 has no affix');
+  assert(affixesForWave(30, 1, DIFFICULTIES[0]).length >= 2, 'wave 30 has fewer than 2 affixes');
+});
+
+check('every affix is described, coloured and paid for', async () => {
+  const { AFFIXES } = await import('../src/data/affixes.js');
+  const ids = new Set();
+  for (const a of AFFIXES) {
+    assert(!ids.has(a.id), `duplicate affix id ${a.id}`);
+    ids.add(a.id);
+    assert(a.name && a.icon && a.color && a.group, `${a.id} is missing presentation fields`);
+    // Both lines exist because they answer different questions: blurb is what
+    // it does, counter is what to do about it. A rule with no stated answer is
+    // a rule that just kills you.
+    assert(a.blurb && a.counter, `${a.id} has no blurb/counter`);
+    assert(a.souls > 0, `${a.id} adds danger for no reward`);
+    assert(a.tier >= 4, `${a.id} can appear before the player has learned the game`);
+  }
+  assert(AFFIXES.length >= 8, 'too few affixes for the roster to feel varied');
+});
+
+check('every affix is actually implemented somewhere', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { AFFIXES } = await import('../src/data/affixes.js');
+  const sources = (await Promise.all(
+    ['../src/game/game.js', '../src/game/mobs.js', '../src/game/effects.js']
+      .map((p) => readFile(new URL(p, import.meta.url), 'utf8'))
+  )).join('\n');
+  // A declared affix that nothing reads is a promise on the wave banner that
+  // the game does not keep — the same class of bug as a dead effect key.
+  for (const a of AFFIXES) {
+    assert(sources.includes(`'${a.id}'`), `affix ${a.id} is declared but never read by game code`);
+  }
+});
+
+check('a run under a full affix stack still resolves', async () => {
+  const { Game } = await import('../src/game/game.js');
+  const { CLASSES } = await import('../src/data/classes.js');
+  const { affixesForWave } = await import('../src/data/affixes.js');
+  const { makeHarness } = await import('./harness.js');
+
+  const h = makeHarness();
+  const game = new Game(h.renderer, h.audio, h.profile);
+  // Start deep enough that the wave carries the maximum number of rules, with
+  // a seed chosen so all three corpse/behaviour/player groups are represented.
+  game.startRun(CLASSES[0], { difficulty: 3, seed: 7, layout: 0 });
+  game.wave = 29;
+  game.nextWave();
+  assert(game.affixes.length === 3, `expected 3 affixes, got ${game.affixes.length}`);
+
+  const before = game.player.hp;
+  for (let i = 0; i < 60 * 30; i++) game.update(1 / 60, h.input());
+  assert(Number.isFinite(game.player.hp), 'player health went non-finite under affixes');
+  assert(game.player.hp <= before, 'thirty seconds in a wave-29 stack cost nothing');
+  for (const m of game.mobs) {
+    assert(Number.isFinite(m.hp) && m.hp > 0, `a mob has invalid health: ${m.hp}`);
+    assert(Number.isFinite(m.speed) && m.speed > 0, `a mob has invalid speed: ${m.speed}`);
+  }
+  // Spiteful is the one affix that can spawn enemies from enemies. If it ever
+  // outruns the player it stops being an affix and becomes an infinite wave.
+  assert(game.mobs.length < 200, `mob count ran away: ${game.mobs.length}`);
+  assert(affixesForWave(29, 7).length === 3, 'wave 29 affix count changed under the harness');
 });
 
 // --- Math ------------------------------------------------------------------

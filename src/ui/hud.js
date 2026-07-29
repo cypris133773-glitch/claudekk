@@ -110,6 +110,7 @@ export class Hud {
     this.drawCrosshair();
     this.drawVitals(p);
     this.drawWaveInfo();
+    this.drawAffixes();
     this.drawBuffs(p);
     this.drawCombo();
     this.drawNotifications();
@@ -187,6 +188,65 @@ export class Hud {
     // Everything else stacked down the left edge follows this cursor, so the
     // blocks cannot drift into each other when a bar changes height.
     this.leftColY = labelY + 18;
+  }
+
+  /**
+   * The wave's rules, as a row of coloured chips. Kept on screen for the whole
+   * wave rather than only announced at the start: an affix you have forgotten
+   * is indistinguishable from a bug, and the row is the only place a player can
+   * check what just killed them.
+   *
+   * During the intermission it previews the *next* wave, dimmed, so the rules
+   * arrive while there is still time to plan around them.
+   */
+  drawAffixes() {
+    const g = this.game;
+    const d = g.director;
+    const preview = d.state === 'intermission';
+    const list = preview ? (g.upcomingAffixes || []) : (g.affixes || []);
+    if (!list.length) return;
+
+    const c = this.ctx;
+    const s = this.safe;
+    const h = 22;
+    const gap = 6;
+    const alpha = preview ? 0.55 : 1;
+
+    // Widths first, so the desktop row can be centred as one block and the
+    // touch column can stay inside the left margin it shares with the bars.
+    this.font(12);
+    const chips = list.map((a) => ({ a, w: 26 + c.measureText(a.name.toUpperCase()).width }));
+    const total = chips.reduce((n, ch) => n + ch.w, 0) + gap * (chips.length - 1);
+
+    let x, y;
+    if (this.touchMode) {
+      x = 18 + s.l;
+      y = this.leftColY;
+      this.leftColY = y + h + 6;
+    } else {
+      x = Math.max(12, this.w / 2 - total / 2);
+      y = preview ? 48 : 64;
+    }
+
+    for (const { a, w } of chips) {
+      c.globalAlpha = alpha;
+      c.fillStyle = 'rgba(8,10,16,0.72)';
+      this.roundRect(x, y, w, h, 6);
+      c.fill();
+      c.strokeStyle = a.color;
+      c.lineWidth = 1.5;
+      c.stroke();
+      c.textAlign = 'left';
+      c.textBaseline = 'middle';
+      this.font(13);
+      c.fillText(a.icon, x + 6, y + h / 2 + 1);
+      this.font(12);
+      c.fillStyle = a.color;
+      c.fillText(a.name.toUpperCase(), x + 24, y + h / 2 + 1);
+      c.globalAlpha = 1;
+      x += w + gap;
+    }
+    c.textBaseline = 'top';
   }
 
   drawWaveInfo() {
@@ -373,6 +433,13 @@ export class Hud {
       c.fillRect(s.x - w / 2, s.y, w, h);
       c.fillStyle = m.def.boss ? '#ff5a3c' : (m.elite ? '#ffd24a' : '#77dd66');
       c.fillRect(s.x - w / 2 + 1, s.y + 1, (w - 2) * pct, h - 2);
+      // A ward is worth reading before you commit a cooldown into it, so it
+      // gets its own sliver above the bar rather than being folded into it.
+      if (m.absorb > 0) {
+        const wp = Math.min(1, m.absorb / m.maxHp);
+        c.fillStyle = 'rgba(150,215,255,0.92)';
+        c.fillRect(s.x - w / 2, s.y - 4, w * wp, 3);
+      }
       // Name and level on everything, not just the headliners: knowing what
       // just walked in and how hard it hits is the difference between reading
       // a fight and being surprised by it. Ordinary mobs get it small and

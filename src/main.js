@@ -9,6 +9,7 @@ import { Game } from './game/game.js';
 import { Hud } from './ui/hud.js';
 import { Menus } from './ui/menus.js';
 import { CLASSES } from './data/classes.js';
+import { AFFIXES } from './data/affixes.js';
 import { clamp } from './core/math.js';
 
 // The viewport meta must exist or mobile browsers lay the page out at a
@@ -440,4 +441,4 @@ document.addEventListener('gesturestart', (e) => e.preventDefault());
 // Expose a tiny handle for debugging and for a future Steam/Electron wrapper.
 // Exposed for the diagnostics screen and the headless test harnesses; a
 // shipped build is a single file, so there is nothing else to inspect with.
-window.BLOCKFRAY = { game, profile, renderer, audio, menus, input, CLASSES };
+window.BLOCKFRAY = { game, profile, renderer, audio, menus, input, CLASSES, AFFIXES };

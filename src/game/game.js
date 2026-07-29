@@ -10,6 +10,7 @@ import { TEAM } from './entity.js';
 import { WaveDirector, waveScaling, waveClearBonus, isBossWave } from './waves.js';
 import { permanentMods, masteryMods, masteryRank } from '../data/permanent.js';
 import { difficultyFor } from '../data/difficulty.js';
+import { affixesForWave, affixSoulBonus } from '../data/affixes.js';
 import { armorMods } from '../data/armor.js';
 import { forwardVec, clamp, rand, dist2 } from '../core/math.js';
 import { T } from '../render/atlas.js';
@@ -54,6 +55,17 @@ export class Game {
     this.comboTimer = 0;
     this.comboBest = 0;
     this.recordBeaten = false;
+    this.affixes = [];
+    this.affixSeed = 0;
+    this.stormTimer = 0;
+    this.grievous = 0;
+    this.grievousTimer = 0;
+  }
+
+  /** True while the named wave affix is in force. */
+  hasAffix(id) {
+    for (const a of this.affixes) if (a.id === id) return true;
+    return false;
   }
 
   // -------------------------------------------------------------------------
@@ -82,6 +94,10 @@ export class Game {
     this.loadout = this.profile.loadout(classDef);
     this.baseMods = () => buildMods(classDef, cd.talents, perm);
 
+    // Fixed for the run: the affix draw must survive a pause, a HUD redraw and
+    // a wave being re-read, so it is a pure function of (seed, wave) and the
+    // seed is rolled exactly once, here.
+    this.affixSeed = opts.seed !== undefined ? opts.seed : (Math.random() * 0x7fffffff) | 0;
     this.theme = (Math.random() * 4) | 0;
     this.layout = opts.layout !== undefined
       ? opts.layout % LAYOUT_COUNT
@@ -124,10 +140,25 @@ export class Game {
       this.audio.play('rankup');
       this.screenShake = Math.max(this.screenShake, 0.35);
     }
+    this.affixes = affixesForWave(this.wave, this.affixSeed, this.difficulty);
+    this.stormTimer = 3.5;
+    this.grievous = 0;
     this.director.startWave(this.wave);
     this.notify(isBossWave(this.wave) ? `WAVE ${this.wave} — BOSS` : `WAVE ${this.wave}`, 2.4);
+    // Named one per line rather than as a single run-on banner: the counterplay
+    // is per affix, and a wall of text at the moment the wave starts is text
+    // nobody reads.
+    for (const a of this.affixes) this.notify(`${a.icon}  ${a.name} — ${a.blurb}`, 3.4);
     this.audio.play('wave');
     this.audio.setMusicIntensity(Math.min(1, this.wave / 25));
+  }
+
+  /**
+   * What the next wave will be played under. Shown during the intermission so
+   * the rules are something you plan around rather than discover mid-fight.
+   */
+  get upcomingAffixes() {
+    return affixesForWave(this.wave + 1, this.affixSeed, this.difficulty);
   }
 
   /**
@@ -456,6 +487,13 @@ export class Game {
         source.damage(dealt * this.player.thorns, { source: this.player });
         if (source.dead) this.onEnemyKilled(source, this.player, {});
       }
+      // Grievous: every hit deepens a wound that only closes if you break off.
+      // Stacks rather than refreshes, so trading twenty small hits is worse
+      // than eating one big one — which is exactly the habit it exists to break.
+      if (this.hasAffix('grievous')) {
+        this.grievous = Math.min(8, this.grievous + 1);
+        this.grievousTimer = 0;
+      }
       // Soul Link: split incoming damage with fiends.
       if (this.player.mods.soulLink) {
         const pets = this.pets.filter((p) => !p.dead && !p.isTotem);
@@ -517,7 +555,13 @@ export class Game {
       this.audio.play('levelup');
     }
 
-    const soulMult = (1 + (this.player.mods.soulGain || 0)) * this.comboMult;
+    this.affixesOnKill(mob);
+
+    // Affixes pay. A wave under three rules is the hardest thing in the run and
+    // has to also be the best place to be, or the optimal play is to farm the
+    // plain waves and the whole system is a tax.
+    const soulMult = (1 + (this.player.mods.soulGain || 0) + affixSoulBonus(this.affixes))
+      * this.comboMult;
     const souls = mob.souls * soulMult;
     this.soulsEarned += souls;
     this.player.souls += souls;
@@ -643,8 +687,120 @@ export class Game {
     const scaling = waveScaling(this.wave, this.difficulty);
     const mob = new Mob(typeId, this.wave, x, y, z, scaling);
     if (elite) mob.makeElite();
+    this.applyAffixes(mob);
     this.mobs.push(mob);
     return mob;
+  }
+
+  /**
+   * Stamp the wave's rules onto a newly spawned enemy. Applied here rather than
+   * in the Mob constructor so anything summoned mid-wave — a Broodmother's
+   * spawn, a Spiteful shade — is bound by the same rules as the wave it joined.
+   */
+  applyAffixes(mob) {
+    if (!this.affixes.length) return mob;
+    const boss = !!(mob.def && mob.def.boss);
+    for (const a of this.affixes) {
+      switch (a.id) {
+        case 'fortified':
+          // Trash only. Paired with Tyrannical it would make every wave a wall;
+          // split, each one tells you where to spend your cooldowns.
+          if (!boss) {
+            mob.maxHp = Math.round(mob.maxHp * 1.55);
+            mob.hp = mob.maxHp;
+          }
+          break;
+        case 'tyrannical':
+          if (boss) {
+            mob.maxHp = Math.round(mob.maxHp * 1.45);
+            mob.hp = mob.maxHp;
+            mob.damageAmount *= 1.25;
+          }
+          break;
+        case 'quickened':
+          mob.speed *= 1.22;
+          break;
+        case 'warded':
+          // A flat share of health, so a ward is worth the same fraction of a
+          // fight on any enemy — and big single hits are the efficient answer.
+          mob.absorb = (mob.absorb || 0) + mob.maxHp * (boss ? 0.20 : 0.35);
+          mob.warded = true;
+          break;
+        case 'frenzied':
+          mob.frenzyAffix = true;
+          break;
+        default: break;
+      }
+    }
+    return mob;
+  }
+
+  /** Corpse-triggered affixes. Called from onEnemyKilled. */
+  affixesOnKill(mob) {
+    if (!this.affixes.length) return;
+    const scale = waveScaling(this.wave, this.difficulty);
+    for (const a of this.affixes) {
+      switch (a.id) {
+        case 'volatile': {
+          // Scales off the wave, not off the enemy: otherwise clearing trash
+          // would be free and the one big kill would be the only dangerous one.
+          const dmg = 7 * scale.damage * (mob.def.boss ? 2.4 : 1);
+          this.telegraph(mob.x, mob.y, mob.z, 3.6, 0.55, () => {
+            this.explode(mob.x, mob.y + 0.6, mob.z, 3.6, dmg, {
+              team: TEAM.ENEMY, source: null, color: a.color, knockback: 5,
+            });
+          }, a.color);
+          break;
+        }
+        case 'sanguine':
+          this.spawnZone(mob.x, mob.y, mob.z, {
+            radius: 3.0, dps: 6 * scale.damage, team: TEAM.ENEMY,
+            source: null, color: a.color, duration: 7, heals: 0.05,
+          });
+          break;
+        case 'spiteful': {
+          // Not every corpse — a shade per kill turns a cleared wave into a
+          // second wave. One in three keeps it a threat you can outpace.
+          if (mob.isShade || Math.random() > 0.34) break;
+          const shade = this.spawnMob('wraith', mob.x, mob.y + 0.4, mob.z, false);
+          shade.isShade = true;
+          shade.souls = 0;              // no soul farm off an infinite spawner
+          shade.maxHp = Math.max(1, Math.round(shade.maxHp * 0.35));
+          shade.hp = shade.maxHp;
+          shade.speed *= 1.35;
+          this.burst(mob.x, mob.centerY, mob.z, 10, a.color);
+          break;
+        }
+        default: break;
+      }
+    }
+  }
+
+  /**
+   * Storming: lightning walks the arena on a timer, aimed near the player but
+   * never on them — the telegraph is the whole mechanic, and a strike you
+   * cannot step out of is just unavoidable damage with extra steps.
+   */
+  updateAffixes(dt) {
+    if (!this.affixes.length || !this.player || this.player.dead) return;
+    if (!this.hasAffix('storming')) return;
+    this.stormTimer -= dt;
+    if (this.stormTimer > 0) return;
+    this.stormTimer = 2.4;
+    const scale = waveScaling(this.wave, this.difficulty);
+    const a = Math.random() * Math.PI * 2;
+    const d = 3.5 + Math.random() * 5;
+    const x = this.player.x + Math.cos(a) * d;
+    const z = this.player.z + Math.sin(a) * d;
+    const y = this.world.groundAt(x, z, this.player.y + 3);
+    this.telegraph(x, y, z, 2.6, 1.0, () => {
+      this.beam(x, y + 14, z, x, y, z, '#ffe58a');
+      this.shockwave(x, y + 0.1, z, 2.6, '#ffe58a');
+      this.explode(x, y + 0.6, z, 2.6, 11 * scale.damage, {
+        team: TEAM.ENEMY, source: null, color: '#ffe58a', knockback: 4,
+      });
+      this.audio.play('explode');
+    }, '#ffe58a');
   }
 
   // -------------------------------------------------------------------------
@@ -674,6 +830,8 @@ export class Game {
     for (const g of this.gibs) g.update(dt, this);
     this.updateHeartbeat(dt);
     this.updateCombo(dt);
+    this.updateAffixes(dt);
+    this.updateGrievous(dt);
     for (const t of this.telegraphs) t.update(dt);
     for (const s of this.shockwaves) s.update(dt);
     for (const z of this.zones) z.update(dt, this);
@@ -700,6 +858,30 @@ export class Game {
     this.notifications = this.notifications.filter((n) => n.life > 0);
 
     this.updateWaves(dt);
+  }
+
+  /**
+   * Grievous bleeds for as long as it is stacked, and three clean seconds
+   * clears the whole thing at once. Not a decaying stack: a partial reprieve
+   * for a partial disengage would let you keep trading through it.
+   */
+  updateGrievous(dt) {
+    if (this.grievous <= 0) return;
+    // Its own clock, not timeSinceCombat: the bleed is player damage, and
+    // damageEntity resets the combat timer, so sharing one would mean the
+    // wound kept itself open forever and no amount of disengaging cleared it.
+    this.grievousTimer = (this.grievousTimer || 0) + dt;
+    if (this.grievousTimer >= 3) {
+      this.grievous = 0;
+      this.notify('Wounds closed');
+      return;
+    }
+    // Applied straight to the entity rather than through damageEntity: routed
+    // the normal way this would fire the hurt cue and shake the screen sixty
+    // times a second, and armour would soak a tick that is already tuned.
+    const scale = waveScaling(this.wave, this.difficulty);
+    this.player.damage(this.grievous * 1.7 * scale.damage * dt, { isDot: true, source: null });
+    if (this.player.dead) this.endRun();
   }
 
   /** Demonic Rebirth: a fiend killed in combat claws its way back, on a timer. */
@@ -741,7 +923,11 @@ export class Game {
     }
 
     if (d.state === 'clearing' && this.mobs.length === 0) {
-      const bonus = waveClearBonus(this.wave);
+      // The clear bonus is the larger half of a wave's payout, so it has to
+      // carry the affix multiplier too — paying the bonus only on kills would
+      // mean the rules cost a third of the run's depth and returned a rounding
+      // error on the currency that depth exists to earn.
+      const bonus = Math.round(waveClearBonus(this.wave) * (1 + affixSoulBonus(this.affixes)));
       this.soulsEarned += bonus * (1 + (this.player.mods.soulGain || 0));
       this.notify(`Wave ${this.wave} cleared  +${bonus} souls`, 2.2);
       this.player.heal(this.player.maxHp * 0.25);

@@ -880,6 +880,24 @@ export class Menus {
       list.appendChild(chips);
       p.appendChild(list);
     }
+
+    // The HUD chips say which rules are running; this is the one place with
+    // room to say what to do about them. Pausing to check is the intended use.
+    if (g.affixes && g.affixes.length) {
+      const box = el('div', 'affix-list');
+      for (const a of g.affixes) {
+        const row = el('div', 'affix-row');
+        row.style.borderLeftColor = a.color;
+        row.appendChild(el('span', 'affix-icon', a.icon));
+        const text = el('div', 'affix-text');
+        text.appendChild(el('b', null, a.name));
+        text.appendChild(el('span', null, a.blurb));
+        text.appendChild(el('em', null, a.counter));
+        row.appendChild(text);
+        box.appendChild(row);
+      }
+      p.appendChild(box);
+    }
     wrap.appendChild(p);
     return wrap;
   }

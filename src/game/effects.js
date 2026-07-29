@@ -300,6 +300,10 @@ export class Zone {
     this.life = opts.duration;
     this.maxLife = opts.duration;
     this.slow = opts.slow || 0;
+    // Sanguine pools cut both ways: they burn the player and mend whatever
+    // stands in them, as a fraction of max health per tick. That is what makes
+    // walking off the corpse the play rather than a preference.
+    this.heals = opts.heals || 0;
     this.tick = 0;
     this.dead = false;
   }
@@ -319,6 +323,15 @@ export class Zone {
       if (this.team === TEAM.PLAYER) game.dealDamage(this.source, e, this.dps * 0.4, { silent: true });
       else game.damageEntity(this.source, e, this.dps * 0.4, { melee: false });
       if (this.slow) e.applySlow(this.slow, 0.6);
+    }
+
+    if (this.heals && this.team === TEAM.ENEMY) {
+      for (const m of game.mobs) {
+        if (m.dead) continue;
+        if (Math.hypot(m.x - this.x, m.z - this.z) > this.radius) continue;
+        if (Math.abs(m.centerY - this.y) > 3.5) continue;
+        m.heal(m.maxHp * this.heals);
+      }
     }
   }
 
