@@ -707,6 +707,61 @@ check('every arena layout is actually playable', async () => {
   }
 });
 
+// --- Armoury depth ---------------------------------------------------------
+
+check('the Armoury has enough slots and bands to stay legible', async () => {
+  const { QUALITIES, qualityFor } = await import('../src/data/armor.js');
+  assert(ARMOR_SLOTS.length >= 12, `only ${ARMOR_SLOTS.length} armour slots`);
+  const ids = new Set(ARMOR_SLOTS.map((s) => s.id));
+  assert(ids.size === ARMOR_SLOTS.length, 'duplicate armour slot id');
+  for (const s of ARMOR_SLOTS) {
+    assert(s.icon && s.school && s.desc, `${s.id} is missing presentation`);
+    assert(Object.keys(s.effect).length > 0, `${s.id} grants nothing`);
+  }
+  // Quality bands must cover the whole tier range without a gap, and must
+  // never go backwards — a slot that reads "Rare" at T40 and "Fine" at T41
+  // would be worse than no band at all.
+  let last = -1;
+  for (const q of QUALITIES) {
+    assert(q.at > last, `quality band ${q.name} is out of order`);
+    last = q.at;
+    assert(/^#[0-9a-f]{6}$/i.test(q.color), `${q.name} has no usable colour`);
+  }
+  assert(qualityFor(0).at === 0, 'an unforged slot has no band');
+  let seenAt = -1;
+  for (let t = 0; t <= ARMOR_MAX_TIER; t++) {
+    const at = qualityFor(t).at;
+    assert(at >= seenAt, `quality went backwards at tier ${t}`);
+    seenAt = at;
+  }
+});
+
+check('armour set bonuses keep arriving past the old ceiling', () => {
+  assert(ARMOR_SETS.length >= 6, `only ${ARMOR_SETS.length} set bonuses`);
+  let prevTier = 0;
+  for (const set of ARMOR_SETS) {
+    assert(set.tier > prevTier, `set ${set.name} does not climb`);
+    prevTier = set.tier;
+    assert(Object.keys(set.effect).length >= 2, `set ${set.name} grants a single stat`);
+  }
+  // Compared per key rather than by summing the effect bag: a bag mixing
+  // "+220 health" with "+6% damage reduction" has no meaningful total, and a
+  // check built on one would pass or fail for reasons unrelated to balance.
+  // Within a single stat the comparison is real, and it catches the typo that
+  // matters — a deeper set paying less of something than a shallower one.
+  const seen = new Map();
+  for (const set of ARMOR_SETS) {
+    for (const [k, v] of Object.entries(set.effect)) {
+      if (seen.has(k)) {
+        assert(v > seen.get(k),
+          `set ${set.name} gives ${k} ${v}, less than an earlier set's ${seen.get(k)}`);
+      }
+      seen.set(k, v);
+    }
+  }
+  assert(prevTier >= ARMOR_MAX_TIER * 0.9, 'the last set arrives long before the tier cap');
+});
+
 // --- Quests ----------------------------------------------------------------
 // The whole point of generating these is that "balanced" can be checked rather
 // than asserted. If the reward is not a fixed rate on measured effort, these

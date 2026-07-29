@@ -1,11 +1,38 @@
 import { PRICE_MULTIPLIER } from './permanent.js';
 
-// The Armoury: nine equipment slots bought with diamonds in the main menu.
+// The Armoury: fourteen equipment slots bought with diamonds in the main menu.
 // Unlike the Forge, armour has no ceiling — every tier costs more and gives a
 // little more, so late-game Souls always have somewhere to go.
 
 /** Material names cycle every 5 tiers, then repeat with a numeral suffix. */
-const MATERIALS = ['Cloth', 'Leather', 'Chain', 'Iron', 'Steel', 'Obsidian', 'Runed', 'Void'];
+const MATERIALS = [
+  'Cloth', 'Leather', 'Chain', 'Iron', 'Steel', 'Obsidian', 'Runed', 'Void',
+  'Dragonhide', 'Starforged', 'Soulbound', 'Ascendant',
+];
+
+/**
+ * Quality bands, read off a slot's tier. Purely presentational — the numbers
+ * are already carried by the tier — but a wall of thirteen identical grey rows
+ * tells a player nothing about where their kit is weakest, and the weakest
+ * slot is the one that matters, because set bonuses key off the lowest tier
+ * you own.
+ */
+export const QUALITIES = [
+  { at: 0, name: 'Unforged', color: '#8b93a5' },
+  { at: 1, name: 'Common', color: '#cfd6e6' },
+  { at: 8, name: 'Fine', color: '#7dff9d' },
+  { at: 18, name: 'Rare', color: '#6ec8ff' },
+  { at: 32, name: 'Epic', color: '#c98fff' },
+  { at: 50, name: 'Legendary', color: '#ffb27a' },
+  { at: 72, name: 'Mythic', color: '#ff5a3c' },
+  { at: 100, name: 'Ascendant', color: '#ffd24a' },
+];
+
+export function qualityFor(tier) {
+  let out = QUALITIES[0];
+  for (const q of QUALITIES) if (tier >= q.at) out = q;
+  return out;
+}
 
 export const ARMOR_SLOTS = [
   {
@@ -62,6 +89,36 @@ export const ARMOR_SLOTS = [
     baseCost: 130, growth: 1.122,
     effect: { allDamage: 0.02, aoeRadius: 0.015 },
   },
+  {
+    id: 'shoulders', name: 'Pauldrons', icon: '🛡', school: 'physical',
+    desc: '+8 health, +1% less damage taken',
+    baseCost: 108, growth: 1.114,
+    effect: { maxHp: 8, damageReduction: 0.004 },
+  },
+  {
+    id: 'bracers', name: 'Bracers', icon: '⛓', school: 'storm',
+    desc: '+1.2% attack speed, -0.8% cooldowns',
+    baseCost: 112, growth: 1.116,
+    effect: { attackSpeed: 0.012, cooldownReduction: 0.008 },
+  },
+  {
+    id: 'belt', name: 'Girdle', icon: '🎗', school: 'nature',
+    desc: '+3 max resource, +0.5 resource regen',
+    baseCost: 106, growth: 1.114,
+    effect: { resourceMax: 3, resourceRegen: 0.5 },
+  },
+  {
+    id: 'trinket', name: 'Trinket', icon: '🪬', school: 'arcane',
+    desc: '+1.5% damage over time, +1% souls',
+    baseCost: 135, growth: 1.124,
+    effect: { dotDamage: 0.015, soulGain: 0.01 },
+  },
+  {
+    id: 'idol', name: 'Idol', icon: '🗿', school: 'shadow',
+    desc: '+1.5% boss damage, +0.8% thorns',
+    baseCost: 140, growth: 1.126,
+    effect: { bossDamage: 0.015, thorns: 0.008 },
+  },
 ];
 
 /**
@@ -76,6 +133,10 @@ export const ARMOR_SETS = [
   { tier: 25, name: 'Runed Regalia', effect: { critChance: 0.05, critMult: 0.15, maxHp: 90 } },
   { tier: 40, name: 'Voidforged', effect: { allDamage: 0.12, lifesteal: 0.04, moveSpeed: 0.06 } },
   { tier: 60, name: 'Ascendant', effect: { allDamage: 0.20, damageReduction: 0.06, maxHp: 220 } },
+  // Past 60 the cost curve means every further tier is a serious commitment,
+  // so the last two sets are worth more than the four before them combined.
+  { tier: 80, name: 'Godforged', effect: { allDamage: 0.30, critChance: 0.08, lifesteal: 0.06, maxHp: 350 } },
+  { tier: 100, name: 'Worldbreaker', effect: { allDamage: 0.45, damageReduction: 0.10, critMult: 0.40, maxHp: 500 } },
 ];
 
 export const ARMOR_BY_ID = Object.fromEntries(ARMOR_SLOTS.map((s) => [s.id, s]));

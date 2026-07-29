@@ -12,7 +12,7 @@ import {
 } from '../data/permanent.js';
 import {
   ARMOR_SLOTS, armorCost, armorTierName, ARMOR_MAX_TIER, armorRating,
-  armorSets, nextArmorSet,
+  armorSets, nextArmorSet, qualityFor,
 } from '../data/armor.js';
 import { skillCost } from '../game/skills.js';
 import { storage } from '../core/save.js';
@@ -728,7 +728,19 @@ export class Menus {
     const wrap = el('div', 'screen');
     wrap.appendChild(this.backBar('title'));
     const rating = armorRating(this.profile.armor);
-    const p = this.panel('Armoury', `Rating ${rating}`);
+    // The lowest tier you own is the number that matters: set bonuses key off
+    // it, so the screen leads with it rather than making the player scan
+    // fourteen rows to find their weakest slot.
+    const tiers = ARMOR_SLOTS.map((d) => this.profile.armor[d.id] || 0);
+    const weakest = Math.min(...tiers);
+    const weakSlot = ARMOR_SLOTS[tiers.indexOf(weakest)];
+    // Only worth calling out once the kit is actually uneven. On a fresh
+    // account every slot is T0, so flagging "holding sets back" would put the
+    // warning on all fourteen rows — which is noise, not a signal.
+    const uneven = Math.max(...tiers) > weakest;
+    const p = this.panel('Armoury', uneven
+      ? `Rating ${rating} · weakest slot: ${weakSlot.name} T${weakest}`
+      : `Rating ${rating}`);
 
     // Set bonuses key off the *lowest* tier you own, so the screen has to show
     // which slot is holding the set back — otherwise a player pours souls into
@@ -749,14 +761,23 @@ export class Menus {
       const maxed = tier >= ARMOR_MAX_TIER;
       const cost = armorCost(def, tier);
       const afford = this.profile.souls >= cost;
-      const card = el('div', 'forge-card' + (!afford && !maxed ? ' poor' : ''));
+      const q = qualityFor(tier);
+      const card = el('div', 'forge-card' + (!afford && !maxed ? ' poor' : '')
+        + (uneven && tier === weakest ? ' weakest' : ''));
+      // Quality is a band on the tier and adds no numbers of its own. It earns
+      // its place by making the state of a fourteen-slot kit readable at a
+      // glance instead of as fourteen identical grey rows.
+      card.style.setProperty('--quality', q.color);
       const icon = el('div', 'forge-icon');
       icon.appendChild(iconElement(def.icon, 34, { school: SCHOOLS[def.school] }));
       card.appendChild(icon);
       const body = el('div', 'forge-body');
       body.innerHTML = `
-        <div class="forge-name">${def.name} <span class="dim">T${tier}</span></div>
-        <div class="forge-desc">${def.desc}</div>`;
+        <div class="forge-name">${armorTierName(def, tier)}
+          <span class="quality-tag">${q.name}</span></div>
+        <div class="forge-desc">${def.desc}${tier
+          ? ` · <b>T${tier}</b> · ${this.armorSummary(def, tier)}`
+          : ''}</div>`;
       card.appendChild(body);
       const buy = el('button', 'buy-btn', maxed ? 'MAX' : `💠 ${cost}`);
       buy.disabled = maxed || !afford;
