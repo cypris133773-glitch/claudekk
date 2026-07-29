@@ -530,6 +530,11 @@ export class Hud {
       this.touchButton(ax, ay, ar, '⚔', 'attack', rects, '#ff8a5c');
       this.touchButton(ax, ay - ar - 44, 26, '⤒', 'jump', rects, '#8fd8ff');
       this.touchButton(ax + dir * (ar + 26), ay - ar - 30, 23, '»', 'sprint', rects, '#c9ffb0');
+      // Pause, top centre. On a phone there was no way to reach the menu at
+      // all — Esc and the gamepad Start button are the only other routes, and
+      // neither exists on a touchscreen. Top centre is the one area no thumb
+      // rests on, so it cannot be hit by accident mid-fight.
+      this.touchButton(this.w / 2, s.t + 26, 22, '❚❚', 'pause', rects, '#cfd6e6');
     }
     this.input.setButtonRects(rects);
   }

@@ -6,6 +6,13 @@ import { clamp } from './math.js';
 export const isTouchDevice = () =>
   ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 
+/**
+ * Buttons a finger may keep aiming through. These are the ones held down for
+ * long stretches; the skill buttons are taps and would only make the view
+ * lurch if a stray drag counted.
+ */
+const DRAG_THROUGH = new Set(['attack', 'sprint']);
+
 export class Input {
   constructor(canvas, settings) {
     this.canvas = canvas;
@@ -223,6 +230,17 @@ export class Input {
       this.touch.buttons.set(id, btn);
       this.heldButtons.add(btn);
       this.buttonHits.add(btn);
+      // Held buttons must not swallow the aiming thumb. Attack and sprint are
+      // held for seconds at a time, and with the finger consumed here there
+      // was no thumb left to look with: you could move, or aim, or attack,
+      // but never all three. The same finger now keeps driving the look while
+      // it holds the button, which is how every mobile shooter does it.
+      if (DRAG_THROUGH.has(btn) && this.touch.lookId === null) {
+        this.touch.lookId = id;
+        this.touch.lookX = x; this.touch.lookY = y;
+        this.touch.lookMoved = 0;
+        this.touch.lookStart = performance.now();
+      }
       return;
     }
     // Split the screen down the middle: one side steers, the other looks.
@@ -269,6 +287,9 @@ export class Input {
       const name = this.touch.buttons.get(id);
       this.touch.buttons.delete(id);
       if (![...this.touch.buttons.values()].includes(name)) this.heldButtons.delete(name);
+      // A drag-through finger owns the look as well; leaving it assigned would
+      // strand the look control until the next unrelated touch.
+      if (id === this.touch.lookId) this.touch.lookId = null;
       return;
     }
     if (id === this.touch.moveId) {
@@ -424,13 +445,18 @@ export class Input {
       || this.buttonHits.has('jump') || this.padJump;
     s.sprint = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') || s.sprint
       || this.heldButtons.has('sprint') || this.padSprint;
-    s.attack = this.mouseDown || this.heldButtons.has('attack')
-      || this.buttonHits.has('attack') || this.padAttack || this.tapAttack;
+    // "Hold to attack" gates only the held sources: a press always swings.
+    // This used to be applied in the frame loop *after* the simulation had
+    // already consumed the state, so the setting did nothing at all.
+    const hold = this.settings.autoAttack !== false;
+    s.attack = this.buttonHits.has('attack') || this.tapAttack || this.padAttack
+      || (hold && (this.mouseDown || this.heldButtons.has('attack')));
     this.tapAttack = false;
 
     for (let i = 0; i < 4; i++) {
       if (this.buttonHits.has('skill' + i)) s.skills[i] = true;
     }
+    if (this.buttonHits.has('pause')) s.pause = true;
     this.buttonHits.clear();
     return s;
   }

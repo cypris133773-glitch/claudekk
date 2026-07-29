@@ -594,6 +594,67 @@ async function runViewport(browser, port, vp) {
         { maxSpeed: r.maxSpeed, yawDelta: r.yawDeltaNow, attackFires: r.attackFires });
     }
 
+    // ---- 8b. two thumbs only: hold attack and aim with the same one -------
+    // The three-finger case above passes even when the attack button eats the
+    // finger that pressed it, because a third finger is doing the aiming. A
+    // phone has two thumbs. This is the case the player actually reported:
+    // holding attack must not cost you the ability to look.
+    {
+      const b = byName('attack');
+      if (!b) {
+        rep.add('two-thumb attack + aim', false, 'no "attack" hit rect exists');
+      } else {
+        const [lx, ly] = pickFree(0.25, 0.62);
+        await frame.evaluate(() => window.__PLAYTEST.reset());
+        await touch.dragHold(20, lx, ly, lx, ly - 90, 6, 16);       // left thumb: run
+        // Right thumb presses the button and then drags off it to aim.
+        await touch.dragHold(21, b.cx, b.cy, b.cx - 130, b.cy, 10, 18);
+        await sleep(350);
+        const r = await frame.evaluate(() => window.__PLAYTEST.read());
+        await touch.release();
+        await sleep(120);
+        const moved = r.maxSpeed > 0.5;
+        const aimed = Math.abs(r.yawDeltaNow) > 0.15;
+        const hit = r.attackFires > 0 || r.maxSwing > 0;
+        rep.add('two-thumb attack + aim', moved && aimed && hit,
+          `speed ${n(r.maxSpeed)}${moved ? '' : ' NOT MOVING'}, `
+          + `yaw ${n(r.yawDeltaNow, 3)} rad${aimed ? '' : ' NOT AIMING'}, `
+          + `swings ${r.attackFires}${hit ? '' : ' NOT ATTACKING'}`,
+          { maxSpeed: r.maxSpeed, yawDelta: r.yawDeltaNow, attackFires: r.attackFires });
+      }
+    }
+
+    // ---- 8c. the pause button reaches the menu ----------------------------
+    // Esc and gamepad Start are the only other ways out of a run, and a phone
+    // has neither. Without this button a touch player cannot reach Settings or
+    // abandon a run at all.
+    {
+      const b = byName('pause');
+      if (!b) {
+        rep.add('pause button opens the menu', false, 'no "pause" hit rect exists');
+      } else {
+        await touch.tap(b.cx, b.cy, 110, 30);
+        await sleep(450);
+        const after = await frame.evaluate(() => {
+          const B = window.BLOCKFRAY;
+          return { screen: B.menus.screen, paused: B.game.paused, running: B.game.running };
+        });
+        const opened = after.screen === 'pause' && after.paused;
+        rep.add('pause button opens the menu', opened,
+          `screen=${after.screen}, paused=${after.paused}, running=${after.running}`,
+          after);
+        // Resume so the checks that follow still have a live run.
+        if (opened) {
+          await frame.evaluate(() => {
+            const btns = [...document.querySelectorAll('#ui button')];
+            const resume = btns.find((x) => /RESUME/i.test(x.textContent || ''));
+            if (resume) resume.click();
+          });
+          await sleep(400);
+        }
+      }
+    }
+
     // ---- 9. the wave actually runs ----------------------------------------
     {
       await frame.evaluate(() => window.__PLAYTEST.reset());
