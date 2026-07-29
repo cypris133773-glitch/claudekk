@@ -32,7 +32,11 @@ html, body {
   touch-action: none;
 }
 
-canvas {
+/* The two game surfaces only. A bare `canvas` selector also catches every
+   icon canvas the menus build, tears it out of the layout and stretches it
+   across the screen behind the UI — which looks exactly like the icons never
+   having been drawn at all. */
+#view, #hud {
   position: fixed;
   inset: 0;
   width: 100%;
@@ -987,6 +991,13 @@ body.show-popout-btn #popout-btn { display: block; }
   .class-meta { font-size: 9px; }
   .class-picker .pill { padding: 5px 8px; font-size: 11px; }
   .branch-tabs .pill { padding: 5px 9px; font-size: 11.5px; }
+  /* Seven class tiles, four kit icons, three difficulty buttons and the play
+     row do not all fit 320px of width without this. The kit icons are the
+     one part the loadout screen already shows in full. */
+  /* The tiles, the difficulty buttons and Play are what this screen is for;
+     the detail block repeats what the loadout screen shows in full. */
+  .class-detail { display: none; }
+  .diff-btn { padding: 7px 4px; }
 }
 
 /* Three tall upgrade cards stack into 570px on a narrow phone, which is more
@@ -1033,7 +1044,10 @@ body.show-popout-btn #popout-btn { display: block; }
   font: inherit;
   min-width: 0;
 }
-.skill-slot canvas { display: block; }
+.skill-slot canvas, .kit-icon canvas, .forge-icon canvas, .diff-btn canvas {
+  display: block;
+  position: static;
+}
 .skill-slot.on {
   border-color: var(--gold);
   background: rgba(255, 210, 74, 0.10);
@@ -1117,3 +1131,41 @@ body.show-popout-btn #popout-btn { display: block; }
 }
 .set-chip.on { border-color: var(--gold); color: var(--gold); background: rgba(255, 210, 74, 0.08); }
 .forge-icon { line-height: 0; }
+
+/* Wave reward: rank up one of your own four skills. */
+.rank-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px; }
+@media (min-width: 720px) { .rank-row { grid-template-columns: repeat(4, 1fr); } }
+.rank-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 8px;
+  background: var(--panel-2);
+  border: 1.5px solid var(--line);
+  border-radius: 13px;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.rank-card:hover { border-color: var(--gold); background: rgba(255, 210, 74, 0.08); }
+.rank-card canvas { display: block; position: static; }
+.rank-body { text-align: center; }
+.rank-name { font-weight: 800; font-size: 13.5px; }
+.rank-step { font-size: 12px; color: var(--dim); }
+.rank-step b { color: var(--gold); }
+.rank-gain { font-size: 10px; color: rgba(255, 255, 255, 0.4); margin-top: 2px; }
+.kit-icon.rank { position: relative; }
+.rank-pip {
+  position: absolute;
+  right: -3px; bottom: -3px;
+  min-width: 15px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: var(--gold);
+  color: #14161d;
+  font-size: 9.5px;
+  font-weight: 900;
+  text-align: center;
+  line-height: 15px;
+}

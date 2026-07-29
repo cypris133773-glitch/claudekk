@@ -133,6 +133,25 @@ function probeScreen(name) {
       offscreen.push(`${(b.textContent || b.className).trim().slice(0, 24)}@${Math.round(cx)},${Math.round(cy)}`);
     }
   }
+  // Icons must be *in the layout*, not merely in the DOM. A bare `canvas`
+  // selector meant for the game surfaces yanked every menu icon out of flow
+  // and stretched it across the screen behind the UI: present in the DOM,
+  // invisible on screen, and the picker read as plain text.
+  const icons = [...ui.querySelectorAll('.skill-slot canvas, .kit-icon canvas, .forge-icon canvas')];
+  const brokenIcons = [];
+  for (const cv of icons) {
+    const r = cv.getBoundingClientRect();
+    // No box at all means an ancestor is display:none — the short-screen
+    // layouts hide the class detail on purpose. Deliberately hidden is not
+    // the same as torn out of the layout.
+    if (r.width === 0 && r.height === 0) continue;
+    const pos = getComputedStyle(cv).position;
+    if (pos === 'fixed' || pos === 'absolute' || r.width < 8 || r.height < 8
+      || r.width > 400 || r.height > 400) {
+      brokenIcons.push(`${pos} ${Math.round(r.width)}x${Math.round(r.height)}`);
+    }
+  }
+
   // How hard the safety net had to work. Anything under MIN_SCALE means the
   // screen does not really fit — it was shrunk until it did, and shrunk text
   // on a phone is its own failure.
@@ -143,6 +162,8 @@ function probeScreen(name) {
     offscreen,
     scale: m ? Number(m[1]) : 1,
     buttons: ui.querySelectorAll('button').length,
+    icons: icons.length,
+    brokenIcons,
   };
 }
 
@@ -178,17 +199,18 @@ async function run() {
       const r = await frame.evaluate(probeScreen, name);
       // One CSS pixel of slack: sub-pixel layout rounding is not a scrollbar.
       const ok = r.overflowY <= 1 && r.overflowX <= 1 && r.offscreen.length === 0
-        && r.scale >= MIN_SCALE;
+        && r.scale >= MIN_SCALE && r.brokenIcons.length === 0;
       if (!ok) failures++;
       results.push({ vp: vp.name, name, ok });
       const fit = r.scale < 1 ? ` (scaled to ${r.scale.toFixed(2)})` : '';
       const detail = ok
-        ? `${r.buttons} controls, fits${fit}`
+        ? `${r.buttons} controls${r.icons ? `, ${r.icons} icons` : ''}, fits${fit}`
         : [
           r.overflowY > 1 ? `${r.overflowY}px below the fold` : '',
           r.overflowX > 1 ? `${r.overflowX}px past the edge` : '',
           r.scale < MIN_SCALE ? `had to shrink to ${r.scale.toFixed(2)}` : '',
           r.offscreen.length ? `offscreen: ${r.offscreen.join(', ')}` : '',
+          r.brokenIcons.length ? `icons out of layout: ${r.brokenIcons.slice(0, 3).join(', ')}` : '',
         ].filter(Boolean).join('; ');
       console.log(`  [${ok ? 'PASS' : 'FAIL'}] ${name.padEnd(10)} ${detail}`);
     }

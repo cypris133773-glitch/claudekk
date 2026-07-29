@@ -17,6 +17,9 @@ export class Audio {
     'swing', 'whiff', 'hit', 'crit', 'shoot', 'cast', 'nova', 'zap', 'explode',
     'blink', 'charge', 'heal', 'buff', 'drain', 'summon', 'fuse', 'roar',
     'hurt', 'death', 'levelup', 'wave', 'buy', 'ui', 'deny',
+    // Added with the skill-rank rework and the wider bestiary.
+    'rankup', 'windup', 'stagger', 'gib', 'shatter', 'curse', 'stomp',
+    'bossdown', 'dodge', 'lowhp',
   ];
 
   /**
@@ -214,6 +217,46 @@ export class Audio {
       case 'buy': this.tone({ freq: 660, type: 'triangle', dur: 0.14, gain: 0.2, sweep: 300 }); break;
       case 'ui': this.tone({ freq: 520, type: 'square', dur: 0.05, gain: 0.10 }); break;
       case 'deny': this.tone({ freq: 160, type: 'square', dur: 0.14, gain: 0.16, sweep: -60 }); break;
+
+      // A rank-up is the reward beat of the whole run: a rising arpeggio with
+      // a bell on top, longer and brighter than an ordinary pickup.
+      case 'rankup':
+        [0, 0.07, 0.14, 0.22, 0.32].forEach((d, i) =>
+          this.tone({ freq: 392 * Math.pow(1.26, i), type: 'triangle', dur: 0.26, gain: 0.20, delay: d }));
+        this.tone({ freq: 1568, type: 'sine', dur: 0.7, gain: 0.12, delay: 0.32 });
+        break;
+      // The tell before an enemy swing. Deliberately dry and short: it has to
+      // cut through a crowd without becoming noise.
+      case 'windup': this.noise({ dur: 0.09, gain: 0.10, freq: 2200, q: 3, sweep: -900 }); break;
+      case 'stagger':
+        this.noise({ dur: 0.16, gain: 0.22, freq: 500, q: 1.4, sweep: -260 });
+        this.tone({ freq: 130, type: 'square', dur: 0.12, gain: 0.14, sweep: -50 });
+        break;
+      case 'gib': this.noise({ dur: 0.22, gain: 0.20, freq: 340, q: 0.9, sweep: -180 }); break;
+      case 'shatter':
+        [0, 0.04, 0.09].forEach((d) =>
+          this.noise({ dur: 0.13, gain: 0.16, freq: 4200, q: 2.5, sweep: -2600, delay: d }));
+        break;
+      case 'curse':
+        this.tone({ freq: 300, type: 'sawtooth', dur: 0.42, gain: 0.16, sweep: -190 });
+        this.tone({ freq: 154, type: 'sine', dur: 0.5, gain: 0.12, sweep: -60, delay: 0.05 });
+        break;
+      case 'stomp':
+        this.tone({ freq: 62, type: 'sine', dur: 0.34, gain: 0.34, sweep: -26 });
+        this.noise({ dur: 0.26, gain: 0.24, freq: 180, q: 0.7, sweep: -90 });
+        break;
+      case 'bossdown':
+        this.tone({ freq: 220, type: 'sawtooth', dur: 1.3, gain: 0.30, sweep: -170 });
+        this.noise({ dur: 1.0, gain: 0.24, freq: 260, q: 0.5, sweep: -190, delay: 0.06 });
+        [0, 0.22, 0.46].forEach((d, i) =>
+          this.tone({ freq: 262 * Math.pow(1.5, i), type: 'triangle', dur: 0.5, gain: 0.16, delay: 0.5 + d }));
+        break;
+      case 'dodge': this.noise({ dur: 0.13, gain: 0.11, freq: 2600, q: 2.2, sweep: -1500 }); break;
+      // A heartbeat under low health. Quiet by design — a warning, not a siren.
+      case 'lowhp':
+        this.tone({ freq: 66, type: 'sine', dur: 0.16, gain: 0.20 });
+        this.tone({ freq: 58, type: 'sine', dur: 0.20, gain: 0.16, delay: 0.20 });
+        break;
       default: break;
     }
   }

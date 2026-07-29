@@ -6,7 +6,7 @@
 // are paged, dense ones are tabbed, and fitScreen() is the safety net that
 // scales a screen down rather than letting it run off the bottom.
 
-import { CLASSES, LOADOUT_SIZE, unlockedSkills } from '../data/classes.js';
+import { CLASSES, LOADOUT_SIZE } from '../data/classes.js';
 import {
   PERMANENT, upgradeCost, talentPointsForBestWave, masteryProgress,
 } from '../data/permanent.js';
@@ -14,7 +14,6 @@ import {
   ARMOR_SLOTS, armorCost, armorTierName, ARMOR_MAX_TIER, armorRating,
   armorSets, nextArmorSet,
 } from '../data/armor.js';
-import { RARITY } from '../data/upgrades.js';
 import { skillCost } from '../game/skills.js';
 import { storage } from '../core/save.js';
 import { DIFFICULTIES } from '../data/difficulty.js';
@@ -324,40 +323,34 @@ export class Menus {
 
   buildLoadout() {
     const cls = CLASSES.find((c) => c.id === this.selectedClass);
-    const cd = this.profile.classData(cls.id);
     const equipped = this.profile.loadout(cls).map((s) => s.id);
-    const open = unlockedSkills(cls, cd.bestWave).length;
 
     const wrap = el('div', 'screen');
     wrap.appendChild(this.backBar('classes'));
-    const p = this.panel(`${cls.name} skills`,
-      `Equip ${LOADOUT_SIZE} of ${cls.skills.length}. ${open} unlocked — reach deeper waves with this class for the rest.`);
+    const p = this.panel(`${cls.name}`, `Pick ${LOADOUT_SIZE} of ${cls.skills.length}`);
 
-    // Ten icon buttons. The full description belongs on the detail line under
-    // the grid, not repeated ten times: a wall of prose is exactly what makes
-    // a picker unreadable on a phone.
+    // Ten icon buttons. The description belongs on one detail line under the
+    // grid, not repeated ten times: a wall of prose is what made this
+    // unreadable on a phone.
     const grid = el('div', 'skill-picker');
     const detail = el('div', 'skill-detail');
-    const describe = (sk, locked) => {
-      detail.innerHTML = `<b>${sk.name}</b>`
-        + `<span>${locked ? `Unlocks at wave ${sk.unlock}` : sk.desc}</span>`
-        + `<i>${locked ? '' : `${sk.cost} ${cls.resource.name} · ${sk.cooldown}s`}</i>`;
+    const describe = (sk) => {
+      detail.innerHTML = `<b>${sk.name}</b><span>${sk.desc}</span>`
+        + `<i>${sk.cost} ${cls.resource.name} · ${sk.cooldown}s</i>`;
     };
 
     for (const sk of cls.skills) {
       const on = equipped.includes(sk.id);
-      const locked = (sk.unlock || 0) > cd.bestWave;
-      const btn = el('button', 'skill-slot' + (on ? ' on' : '') + (locked ? ' locked' : ''));
-      btn.appendChild(skillIconElement(sk, 46, { ready: !locked }));
-      btn.appendChild(el('span', 'slot-name', locked ? `🔒 ${sk.unlock}` : sk.name));
+      const btn = el('button', 'skill-slot' + (on ? ' on' : ''));
+      btn.appendChild(skillIconElement(sk, 46, { ready: true }));
+      btn.appendChild(el('span', 'slot-name', sk.name));
       btn.title = `${sk.name} — ${sk.desc}`;
-      btn.addEventListener('pointerenter', () => describe(sk, locked));
+      btn.addEventListener('pointerenter', () => describe(sk));
       this.click(btn, () => {
-        describe(sk, locked);
-        if (locked) { this.ctx.audio.play('deny'); return; }
+        describe(sk);
         const next = equipped.includes(sk.id)
           ? equipped.filter((id) => id !== sk.id)
-          // Replacing the oldest slot keeps the swap to one tap; dropping a
+          // Replacing the oldest slot keeps a swap to one tap; dropping a
           // skill first and then picking one would be two.
           : [...equipped.slice(equipped.length >= LOADOUT_SIZE ? 1 : 0), sk.id];
         if (!next.length) { this.ctx.audio.play('deny'); return; }
@@ -366,16 +359,16 @@ export class Menus {
       });
       grid.appendChild(btn);
     }
-    describe(this.profile.loadout(cls)[0], false);
+    describe(this.profile.loadout(cls)[0]);
     p.appendChild(grid);
     p.appendChild(detail);
 
     const actions = el('div', 'actions');
-    actions.appendChild(this.click(el('button', 'ghost-btn', 'Reset to default'), () => {
+    actions.appendChild(this.click(el('button', 'ghost-btn', 'Reset'), () => {
       this.profile.setLoadout(cls, []);
       this.refresh();
     }));
-    actions.appendChild(this.click(el('button', 'big-btn', 'Play as ' + cls.name),
+    actions.appendChild(this.click(el('button', 'big-btn', '▶ Play'),
       () => this.ctx.startRun(cls)));
     p.appendChild(actions);
     wrap.appendChild(p);
@@ -873,14 +866,16 @@ export class Menus {
     p.appendChild(menu);
 
     const g = this.ctx.game;
-    if (g.runUpgrades.length) {
+    if (g.player) {
       const list = el('div', 'run-build');
-      list.appendChild(el('h3', null, 'Run upgrades'));
-      const chips = el('div', 'chips');
-      for (const u of g.runUpgrades) {
-        chips.appendChild(el('span', 'chip',
-          `${u.icon} ${u.name}${u.stacks > 1 ? ` ×${u.stacks}` : ''}`));
-      }
+      const chips = el('div', 'kit-icons');
+      g.player.skills.forEach((sk, i) => {
+        const slot = el('div', 'kit-icon rank');
+        slot.appendChild(skillIconElement(sk, 34));
+        slot.appendChild(el('span', 'rank-pip', String(g.player.rankOf(i))));
+        slot.title = `${sk.name} — rank ${g.player.rankOf(i)}`;
+        chips.appendChild(slot);
+      });
       list.appendChild(chips);
       p.appendChild(list);
     }
@@ -891,19 +886,16 @@ export class Menus {
   buildUpgradeCards() {
     const g = this.ctx.game;
     const wrap = el('div', 'screen overlay');
-    const p = this.panel(`Wave ${g.wave} cleared`, 'Choose one upgrade for the rest of this run.');
-    const row = el('div', 'card-row');
+    const p = this.panel(`Wave ${g.wave} cleared`, 'Rank up a skill');
+    const row = el('div', 'rank-row');
     for (const up of g.pendingUpgrades) {
-      const rar = RARITY[up.rarity];
-      const card = el('div', 'upgrade-card');
-      card.style.setProperty('--accent', rar.color);
-      const owned = g.runUpgrades.find((u) => u.id === up.id);
-      card.innerHTML = `
-        <div class="up-rarity" style="color:${rar.color}">${rar.label}</div>
-        <div class="up-icon">${up.icon}</div>
-        <div class="up-name">${up.name}</div>
-        <div class="up-desc">${up.desc}</div>
-        ${owned ? `<div class="up-owned">Owned ×${owned.stacks}</div>` : ''}`;
+      const card = el('button', 'rank-card');
+      card.appendChild(skillIconElement(up.skill, 54));
+      const body = el('div', 'rank-body');
+      body.innerHTML = `<div class="rank-name">${up.skill.name}</div>`
+        + `<div class="rank-step">rank ${up.rank} → <b>${up.rank + 1}</b></div>`
+        + `<div class="rank-gain">+22% power · −4% cooldown</div>`;
+      card.appendChild(body);
       this.click(card, () => {
         g.chooseUpgrade(up);
         this.ctx.resumeRun();
@@ -911,13 +903,6 @@ export class Menus {
       row.appendChild(card);
     }
     p.appendChild(row);
-
-    const actions = el('div', 'actions');
-    const reroll = el('button', 'ghost-btn', `Reroll (${g.rerollsLeft})`);
-    reroll.disabled = g.rerollsLeft <= 0;
-    this.click(reroll, () => { if (g.rerollUpgrades()) this.show('upgrade'); });
-    actions.appendChild(reroll);
-    p.appendChild(actions);
     wrap.appendChild(p);
     return wrap;
   }

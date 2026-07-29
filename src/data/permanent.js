@@ -22,7 +22,7 @@ export const PERMANENT = [
   { id: 'p_regen', name: 'Flow', icon: '💧', desc: '+0.8 resource regen per level.', max: 100, baseCost: 65, growth: 1.08, effect: { resourceRegen: 0.8 } },
   { id: 'p_speed', name: 'Swiftness', icon: '👟', desc: '+0.8% move speed per level.', max: 100, baseCost: 58, growth: 1.08, effect: { moveSpeed: 0.008 } },
   { id: 'p_souls', name: 'Soul Harvest', icon: '💠', desc: '+4% souls earned per level.', max: 100, baseCost: 80, growth: 1.09, effect: { soulGain: 0.04 } },
-  { id: 'p_luck', name: 'Fortune', icon: '🍀', desc: '+6% rare upgrade chance per level.', max: 100, baseCost: 90, growth: 1.09, effect: { luck: 0.06 } },
+  { id: 'p_luck', name: 'Fortune', icon: '🍀', desc: '+1% chance of a bonus skill rank per level.', max: 100, baseCost: 90, growth: 1.09, effect: { luck: 0.01 } },
   { id: 'p_thorns', name: 'Bramble', icon: '🌵', desc: 'Reflect 1.6% of damage taken per level.', max: 100, baseCost: 72, growth: 1.085, effect: { thorns: 0.016 } },
   { id: 'p_boss', name: 'Titanbane', icon: '🗿', desc: '+2.4% damage to bosses per level.', max: 100, baseCost: 85, growth: 1.088, effect: { bossDamage: 0.024 } },
   { id: 'p_vamp', name: 'Bloodbound', icon: '🩸', desc: 'Heal 1.2 health per kill, per level.', max: 100, baseCost: 78, growth: 1.085, effect: { killHeal: 1.2 } },

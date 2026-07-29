@@ -119,6 +119,10 @@ export class Mob extends Entity {
     this.blinkTimer = rand(5, 3);
     this.slamTimer = rand(4, 2);
     this.wave = wave;
+    // Every enemy carries a level, so the same Husk at wave 30 reads as a
+    // different threat from the one at wave 2 rather than looking identical
+    // and hitting six times harder for no visible reason.
+    this.level = Math.max(1, wave);
     this.elite = false;
     this.id = (Math.random() * 100000) | 0;   // used for per-mob strafe direction
     this.stuckTimer = 0;
@@ -137,8 +141,16 @@ export class Mob extends Entity {
     this.slotBias = (((this.id % 7) - 3) / 3) * 0.55;
   }
 
+  /** Name as it appears over the enemy: "Husk lvl 12", "Elite Brute lvl 20". */
+  get title() {
+    return `${this.elite ? 'Elite ' : ''}${this.def.name} lvl ${this.level}`;
+  }
+
   makeElite() {
     this.elite = true;
+    // An elite is a tougher version of the same thing, and the level should
+    // say so: it is worth the attention its brighter bar asks for.
+    this.level += 3;
     this.maxHp = Math.round(this.maxHp * 2.4);
     this.hp = this.maxHp;
     this.damageAmount *= 1.5;
@@ -166,6 +178,7 @@ export class Mob extends Entity {
     if (this.flinchLock <= 0 && this.hurtFlash > 0.21
       && this.lastHitFraction > 0.18 && !this.def.boss) {
       this.flinch = this.lastHitFraction > 0.4 ? 0.4 : 0.22;
+      game.sfx('stagger');
       // Without this window a fast, hard-hitting build chain-staggers a mob
       // for the whole fight: it never closes, never dies, and the wave never
       // ends. The lock is what keeps a stagger a moment rather than a state.
@@ -345,11 +358,18 @@ export class Mob extends Entity {
     this.windupMult = damageMult;
     this.windupKnock = knockback;
     this.swing = 1;
+    this.pendingWindupSfx = true;
     return true;
   }
 
   resolveWindup(dt, game, target, dist) {
     if (this.windup <= 0) return;
+    // The tell only sounds for enemies close enough to matter, or a crowd
+    // turns the mix into static.
+    if (this.pendingWindupSfx) {
+      this.pendingWindupSfx = false;
+      if (dist < 12) game.sfx('windup');
+    }
     this.windup -= dt;
     if (this.windup > 0) return;
     this.windup = 0;
@@ -514,6 +534,7 @@ export class Mob extends Entity {
       if (this.slamTimer <= 0) {
         this.slamTimer = rand(6, 4);
         this.swing = 1;
+        game.sfx('stomp');
         game.telegraph(this.x, this.y, this.z, 5.0, 0.6, () => {
           game.explode(this.x, this.y + 0.4, this.z, 5.0, this.damageAmount * 1.6, {
             team: TEAM.ENEMY, source: this, color: '#c9a06a', knockback: 9,

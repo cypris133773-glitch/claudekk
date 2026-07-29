@@ -5,9 +5,9 @@
 //   projectile | aoe_self | aoe_target | dash | buff | heal | summon | cone |
 //   chain | strike | zone
 //
-// `unlock` is the best wave the class must have reached before the skill can
-// be slotted. The first four of every pool are always available, so a fresh
-// account still has a complete kit.
+// Every skill is available from the first run. Gating them behind wave
+// milestones made the picker mostly padlocks for a new player, and the choice
+// of four out of ten is the interesting decision — not the wait.
 
 export const RESOURCE = {
   MANA: { key: 'mana', name: 'Mana', color: '#4aa3ff', max: 100, regen: 7, startFull: true },
@@ -38,52 +38,52 @@ export const CLASSES = [
     difficulty: 1,
     skills: [
       {
-        id: 'charge', name: 'Charge', kind: 'dash', cost: 15, cooldown: 7, icon: '⚡', unlock: 0,
+        id: 'charge', name: 'Charge', kind: 'dash', cost: 15, cooldown: 7, icon: '⚡',
         desc: 'Rush forward, knocking aside and damaging everything in your path.',
         power: { distance: 11, speed: 34, damage: 30, knockback: 12, radius: 1.8 },
       },
       {
-        id: 'whirlwind', name: 'Whirlwind', kind: 'aoe_self', cost: 25, cooldown: 5, icon: '🌀', unlock: 0,
+        id: 'whirlwind', name: 'Whirlwind', kind: 'aoe_self', cost: 25, cooldown: 5, icon: '🌀',
         desc: 'Spin, striking all nearby enemies. Hits again after a short delay.',
         power: { radius: 4.2, damage: 34, ticks: 2, tickDelay: 0.28, knockback: 5 },
       },
       {
-        id: 'shieldwall', name: 'Shield Wall', kind: 'buff', cost: 20, cooldown: 18, icon: '🛡', unlock: 0,
+        id: 'shieldwall', name: 'Shield Wall', kind: 'buff', cost: 20, cooldown: 18, icon: '🛡',
         desc: 'Brace for 6s: take 55% less damage and become immune to knockback.',
         power: { duration: 6, damageTaken: 0.45, rooted: false },
       },
       {
-        id: 'execute', name: 'Execute', kind: 'strike', cost: 35, cooldown: 9, icon: '🗡', unlock: 0,
+        id: 'execute', name: 'Execute', kind: 'strike', cost: 35, cooldown: 9, icon: '🗡',
         desc: 'A brutal blow that deals triple damage to enemies below 35% health.',
         power: { damage: 70, range: 4.0, executeThreshold: 0.35, executeMult: 3, arc: 0.9 },
       },
       {
-        id: 'thunderclap', name: 'Thunder Clap', kind: 'aoe_self', cost: 22, cooldown: 8, icon: '💥', unlock: 3,
+        id: 'thunderclap', name: 'Thunder Clap', kind: 'aoe_self', cost: 22, cooldown: 8, icon: '💥',
         desc: 'Slam the ground: wide damage that slows everything caught in it.',
         power: { radius: 7.5, damage: 30, slow: 0.45, slowDuration: 4, knockback: 3, color: '#ffd08a' },
       },
       {
-        id: 'rend', name: 'Rend', kind: 'strike', cost: 18, cooldown: 6, icon: '🩸', unlock: 6,
+        id: 'rend', name: 'Rend', kind: 'strike', cost: 18, cooldown: 6, icon: '🩸',
         desc: 'Open a deep wound that bleeds for heavy damage over 8s.',
         power: { damage: 30, range: 3.8, arc: 1.0, dot: { dps: 16, duration: 8 } },
       },
       {
-        id: 'heroicleap', name: 'Heroic Leap', kind: 'dash', cost: 24, cooldown: 12, icon: '🦅', unlock: 10,
+        id: 'heroicleap', name: 'Heroic Leap', kind: 'dash', cost: 24, cooldown: 12, icon: '🦅',
         desc: 'Hurl yourself forward and crash down, flattening the landing zone.',
         power: { distance: 15, speed: 30, damage: 55, knockback: 10, radius: 3.4 },
       },
       {
-        id: 'battlecry', name: 'Battle Cry', kind: 'buff', cost: 30, cooldown: 26, icon: '📣', unlock: 15,
+        id: 'battlecry', name: 'Battle Cry', kind: 'buff', cost: 30, cooldown: 26, icon: '📣',
         desc: 'Roar for 10s: +35% damage and +25% attack speed.',
         power: { duration: 10, damageBonus: 0.35, attackSpeedBonus: 0.25 },
       },
       {
-        id: 'bladestorm', name: 'Bladestorm', kind: 'aoe_self', cost: 34, cooldown: 16, icon: '🌪', unlock: 20,
+        id: 'bladestorm', name: 'Bladestorm', kind: 'aoe_self', cost: 34, cooldown: 16, icon: '🌪',
         desc: 'Become a whirling storm of steel, striking everything around you four times.',
         power: { radius: 5.4, damage: 40, ticks: 4, tickDelay: 0.30, knockback: 3 },
       },
       {
-        id: 'avatar', name: 'Avatar', kind: 'buff', cost: 36, cooldown: 40, icon: '🗿', unlock: 25,
+        id: 'avatar', name: 'Avatar', kind: 'buff', cost: 36, cooldown: 40, icon: '🗿',
         desc: 'Become a titan for 12s: +50% damage and 30% less damage taken.',
         power: { duration: 12, damageBonus: 0.50, damageTaken: 0.70, rooted: false },
       },
@@ -136,52 +136,52 @@ export const CLASSES = [
     difficulty: 2,
     skills: [
       {
-        id: 'fireball', name: 'Fireball', kind: 'projectile', cost: 18, cooldown: 1.6, icon: '🔥', unlock: 0,
+        id: 'fireball', name: 'Fireball', kind: 'projectile', cost: 18, cooldown: 1.6, icon: '🔥',
         desc: 'Hurl a fireball that explodes on impact.',
         power: { damage: 46, speed: 26, radius: 3.4, gravity: 2, color: '#ff8a3c', size: 0.42, burn: 12 },
       },
       {
-        id: 'frostnova', name: 'Frost Nova', kind: 'aoe_self', cost: 22, cooldown: 9, icon: '❄', unlock: 0,
+        id: 'frostnova', name: 'Frost Nova', kind: 'aoe_self', cost: 22, cooldown: 9, icon: '❄',
         desc: 'Freeze nearby enemies solid for 2.5s and chill them afterwards.',
         power: { radius: 6, damage: 18, freeze: 2.5, slow: 0.45, slowDuration: 3, color: '#8fe3ff' },
       },
       {
-        id: 'blink', name: 'Blink', kind: 'dash', cost: 14, cooldown: 6, icon: '✦', unlock: 0,
+        id: 'blink', name: 'Blink', kind: 'dash', cost: 14, cooldown: 6, icon: '✦',
         desc: 'Teleport 9 blocks forward, passing through enemies.',
         power: { distance: 9, speed: 90, damage: 0, phase: true, invuln: 0.35 },
       },
       {
-        id: 'meteor', name: 'Meteor', kind: 'aoe_target', cost: 40, cooldown: 14, icon: '☄', unlock: 0,
+        id: 'meteor', name: 'Meteor', kind: 'aoe_target', cost: 40, cooldown: 14, icon: '☄',
         desc: 'Call a meteor onto your target area for massive damage.',
         power: { damage: 120, radius: 6.5, delay: 1.0, range: 28, burn: 20, color: '#ff6a2c' },
       },
       {
-        id: 'arcaneorb', name: 'Arcane Orb', kind: 'chain', cost: 24, cooldown: 5, icon: '🔮', unlock: 3,
+        id: 'arcaneorb', name: 'Arcane Orb', kind: 'chain', cost: 24, cooldown: 5, icon: '🔮',
         desc: 'An orb that bounces between four targets, fading as it goes.',
         power: { damage: 44, jumps: 4, range: 24, jumpRange: 9, falloff: 0.85, color: '#c98fff' },
       },
       {
-        id: 'flamestrike', name: 'Flamestrike', kind: 'aoe_target', cost: 28, cooldown: 8, icon: '🌋', unlock: 6,
+        id: 'flamestrike', name: 'Flamestrike', kind: 'aoe_target', cost: 28, cooldown: 8, icon: '🌋',
         desc: 'A pillar of flame at the targeted spot that sets everything alight.',
         power: { damage: 66, radius: 5.0, delay: 0.7, range: 26, burn: 26, color: '#ff9a4c' },
       },
       {
-        id: 'blizzard', name: 'Blizzard', kind: 'zone', cost: 34, cooldown: 13, icon: '🌨', unlock: 10,
+        id: 'blizzard', name: 'Blizzard', kind: 'zone', cost: 34, cooldown: 13, icon: '🌨',
         desc: 'A freezing storm that grinds down and slows anything inside it for 7s.',
         power: { radius: 6.5, dps: 30, duration: 7, slow: 0.45, range: 26, delay: 0.5, color: '#8fe3ff' },
       },
       {
-        id: 'timewarp', name: 'Time Warp', kind: 'buff', cost: 32, cooldown: 30, icon: '⏳', unlock: 15,
+        id: 'timewarp', name: 'Time Warp', kind: 'buff', cost: 32, cooldown: 30, icon: '⏳',
         desc: 'Bend time for 8s: +40% move and +40% attack speed.',
         power: { duration: 8, moveSpeed: 0.40, attackSpeedBonus: 0.40 },
       },
       {
-        id: 'pyroblast', name: 'Pyroblast', kind: 'projectile', cost: 42, cooldown: 9, icon: '☄', unlock: 20,
+        id: 'pyroblast', name: 'Pyroblast', kind: 'projectile', cost: 42, cooldown: 9, icon: '☄',
         desc: 'A slow, enormous ball of fire. Everything it touches keeps burning.',
         power: { damage: 135, speed: 22, radius: 4.6, gravity: 1.5, burn: 34, color: '#ff6a2c', size: 0.56 },
       },
       {
-        id: 'iceblock', name: 'Ice Block', kind: 'buff', cost: 20, cooldown: 34, icon: '🧊', unlock: 25,
+        id: 'iceblock', name: 'Ice Block', kind: 'buff', cost: 20, cooldown: 34, icon: '🧊',
         desc: 'Encase yourself for 4s, taking 90% less damage.',
         power: { duration: 4, damageTaken: 0.10, rooted: false },
       },
@@ -234,52 +234,52 @@ export const CLASSES = [
     difficulty: 2,
     skills: [
       {
-        id: 'corruption', name: 'Corruption', kind: 'projectile', cost: 14, cooldown: 1.2, icon: '☠', unlock: 0,
+        id: 'corruption', name: 'Corruption', kind: 'projectile', cost: 14, cooldown: 1.2, icon: '☠',
         desc: 'Infect a target with rot: heavy damage over 6s that spreads on death.',
         power: { damage: 10, speed: 30, radius: 1.2, dot: { dps: 16, duration: 6 }, spread: 1, color: '#8f4dff', size: 0.3 },
       },
       {
-        id: 'drainlife', name: 'Drain Life', kind: 'cone', cost: 20, cooldown: 6, icon: '🩸', unlock: 0,
+        id: 'drainlife', name: 'Drain Life', kind: 'cone', cost: 20, cooldown: 6, icon: '🩸',
         desc: 'Siphon life from everything in front of you, healing for 60% of it.',
         power: { damage: 52, range: 11, angle: 0.5, lifesteal: 0.6, color: '#c0392b' },
       },
       {
-        id: 'summonimp', name: 'Summon Fiend', kind: 'summon', cost: 30, cooldown: 20, icon: '👹', unlock: 0,
+        id: 'summonimp', name: 'Summon Fiend', kind: 'summon', cost: 30, cooldown: 20, icon: '👹',
         desc: 'Summon a fiend that fights for you for 25s. Stacks up to 3.',
         power: { duration: 25, hp: 70, damage: 18, maxPets: 3, speed: 6.0 },
       },
       {
-        id: 'shadowfury', name: 'Shadowfury', kind: 'aoe_target', cost: 34, cooldown: 13, icon: '🌑', unlock: 0,
+        id: 'shadowfury', name: 'Shadowfury', kind: 'aoe_target', cost: 34, cooldown: 13, icon: '🌑',
         desc: 'Erupt shadow at a location, stunning and detonating all rot effects.',
         power: { damage: 60, radius: 6, delay: 0.5, range: 22, stun: 2, detonate: 1, color: '#6a2fb5' },
       },
       {
-        id: 'chaosbolt', name: 'Chaos Bolt', kind: 'projectile', cost: 26, cooldown: 4, icon: '💜', unlock: 3,
+        id: 'chaosbolt', name: 'Chaos Bolt', kind: 'projectile', cost: 26, cooldown: 4, icon: '💜',
         desc: 'A slow bolt of raw chaos that detonates for very heavy damage.',
         power: { damage: 86, speed: 24, radius: 2.6, color: '#b06cff', size: 0.44 },
       },
       {
-        id: 'howl', name: 'Howl of Terror', kind: 'aoe_self', cost: 22, cooldown: 12, icon: '😱', unlock: 6,
+        id: 'howl', name: 'Howl of Terror', kind: 'aoe_self', cost: 22, cooldown: 12, icon: '😱',
         desc: 'A scream that roots everything around you for 2.5s.',
         power: { radius: 8.5, damage: 24, root: 2.5, color: '#6a2fb5' },
       },
       {
-        id: 'rainoffire', name: 'Rain of Fire', kind: 'zone', cost: 34, cooldown: 12, icon: '🔥', unlock: 10,
+        id: 'rainoffire', name: 'Rain of Fire', kind: 'zone', cost: 34, cooldown: 12, icon: '🔥',
         desc: 'Fel fire pours onto the targeted ground for 7s.',
         power: { radius: 6.0, dps: 34, duration: 7, range: 24, delay: 0.5, color: '#ff6a2c' },
       },
       {
-        id: 'soulharvest', name: 'Soul Harvest', kind: 'heal', cost: 28, cooldown: 22, icon: '💀', unlock: 15,
+        id: 'soulharvest', name: 'Soul Harvest', kind: 'heal', cost: 28, cooldown: 22, icon: '💀',
         desc: 'Devour stolen souls: heal 45 instantly and 9 hp/s for 8s.',
         power: { instant: 45, healPerSecond: 9, duration: 8 },
       },
       {
-        id: 'unstable', name: 'Unstable Affliction', kind: 'projectile', cost: 30, cooldown: 6, icon: '🧪', unlock: 20,
+        id: 'unstable', name: 'Unstable Affliction', kind: 'projectile', cost: 30, cooldown: 6, icon: '🧪',
         desc: 'A curse that eats a target alive for 10s and spreads when it dies.',
         power: { damage: 20, speed: 32, radius: 1.6, dot: { dps: 30, duration: 10 }, spread: 1, color: '#8f4dff', size: 0.32 },
       },
       {
-        id: 'demongate', name: 'Demonic Gateway', kind: 'dash', cost: 18, cooldown: 14, icon: '🌀', unlock: 25,
+        id: 'demongate', name: 'Demonic Gateway', kind: 'dash', cost: 18, cooldown: 14, icon: '🌀',
         desc: 'Step through the void, appearing 12 blocks away and briefly untouchable.',
         power: { distance: 12, speed: 90, damage: 0, phase: true, invuln: 0.6 },
       },
@@ -332,52 +332,52 @@ export const CLASSES = [
     difficulty: 2,
     skills: [
       {
-        id: 'chainlightning', name: 'Chain Lightning', kind: 'chain', cost: 22, cooldown: 3.5, icon: '⚡', unlock: 0,
+        id: 'chainlightning', name: 'Chain Lightning', kind: 'chain', cost: 22, cooldown: 3.5, icon: '⚡',
         desc: 'Lightning arcs to 4 nearby enemies, losing 20% damage per jump.',
         power: { damage: 48, jumps: 4, range: 22, jumpRange: 9, falloff: 0.8, color: '#7ef0ff' },
       },
       {
-        id: 'earthshock', name: 'Earth Shock', kind: 'aoe_self', cost: 20, cooldown: 7, icon: '🪨', unlock: 0,
+        id: 'earthshock', name: 'Earth Shock', kind: 'aoe_self', cost: 20, cooldown: 7, icon: '🪨',
         desc: 'Shockwave that damages and roots enemies around you for 2s.',
         power: { radius: 6.5, damage: 40, root: 2, knockback: 3, color: '#c9a06a' },
       },
       {
-        id: 'healingtotem', name: 'Healing Totem', kind: 'summon', cost: 26, cooldown: 16, icon: '🌿', unlock: 0,
+        id: 'healingtotem', name: 'Healing Totem', kind: 'summon', cost: 26, cooldown: 16, icon: '🌿',
         desc: 'Plant a totem that heals you for 9 hp/s within 8 blocks for 14s.',
         power: { duration: 14, totem: 'heal', healPerSecond: 9, radius: 8, hp: 40 },
       },
       {
-        id: 'stormstrike', name: 'Stormstrike', kind: 'strike', cost: 18, cooldown: 5, icon: '🌩', unlock: 0,
+        id: 'stormstrike', name: 'Stormstrike', kind: 'strike', cost: 18, cooldown: 5, icon: '🌩',
         desc: 'Charged melee blow that also zaps two extra targets.',
         power: { damage: 58, range: 4.2, arc: 1.1, chain: 2, chainDamage: 28, color: '#7ef0ff' },
       },
       {
-        id: 'lavaburst', name: 'Lava Burst', kind: 'projectile', cost: 24, cooldown: 5, icon: '🌋', unlock: 3,
+        id: 'lavaburst', name: 'Lava Burst', kind: 'projectile', cost: 24, cooldown: 5, icon: '🌋',
         desc: 'A molten bolt that erupts on impact and sets the target burning.',
         power: { damage: 70, speed: 30, radius: 3.0, burn: 18, color: '#ff7a3c', size: 0.38 },
       },
       {
-        id: 'searingtotem', name: 'Searing Totem', kind: 'summon', cost: 24, cooldown: 18, icon: '🗿', unlock: 6,
+        id: 'searingtotem', name: 'Searing Totem', kind: 'summon', cost: 24, cooldown: 18, icon: '🗿',
         desc: 'A totem that scorches everything within 10 blocks for 16s.',
         power: { duration: 16, totem: 'fire', damagePerSecond: 24, radius: 10, hp: 45 },
       },
       {
-        id: 'thunderstorm', name: 'Thunderstorm', kind: 'aoe_self', cost: 30, cooldown: 11, icon: '⛈', unlock: 10,
+        id: 'thunderstorm', name: 'Thunderstorm', kind: 'aoe_self', cost: 30, cooldown: 11, icon: '⛈',
         desc: 'Call down a storm that blasts everything around you away.',
         power: { radius: 9, damage: 56, knockback: 10, color: '#7ef0ff' },
       },
       {
-        id: 'ghostwolf', name: 'Spirit Wolf', kind: 'buff', cost: 20, cooldown: 20, icon: '🐺', unlock: 15,
+        id: 'ghostwolf', name: 'Spirit Wolf', kind: 'buff', cost: 20, cooldown: 20, icon: '🐺',
         desc: 'Take spirit form for 8s: +50% move speed and 25% dodge.',
         power: { duration: 8, moveSpeed: 0.5, dodge: 0.25 },
       },
       {
-        id: 'elementalblast', name: 'Elemental Blast', kind: 'projectile', cost: 34, cooldown: 8, icon: '💠', unlock: 20,
+        id: 'elementalblast', name: 'Elemental Blast', kind: 'projectile', cost: 34, cooldown: 8, icon: '💠',
         desc: 'All four elements at once, detonating on impact.',
         power: { damage: 110, speed: 34, radius: 4.0, burn: 20, color: '#7ef0ff', size: 0.44 },
       },
       {
-        id: 'spiritlink', name: 'Spirit Link', kind: 'heal', cost: 30, cooldown: 24, icon: '🔗', unlock: 25,
+        id: 'spiritlink', name: 'Spirit Link', kind: 'heal', cost: 30, cooldown: 24, icon: '🔗',
         desc: 'Bind your spirit to the earth: heal 60 instantly and 12 hp/s for 8s.',
         power: { instant: 60, healPerSecond: 12, duration: 8 },
       },
@@ -430,52 +430,52 @@ export const CLASSES = [
     difficulty: 2,
     skills: [
       {
-        id: 'smite', name: 'Smite', kind: 'projectile', cost: 16, cooldown: 1.4, icon: '✨', unlock: 0,
+        id: 'smite', name: 'Smite', kind: 'projectile', cost: 16, cooldown: 1.4, icon: '✨',
         desc: 'A bolt of holy light. Heals you for 20% of the damage it deals.',
         power: { damage: 44, speed: 34, radius: 1.6, lifesteal: 0.2, color: '#ffe9a8', size: 0.32 },
       },
       {
-        id: 'shield', name: 'Power Word: Shield', kind: 'buff', cost: 22, cooldown: 10, icon: '🔰', unlock: 0,
+        id: 'shield', name: 'Power Word: Shield', kind: 'buff', cost: 22, cooldown: 10, icon: '🔰',
         desc: 'Absorb the next 90 damage for 12s. Refresh before it breaks.',
         power: { duration: 12, absorb: 90 },
       },
       {
-        id: 'renew', name: 'Renew', kind: 'heal', cost: 20, cooldown: 8, icon: '💚', unlock: 0,
+        id: 'renew', name: 'Renew', kind: 'heal', cost: 20, cooldown: 8, icon: '💚',
         desc: 'Heal 25 instantly and 6 hp/s for 8s.',
         power: { instant: 25, healPerSecond: 6, duration: 8 },
       },
       {
-        id: 'holynova', name: 'Holy Nova', kind: 'aoe_self', cost: 34, cooldown: 8, icon: '☀', unlock: 0,
+        id: 'holynova', name: 'Holy Nova', kind: 'aoe_self', cost: 34, cooldown: 8, icon: '☀',
         desc: 'Detonate light around you: heavy damage and it heals you per enemy hit.',
         power: { radius: 8, damage: 55, healPerHit: 4, knockback: 4, color: '#fff1c0' },
       },
       {
-        id: 'mindblast', name: 'Mind Blast', kind: 'projectile', cost: 24, cooldown: 4, icon: '🧠', unlock: 3,
+        id: 'mindblast', name: 'Mind Blast', kind: 'projectile', cost: 24, cooldown: 4, icon: '🧠',
         desc: 'A lance of shadow that tears through a single mind.',
         power: { damage: 72, speed: 42, radius: 1.8, color: '#9a7fd8', size: 0.34 },
       },
       {
-        id: 'divinestar', name: 'Divine Star', kind: 'chain', cost: 26, cooldown: 6, icon: '⭐', unlock: 6,
+        id: 'divinestar', name: 'Divine Star', kind: 'chain', cost: 26, cooldown: 6, icon: '⭐',
         desc: 'A star of light that leaps between five enemies and heals you for each.',
         power: { damage: 46, jumps: 5, range: 20, jumpRange: 9, falloff: 0.9, lifesteal: 0.15, color: '#ffe9a8' },
       },
       {
-        id: 'mindsear', name: 'Mind Sear', kind: 'cone', cost: 24, cooldown: 7, icon: '👁', unlock: 10,
+        id: 'mindsear', name: 'Mind Sear', kind: 'cone', cost: 24, cooldown: 7, icon: '👁',
         desc: 'Sear every mind in a wide arc, healing for a quarter of the damage.',
         power: { damage: 58, range: 13, angle: 0.6, lifesteal: 0.25, color: '#9a7fd8' },
       },
       {
-        id: 'voidform', name: 'Void Form', kind: 'buff', cost: 30, cooldown: 28, icon: '🌑', unlock: 15,
+        id: 'voidform', name: 'Void Form', kind: 'buff', cost: 30, cooldown: 28, icon: '🌑',
         desc: 'Enter the void for 10s: +40% damage, but you take 15% more.',
         power: { duration: 10, damageBonus: 0.40, damageTaken: 1.15 },
       },
       {
-        id: 'holyword', name: 'Holy Word: Sanctify', kind: 'heal', cost: 34, cooldown: 20, icon: '🕊', unlock: 20,
+        id: 'holyword', name: 'Holy Word: Sanctify', kind: 'heal', cost: 34, cooldown: 20, icon: '🕊',
         desc: 'A word of power: heal 70 instantly and 14 hp/s for 8s.',
         power: { instant: 70, healPerSecond: 14, duration: 8 },
       },
       {
-        id: 'psychicscream', name: 'Psychic Scream', kind: 'aoe_self', cost: 26, cooldown: 15, icon: '😱', unlock: 25,
+        id: 'psychicscream', name: 'Psychic Scream', kind: 'aoe_self', cost: 26, cooldown: 15, icon: '😱',
         desc: 'A scream that breaks the minds around you, rooting them for 3s.',
         power: { radius: 9, damage: 30, root: 3, color: '#9a7fd8' },
       },
@@ -528,52 +528,52 @@ export const CLASSES = [
     difficulty: 3,
     skills: [
       {
-        id: 'ambush', name: 'Ambush', kind: 'dash', cost: 25, cooldown: 5, icon: '💨', unlock: 0,
+        id: 'ambush', name: 'Ambush', kind: 'dash', cost: 25, cooldown: 5, icon: '💨',
         desc: 'Blink behind the nearest enemy and strike for 250% damage.',
         power: { distance: 12, speed: 70, damage: 55, behindTarget: true, invuln: 0.2, phase: true },
       },
       {
-        id: 'fanofknives', name: 'Fan of Knives', kind: 'aoe_self', cost: 30, cooldown: 4, icon: '🔪', unlock: 0,
+        id: 'fanofknives', name: 'Fan of Knives', kind: 'aoe_self', cost: 30, cooldown: 4, icon: '🔪',
         desc: 'Throw blades in all directions, applying poison.',
         power: { radius: 7, damage: 30, dot: { dps: 9, duration: 5 }, color: '#8ce06a' },
       },
       {
-        id: 'evasion', name: 'Evasion', kind: 'buff', cost: 20, cooldown: 16, icon: '🌫', unlock: 0,
+        id: 'evasion', name: 'Evasion', kind: 'buff', cost: 20, cooldown: 16, icon: '🌫',
         desc: 'For 5s, dodge 60% of attacks and move 30% faster.',
         power: { duration: 5, dodge: 0.6, moveSpeed: 0.3 },
       },
       {
-        id: 'eviscerate', name: 'Eviscerate', kind: 'strike', cost: 35, cooldown: 6, icon: '🗡', unlock: 0,
+        id: 'eviscerate', name: 'Eviscerate', kind: 'strike', cost: 35, cooldown: 6, icon: '🗡',
         desc: 'A finisher that consumes all poison stacks for burst damage.',
         power: { damage: 62, range: 3.6, arc: 0.8, consumeDot: 3.0 },
       },
       {
-        id: 'shuriken', name: 'Shuriken Toss', kind: 'projectile', cost: 16, cooldown: 2, icon: '🌟', unlock: 3,
+        id: 'shuriken', name: 'Shuriken Toss', kind: 'projectile', cost: 16, cooldown: 2, icon: '🌟',
         desc: 'A thrown blade for when the target will not come to you.',
         power: { damage: 42, speed: 48, radius: 1.4, dot: { dps: 8, duration: 4 }, color: '#d6ffb8', size: 0.22 },
       },
       {
-        id: 'crimsontempest', name: 'Crimson Tempest', kind: 'aoe_self', cost: 32, cooldown: 9, icon: '🩸', unlock: 6,
+        id: 'crimsontempest', name: 'Crimson Tempest', kind: 'aoe_self', cost: 32, cooldown: 9, icon: '🩸',
         desc: 'Carve everything around you and leave it bleeding for 8s.',
         power: { radius: 6.5, damage: 44, dot: { dps: 12, duration: 8 }, color: '#e0473c' },
       },
       {
-        id: 'smokebomb', name: 'Smoke Bomb', kind: 'zone', cost: 26, cooldown: 14, icon: '💣', unlock: 10,
+        id: 'smokebomb', name: 'Smoke Bomb', kind: 'zone', cost: 26, cooldown: 14, icon: '💣',
         desc: 'Choking poison smoke that slows and chokes anything inside for 6s.',
         power: { radius: 5.5, dps: 26, duration: 6, slow: 0.5, range: 16, delay: 0.3, color: '#8ce06a' },
       },
       {
-        id: 'shadowdance', name: 'Shadow Dance', kind: 'buff', cost: 28, cooldown: 24, icon: '🌘', unlock: 15,
+        id: 'shadowdance', name: 'Shadow Dance', kind: 'buff', cost: 28, cooldown: 24, icon: '🌘',
         desc: 'For 6s you strike 55% faster and move 20% quicker.',
         power: { duration: 6, attackSpeedBonus: 0.55, moveSpeed: 0.20 },
       },
       {
-        id: 'bladeflurry', name: 'Blade Flurry', kind: 'aoe_self', cost: 30, cooldown: 12, icon: '🌀', unlock: 20,
+        id: 'bladeflurry', name: 'Blade Flurry', kind: 'aoe_self', cost: 30, cooldown: 12, icon: '🌀',
         desc: 'Strike everything within reach five times in as many heartbeats.',
         power: { radius: 4.8, damage: 26, ticks: 5, tickDelay: 0.16, color: '#d6ffb8' },
       },
       {
-        id: 'cloak', name: 'Cloak of Shadows', kind: 'buff', cost: 22, cooldown: 30, icon: '🕶', unlock: 25,
+        id: 'cloak', name: 'Cloak of Shadows', kind: 'buff', cost: 22, cooldown: 30, icon: '🕶',
         desc: 'Wrap yourself in shadow for 6s: 85% dodge and 25% more speed.',
         power: { duration: 6, dodge: 0.85, moveSpeed: 0.25 },
       },
@@ -625,52 +625,52 @@ export const CLASSES = [
     difficulty: 3,
     skills: [
       {
-        id: 'felrush', name: 'Fel Rush', kind: 'dash', cost: 12, cooldown: 5, icon: '💚', unlock: 0,
+        id: 'felrush', name: 'Fel Rush', kind: 'dash', cost: 12, cooldown: 5, icon: '💚',
         desc: 'Hurl yourself forward in a trail of fel fire, burning everything you pass.',
         power: { distance: 13, speed: 42, damage: 34, knockback: 6, radius: 2.0 },
       },
       {
-        id: 'glaivethrow', name: 'Throw Glaive', kind: 'projectile', cost: 14, cooldown: 2.4, icon: '🌀', unlock: 0,
+        id: 'glaivethrow', name: 'Throw Glaive', kind: 'projectile', cost: 14, cooldown: 2.4, icon: '🌀',
         desc: 'A spinning glaive that detonates in fel fire and leaves the target burning.',
         power: { damage: 44, speed: 40, radius: 2.4, burn: 12, color: '#7dff5a', size: 0.3 },
       },
       {
-        id: 'immolation', name: 'Immolation Aura', kind: 'aoe_self', cost: 20, cooldown: 7, icon: '🔥', unlock: 0,
+        id: 'immolation', name: 'Immolation Aura', kind: 'aoe_self', cost: 20, cooldown: 7, icon: '🔥',
         desc: 'Erupt in fel flame three times over, scorching everything close by.',
         power: { radius: 5.6, damage: 26, ticks: 3, tickDelay: 0.34, dot: { dps: 8, duration: 4 }, color: '#9dff7a' },
       },
       {
-        id: 'soulcleave', name: 'Soul Cleave', kind: 'cone', cost: 26, cooldown: 5, icon: '🗡', unlock: 0,
+        id: 'soulcleave', name: 'Soul Cleave', kind: 'cone', cost: 26, cooldown: 5, icon: '🗡',
         desc: 'A wide sweep that devours the souls it cuts, healing you for 35% of the damage.',
         power: { damage: 62, range: 6.5, angle: 0.7, lifesteal: 0.35, color: '#7dff5a' },
       },
       {
-        id: 'sigilofflame', name: 'Sigil of Flame', kind: 'zone', cost: 24, cooldown: 10, icon: '🕯', unlock: 3,
+        id: 'sigilofflame', name: 'Sigil of Flame', kind: 'zone', cost: 24, cooldown: 10, icon: '🕯',
         desc: 'Brand the ground ahead; anything standing on it burns for 7s.',
         power: { radius: 5.5, dps: 30, duration: 7, range: 18, delay: 0.6, color: '#9dff7a' },
       },
       {
-        id: 'eyebeam', name: 'Eye Beam', kind: 'cone', cost: 34, cooldown: 12, icon: '👁', unlock: 6,
+        id: 'eyebeam', name: 'Eye Beam', kind: 'cone', cost: 34, cooldown: 12, icon: '👁',
         desc: 'A narrow beam of fel energy that scours everything in a long line.',
         power: { damage: 96, range: 17, angle: 0.32, color: '#7dff5a' },
       },
       {
-        id: 'chaosnova', name: 'Chaos Nova', kind: 'aoe_self', cost: 30, cooldown: 13, icon: '💥', unlock: 10,
+        id: 'chaosnova', name: 'Chaos Nova', kind: 'aoe_self', cost: 30, cooldown: 13, icon: '💥',
         desc: 'Detonate chaos around you, rooting everything caught in it for 2.2s.',
         power: { radius: 7.5, damage: 46, root: 2.2, knockback: 4, color: '#c9ff9a' },
       },
       {
-        id: 'metamorphosis', name: 'Metamorphosis', kind: 'buff', cost: 30, cooldown: 30, icon: '😈', unlock: 15,
+        id: 'metamorphosis', name: 'Metamorphosis', kind: 'buff', cost: 30, cooldown: 30, icon: '😈',
         desc: 'Take demon form for 10s: +40% damage, +25% speed, and 20% less damage taken.',
         power: { duration: 10, damageBonus: 0.40, moveSpeed: 0.25, damageTaken: 0.80 },
       },
       {
-        id: 'feldevastation', name: 'Fel Devastation', kind: 'cone', cost: 36, cooldown: 14, icon: '☢', unlock: 20,
+        id: 'feldevastation', name: 'Fel Devastation', kind: 'cone', cost: 36, cooldown: 14, icon: '☢',
         desc: 'Unleash a torrent of fel energy, healing you for a third of the ruin it causes.',
         power: { damage: 104, range: 12, angle: 0.5, lifesteal: 0.33, color: '#7dff5a' },
       },
       {
-        id: 'darkness', name: 'Darkness', kind: 'buff', cost: 28, cooldown: 32, icon: '🌑', unlock: 25,
+        id: 'darkness', name: 'Darkness', kind: 'buff', cost: 28, cooldown: 32, icon: '🌑',
         desc: 'Shroud yourself for 8s: 60% dodge and 20% less damage taken.',
         power: { duration: 8, dodge: 0.60, damageTaken: 0.80 },
       },
@@ -730,9 +730,9 @@ export function totalTalentRanks(cls) {
 export const SKILL_BY_ID = {};
 for (const cls of CLASSES) for (const s of cls.skills) SKILL_BY_ID[s.id] = s;
 
-/** Skills a class can slot right now, given how far it has pushed. */
-export function unlockedSkills(cls, bestWave = 0) {
-  return cls.skills.filter((s) => (s.unlock || 0) <= bestWave);
+/** Every skill a class can slot. Nothing is gated. */
+export function unlockedSkills(cls) {
+  return cls.skills;
 }
 
 /** The four skills every class starts with. */
@@ -742,11 +742,11 @@ export function defaultLoadout(cls) {
 
 /**
  * Turn a stored list of skill ids into the four skill objects the run uses.
- * Anything unknown, locked or duplicated is replaced from the default kit, so
- * a save written by an older build can never produce an empty skill slot.
+ * Anything unknown or duplicated is replaced from the default kit, so a save
+ * written by an older build can never produce an empty skill slot.
  */
-export function resolveLoadout(cls, ids, bestWave = 0) {
-  const allowed = new Set(unlockedSkills(cls, bestWave).map((s) => s.id));
+export function resolveLoadout(cls, ids) {
+  const allowed = new Set(cls.skills.map((s) => s.id));
   const byId = Object.fromEntries(cls.skills.map((s) => [s.id, s]));
   const out = [];
   const used = new Set();

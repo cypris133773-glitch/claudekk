@@ -9,7 +9,6 @@ import {
   ARMOR_SLOTS, ARMOR_SETS, armorCost, armorMods, armorRating, armorTierName,
   ARMOR_MAX_TIER, armorSets, nextArmorSet,
 } from '../src/data/armor.js';
-import { UPGRADES, RARITY, rollUpgrades } from '../src/data/upgrades.js';
 import {
   PERMANENT, upgradeCost, permanentMods, talentPointsForBestWave,
   masteryRank, masteryThreshold, masteryProgress, masteryMods, masteryFromRun,
@@ -126,30 +125,8 @@ check('a full talent tree is affordable at a reachable wave', () => {
 
 // --- Upgrades --------------------------------------------------------------
 
-check('upgrade ids are unique and rarities valid', () => {
-  const ids = new Set();
-  for (const u of UPGRADES) {
-    assert(!ids.has(u.id), `duplicate upgrade ${u.id}`);
-    ids.add(u.id);
-    assert(RARITY[u.rarity], `${u.id} bad rarity ${u.rarity}`);
-    assert(Object.keys(u.effect).length > 0, `${u.id} has no effect`);
-  }
-});
 
-check('rollUpgrades returns distinct cards', () => {
-  for (let i = 0; i < 300; i++) {
-    const cards = rollUpgrades(3);
-    assert(cards.length === 3, `got ${cards.length} cards`);
-    const ids = new Set(cards.map((c) => c.id));
-    assert(ids.size === 3, 'duplicate cards in one offer');
-  }
-});
 
-check('rollUpgrades honours exclusions', () => {
-  const exclude = new Set(UPGRADES.slice(0, UPGRADES.length - 3).map((u) => u.id));
-  const cards = rollUpgrades(3, 0, exclude);
-  for (const c of cards) assert(!exclude.has(c.id), `excluded ${c.id} was offered`);
-});
 
 // --- Permanent upgrades ----------------------------------------------------
 
@@ -305,14 +282,13 @@ check('every declared effect key is consumed by game code', async () => {
   const { fileURLToPath } = await import('node:url');
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-  const dataSrc = ['src/data/classes.js', 'src/data/upgrades.js', 'src/data/permanent.js',
-    'src/data/armor.js']
+  const dataSrc = ['src/data/classes.js', 'src/data/permanent.js', 'src/data/armor.js']
     .map((f) => fs.readFileSync(path.join(root, f), 'utf8')).join('\n');
   const keys = new Set();
   for (const m of dataSrc.matchAll(/effect:\s*\{([^}]*)\}/g)) {
     for (const k of m[1].matchAll(/([A-Za-z_][A-Za-z0-9_]*)\s*:/g)) keys.add(k[1]);
   }
-  assert(keys.size > 40, `only found ${keys.size} effect keys — parser broke?`);
+  assert(keys.size > 35, `only found ${keys.size} effect keys — parser broke?`);
 
   const codeSrc = ['src/game/player.js', 'src/game/skills.js', 'src/game/game.js',
     'src/game/pets.js', 'src/game/entity.js', 'src/game/mobs.js', 'src/ui/hud.js']
@@ -325,12 +301,13 @@ check('every declared effect key is consumed by game code', async () => {
 
 // --- Loadouts, armour and mastery ------------------------------------------
 
-check('the first four skills of every class are always available', () => {
+check('every skill is available from the first run', () => {
   for (const c of CLASSES) {
-    const free = c.skills.slice(0, LOADOUT_SIZE);
-    for (const s of free) assert(!(s.unlock || 0), `${c.id}/${s.id} gates a starter skill`);
-    const later = c.skills.slice(LOADOUT_SIZE);
-    for (const s of later) assert((s.unlock || 0) > 0, `${c.id}/${s.id} is an unlock with no gate`);
+    assert(unlockedSkills(c).length === c.skills.length,
+      `${c.id} gates ${c.skills.length - unlockedSkills(c).length} of its skills`);
+    for (const s of c.skills) {
+      assert(s.unlock === undefined, `${c.id}/${s.id} still carries an unlock gate`);
+    }
   }
 });
 
@@ -345,16 +322,16 @@ check('resolveLoadout always yields four distinct unlocked skills', () => {
   for (const c of CLASSES) {
     for (const [ids, best] of [
       [undefined, 0], [[], 0], [['nonsense'], 0],
-      [[c.skills[9].id], 0],                       // locked at wave 0
-      [[c.skills[9].id], 99],                      // unlocked deep in
+      [[c.skills[9].id], 0],                       // the last of the pool
+      [[c.skills[9].id], 99],
       [[c.skills[0].id, c.skills[0].id], 0],       // duplicate
       [c.skills.map((s) => s.id), 99],             // too many
     ]) {
       const out = resolveLoadout(c, ids, best);
       assert(out.length === LOADOUT_SIZE, `${c.id} produced ${out.length} skills`);
       assert(new Set(out.map((s) => s.id)).size === LOADOUT_SIZE, `${c.id} duplicated a slot`);
-      const open = new Set(unlockedSkills(c, best).map((s) => s.id));
-      for (const s of out) assert(open.has(s.id), `${c.id} slotted locked skill ${s.id}`);
+      const open = new Set(unlockedSkills(c).map((s) => s.id));
+      for (const s of out) assert(open.has(s.id), `${c.id} slotted unknown skill ${s.id}`);
     }
     assert(resolveLoadout(c, defaultLoadout(c), 0).map((s) => s.id).join() === defaultLoadout(c).join(),
       `${c.id} default loadout is not stable`);

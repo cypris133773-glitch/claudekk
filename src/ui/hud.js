@@ -336,13 +336,18 @@ export class Hud {
       c.fillRect(s.x - w / 2, s.y, w, h);
       c.fillStyle = m.def.boss ? '#ff5a3c' : (m.elite ? '#ffd24a' : '#77dd66');
       c.fillRect(s.x - w / 2 + 1, s.y + 1, (w - 2) * pct, h - 2);
-      if (m.def.boss || m.elite) {
-        this.font(touch ? 12 : 11);
+      // Name and level on everything, not just the headliners: knowing what
+      // just walked in and how hard it hits is the difference between reading
+      // a fight and being surprised by it. Ordinary mobs get it small and
+      // dim so a crowd does not turn into a wall of text.
+      const near = d < (m.def.boss || m.elite ? 34 : 16);
+      if (near) {
+        this.font(m.def.boss ? (touch ? 13 : 12) : (touch ? 11 : 10));
         c.textAlign = 'center';
-        c.fillStyle = m.def.boss ? '#ff9a7a' : '#ffd24a';
+        c.fillStyle = m.def.boss ? '#ff9a7a' : (m.elite ? '#ffd24a' : 'rgba(255,255,255,0.72)');
         c.shadowColor = 'rgba(0,0,0,0.9)';
         c.shadowBlur = 4;
-        c.fillText((m.elite ? 'ELITE ' : '') + m.def.name, s.x, s.y - 8);
+        c.fillText(m.title, s.x, s.y - 8);
         c.shadowBlur = 0;
       }
     }
@@ -470,7 +475,8 @@ export class Hud {
       const y = baseY;
 
       const cd = p.cooldowns[i];
-      const maxCd = skillCooldown(p, skill);
+      const rank = p.rankOf(i);
+      const maxCd = skillCooldown(p, skill, rank);
       const cost = skillCost(p, skill);
       const ready = cd <= 0 && p.resource >= cost;
 
@@ -505,6 +511,20 @@ export class Hud {
       }
       // Cap the hit circle at half the pitch so neighbouring buttons cannot
       // claim each other's taps — the first match in the list would win.
+      // Rank pip. A player who put four wave-clears into one skill should be
+      // able to see that at a glance, on the button they press.
+      if (rank > 0) {
+        const pr = Math.max(7, size * 0.19);
+        c.beginPath();
+        c.arc(x + size - pr * 0.7, y + size - pr * 0.7, pr, 0, Math.PI * 2);
+        c.fillStyle = '#ffd24a';
+        c.fill();
+        this.font(Math.round(pr * 1.25));
+        c.textAlign = 'center';
+        c.textBaseline = 'middle';
+        c.fillStyle = '#14161d';
+        c.fillText(String(rank), x + size - pr * 0.7, y + size - pr * 0.62);
+      }
       rects.push({
         name: 'skill' + i, cx: x + size / 2, cy: y + size / 2,
         r: Math.max(MIN_TOUCH / 2, Math.min(size * 0.62, (size + gap) / 2)),

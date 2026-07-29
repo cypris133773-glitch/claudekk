@@ -5,15 +5,32 @@ import { forwardVec, clamp, rand } from '../core/math.js';
 import { Fiend, Totem } from './pets.js';
 import { TEAM } from './entity.js';
 
-/** Scale a skill's numbers by the player's current modifiers. */
-function power(player, skill) {
+/**
+ * Rank multipliers. Every rank is +30% to what the skill does and 4% off its
+ * cooldown, so a favoured skill genuinely outgrows the others instead of
+ * everything creeping up together. Cooldown reduction is floored so a maxed
+ * skill still has downtime.
+ *
+ * The number is high because ranks are now the *only* power a run gains.
+ * Tuned against the balance harness: at +22% every class died on the wave-5
+ * boss, because nothing else was growing to meet it.
+ */
+export function rankDamageMult(rank) { return 1 + 0.30 * (rank || 0); }
+export function rankCooldownMult(rank) { return Math.max(0.45, 1 - 0.04 * (rank || 0)); }
+
+/** Scale a skill's numbers by the player's current modifiers and its rank. */
+function power(player, skill, rank = 0) {
   const p = { ...skill.power };
   const m = player.mods;
+  const rk = rankDamageMult(rank);
   const dmgMult = skill.kind === 'strike' || skill.kind === 'dash'
     ? player.stats.meleeMult
     : player.stats.spellMult;
-  if (p.damage) p.damage *= dmgMult;
-  if (p.chainDamage) p.chainDamage *= dmgMult;
+  if (p.damage) p.damage *= dmgMult * rk;
+  if (p.chainDamage) p.chainDamage *= dmgMult * rk;
+  if (p.instant) p.instant *= rk;
+  if (p.healPerSecond) p.healPerSecond *= rk;
+  if (p.absorb) p.absorb *= rk;
   if (p.radius) p.radius *= 1 + (m.aoeRadius || 0);
   if (p.dot) p.dot = { ...p.dot, dps: p.dot.dps * (1 + (m.dotDamage || 0)) * dmgMult, duration: p.dot.duration + (m.dotDuration || 0) };
   // Ground zones tick like a damage-over-time effect, so they scale with the
@@ -36,8 +53,9 @@ function power(player, skill) {
   return p;
 }
 
-export function skillCooldown(player, skill) {
-  let cd = skill.cooldown * (1 - clamp(player.mods.cooldownReduction || 0, 0, 0.6));
+export function skillCooldown(player, skill, rank = 0) {
+  let cd = skill.cooldown * (1 - clamp(player.mods.cooldownReduction || 0, 0, 0.6))
+    * rankCooldownMult(rank);
   if (skill.id === 'ambush' && player.mods.ambushCdr) cd = Math.max(1, cd - player.mods.ambushCdr);
   return cd;
 }
@@ -55,9 +73,15 @@ export function castSkill(game, player, index) {
   if (player.resource < cost) { game.notify('Not enough ' + player.cls.resource.name); return false; }
   if (player.disabled) return false;
 
-  const p = power(player, skill);
+  const rank = player.rankOf ? player.rankOf(index) : 0;
+  const p = power(player, skill, rank);
   const dir = forwardVec(player.yaw, player.pitch);
   const ex = player.x, ey = player.eyeY, ez = player.z;
+
+  // A cast flourish at the caster, in the skill's own colour, scaled by rank.
+  // Without it the only feedback that a button did anything was the number
+  // that appeared on an enemy a moment later.
+  game.castFlare(player, p.color || player.cls.accent, rank);
 
   switch (skill.kind) {
     case 'projectile': {
@@ -326,7 +350,7 @@ export function castSkill(game, player, index) {
   }
 
   player.resource -= cost;
-  player.cooldowns[index] = skillCooldown(player, skill);
+  player.cooldowns[index] = skillCooldown(player, skill, rank);
   player.lastCast = skill.id;
   return true;
 }

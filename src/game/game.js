@@ -8,7 +8,6 @@ import { Fiend } from './pets.js';
 import { Projectile, Particle, Gib, Telegraph, Shockwave, Zone, FloatText, hexToRgb } from './effects.js';
 import { TEAM } from './entity.js';
 import { WaveDirector, waveScaling, waveClearBonus, isBossWave } from './waves.js';
-import { rollUpgrades } from '../data/upgrades.js';
 import { permanentMods, masteryMods, masteryRank } from '../data/permanent.js';
 import { difficultyFor } from '../data/difficulty.js';
 import { armorMods } from '../data/armor.js';
@@ -43,7 +42,6 @@ export class Game {
     this.time = 0;
     this.timeSinceCombat = 0;
     this.wave = 0;
-    this.runUpgrades = [];
     this.pendingUpgrades = null;
     this.rerollsLeft = 0;
     this.notifications = [];
@@ -76,7 +74,7 @@ export class Game {
     this.difficulty = difficultyFor(
       opts.difficulty !== undefined ? opts.difficulty : this.profile.settings.difficulty);
     this.loadout = this.profile.loadout(classDef);
-    this.baseMods = () => buildMods(classDef, cd.talents, perm, this.runUpgrades);
+    this.baseMods = () => buildMods(classDef, cd.talents, perm);
 
     this.theme = (Math.random() * 4) | 0;
     this.layout = opts.layout !== undefined
@@ -95,12 +93,9 @@ export class Game {
     this.over = false;
     this.startTime = performance.now();
 
-    // Head Start: free upgrades before wave 1.
+    // Head Start: free skill ranks before wave 1, spread across the loadout.
     const freebies = perm.startingUpgrades || 0;
-    for (let i = 0; i < freebies; i++) {
-      const [pick] = rollUpgrades(1, perm.luck || 0, new Set(this.runUpgrades.map((u) => u.id)));
-      if (pick) this.applyUpgrade(pick);
-    }
+    for (let i = 0; i < freebies; i++) this.player.rankUp(i % this.player.skills.length);
 
     this.notify(LAYOUT_NAMES[this.layout] + ' Arena', 3);
     this.beginIntermission(2.0);
@@ -121,39 +116,53 @@ export class Game {
     this.audio.setMusicIntensity(Math.min(1, this.wave / 25));
   }
 
-  /** Offer upgrade cards; the UI calls chooseUpgrade() to resolve. */
+  /**
+   * Clearing a wave ranks up one of the four equipped skills. Stat cards made
+   * every run feel the same — a slightly bigger number on the same rotation.
+   * Choosing which skill grows is a decision about how the rest of the run is
+   * played, and it is legible at a glance because it is your own icons.
+   */
   offerUpgrades() {
-    const exclude = new Set(this.runUpgrades.filter((u) => u.unique).map((u) => u.id));
-    this.pendingUpgrades = rollUpgrades(3, this.permMods.luck || 0, exclude);
+    this.pendingUpgrades = this.player.skills.map((skill, index) => ({
+      index,
+      skill,
+      rank: this.player.rankOf(index),
+    }));
     this.paused = true;
   }
 
   rerollUpgrades() {
-    if (this.rerollsLeft <= 0) { this.audio.play('deny'); return false; }
-    this.rerollsLeft--;
-    this.pendingUpgrades = rollUpgrades(3, this.permMods.luck || 0);
-    this.audio.play('ui');
-    return true;
+    // Nothing to reroll: the choice is always your own four skills.
+    return false;
   }
 
-  applyUpgrade(up) {
-    const existing = this.runUpgrades.find((u) => u.id === up.id);
-    if (existing) existing.stacks = (existing.stacks || 1) + 1;
-    else this.runUpgrades.push({ ...up, stacks: 1 });
-    if (this.player) {
-      const beforeMax = this.player.maxHp;
-      this.player.mods = this.baseMods();
-      this.player.recomputeStats();
-      // Max-health upgrades also heal for the amount gained.
-      if (this.player.maxHp > beforeMax) this.player.hp += this.player.maxHp - beforeMax;
-    }
-  }
-
+  /** `up` is one of the descriptors offerUpgrades() produced. */
   chooseUpgrade(up) {
-    this.applyUpgrade(up);
+    let rank = this.player.rankUp(up.index);
+    // Fortune: a chance the wave pays out twice. Capped, because a run that
+    // reliably doubles every reward outgrows the waves it is clearing.
+    const luck = clamp(this.permMods.luck || 0, 0, 0.5);
+    let bonus = false;
+    if (luck > 0 && Math.random() < luck) {
+      rank = this.player.rankUp(up.index);
+      bonus = true;
+    }
+    // Surviving a wave restores you. Without any stat growth in a run, the
+    // only other way to arrive at a boss alive is to have taken no damage at
+    // all for five waves, which is not a plan — it is luck.
+    this.player.hp = this.player.maxHp;
+    // Every fifth wave is a boss, and a boss is a power check: the whole
+    // loadout gains a rank so the spike is met with a spike.
+    let mastered = false;
+    if (isBossWave(this.wave + 1)) {
+      for (let i = 0; i < this.player.skills.length; i++) this.player.rankUp(i);
+      mastered = true;
+    }
     this.pendingUpgrades = null;
     this.paused = false;
-    this.audio.play('levelup');
+    this.audio.play('rankup');
+    this.notify(`${up.skill.name} — rank ${rank}${bonus ? '  (Fortune!)' : ''}`, 2.2);
+    if (mastered) this.notify('All skills +1 rank', 2.4);
     this.beginIntermission();
   }
 
@@ -189,6 +198,44 @@ export class Game {
   }
 
   sfx(name) { this.audio.play(name); }
+
+  /**
+   * A heartbeat under a quarter health. Audio is the only channel that reaches
+   * a player whose eyes are on the crowd, and the red vignette alone is easy
+   * to miss in a busy fight.
+   */
+  updateHeartbeat(dt) {
+    const p = this.player;
+    if (!p || p.dead) { this.heartbeat = 0; return; }
+    const frac = p.hp / p.maxHp;
+    if (frac > 0.25) { this.heartbeat = 0; return; }
+    this.heartbeat = (this.heartbeat || 0) - dt;
+    if (this.heartbeat > 0) return;
+    // Faster the closer to death: 1.2s at the threshold, 0.55s at the brink.
+    this.heartbeat = 0.55 + (frac / 0.25) * 0.65;
+    this.audio.play('lowhp');
+  }
+
+  /**
+   * The moment a skill goes off: a ring of motes thrown outward from the
+   * caster's hands, brighter and wider the higher the skill is ranked. Cheap
+   * — a dozen particles — but it is what makes a cast feel like it left the
+   * character rather than simply happening somewhere.
+   */
+  castFlare(caster, color, rank = 0) {
+    const n = 10 + Math.min(14, rank * 2);
+    const spread = 1 + Math.min(1.4, rank * 0.12);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + this.time;
+      const speed = (2.6 + Math.random() * 2.2) * spread;
+      this.particles.push(new Particle(
+        caster.x + Math.cos(a) * 0.34,
+        caster.centerY + 0.15,
+        caster.z + Math.sin(a) * 0.34,
+        Math.cos(a) * speed, 1.4 + Math.random() * 1.6, Math.sin(a) * speed,
+        color, 0.34 + Math.random() * 0.22, 0.10 + Math.min(0.10, rank * 0.012), 7));
+    }
+  }
 
   delay(seconds, fn) {
     if (seconds <= 0) { fn(); return; }
@@ -345,6 +392,7 @@ export class Game {
     if (target === this.player) {
       if (Math.random() < this.player.dodge) {
         this.floaters.push(new FloatText(target.x, target.centerY + 1, target.z, 'DODGE', '#7dffb0'));
+        this.audio.play('dodge');
         return 0;
       }
       amount *= 1 - this.player.armor;
@@ -405,6 +453,7 @@ export class Game {
     this.burst(mob.x, mob.centerY, mob.z, mob.def.boss ? 40 : 12,
       mob.elite ? '#ffd24a' : '#c0392b');
     this.spawnGibs(mob);
+    this.audio.play(mob.def.boss ? 'bossdown' : 'gib');
     if (mob.def.boss) {
       this.screenShake = 0.6;
       this.audio.play('explode');
@@ -533,6 +582,7 @@ export class Game {
     for (const p of this.projectiles) if (!p.dead) p.update(dt, this);
     for (const p of this.particles) p.update(dt);
     for (const g of this.gibs) g.update(dt, this);
+    this.updateHeartbeat(dt);
     for (const t of this.telegraphs) t.update(dt);
     for (const s of this.shockwaves) s.update(dt);
     for (const z of this.zones) z.update(dt, this);

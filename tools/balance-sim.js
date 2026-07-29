@@ -134,7 +134,9 @@ function simulateRun(classId, { forge = 0, armor = 0, talentPoints = 0, layout }
     if (game.wave !== lastWave) { lastWave = game.wave; lastAdvance = steps; }
     // The real game blocks on the upgrade screen; take a card and continue.
     if (game.pendingUpgrades) {
-      const pick = game.pendingUpgrades[(Math.random() * game.pendingUpgrades.length) | 0];
+      // Rank up the cheapest skill: the bot's own rotation favours it, so this
+      // is the choice a player following the same habit would make.
+      const pick = [...game.pendingUpgrades].sort((a, b) => a.skill.cost - b.skill.cost)[0];
       game.chooseUpgrade(pick);
     }
     peakMobs = Math.max(peakMobs, game.mobs.length);
@@ -170,7 +172,7 @@ function simulateRun(classId, { forge = 0, armor = 0, talentPoints = 0, layout }
     souls: Math.round(game.soulsEarned),
     minutes: steps / 3600,
     peakMobs,
-    upgrades: game.runUpgrades.reduce((s, u) => s + (u.stacks || 1), 0),
+    upgrades: game.player.skillRanks.reduce((s, r) => s + r, 0),
     timedOut,
     stall,
     ranOut,

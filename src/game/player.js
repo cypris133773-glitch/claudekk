@@ -8,7 +8,7 @@ import { castSkill, skillCooldown } from './skills.js';
 import { LOADOUT_SIZE } from '../data/classes.js';
 
 /** Sum every modifier source into one flat bag of numbers. */
-export function buildMods(cls, talentRanks, permanent, runUpgrades) {
+export function buildMods(cls, talentRanks, permanent) {
   const mods = {};
   const add = (key, value) => { mods[key] = (mods[key] || 0) + value; };
 
@@ -20,9 +20,6 @@ export function buildMods(cls, talentRanks, permanent, runUpgrades) {
     }
   }
   for (const [k, v] of Object.entries(permanent || {})) add(k, v);
-  for (const up of runUpgrades || []) {
-    for (const [k, v] of Object.entries(up.effect)) add(k, v * (up.stacks || 1));
-  }
   return mods;
 }
 
@@ -41,6 +38,10 @@ export class Player extends Entity {
     this.skills = (skills && skills.length ? skills : cls.skills).slice(0, LOADOUT_SIZE);
     this.buffs = [];
     this.cooldowns = this.skills.map(() => 0);
+    // Clearing a wave ranks up a skill rather than padding a stat. Levelling
+    // into "+8 max health" is a number going up; levelling into "Fireball
+    // rank 4" changes how the run is played.
+    this.skillRanks = this.skills.map(() => 0);
     this.resourceDef = cls.resource;
     this.pitch = 0;
     this.sprinting = false;
@@ -108,6 +109,15 @@ export class Player extends Entity {
   }
 
   get isMelee() { return this.cls.base.attackRange < 6; }
+
+  /** Rank of the skill in slot `i`, 0 for un-upgraded. */
+  rankOf(i) { return this.skillRanks[i] || 0; }
+
+  rankUp(i) {
+    if (i < 0 || i >= this.skills.length) return 0;
+    this.skillRanks[i] = (this.skillRanks[i] || 0) + 1;
+    return this.skillRanks[i];
+  }
 
   gainResource(amount) {
     this.resource = clamp(this.resource + amount, 0, this.resourceMax);
