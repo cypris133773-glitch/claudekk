@@ -494,6 +494,26 @@ check('vercel.json only uses properties Vercel accepts', async () => {
   // The site is served from the repo root; there is no build step producing
   // a public/ directory, and without this the deploy fails looking for one.
   assert(cfg.outputDirectory === '.', `outputDirectory is ${JSON.stringify(cfg.outputDirectory)}, expected "."`);
+
+  // Vercel runs package.json's "build" script automatically when one exists.
+  // Ours bundles from tools/, which .vercelignore deliberately keeps out of
+  // the deployment — so the command it would run is not even uploaded, and
+  // the deploy dies on a missing module. An explicit empty buildCommand is
+  // what tells Vercel there is nothing to build.
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+  const buildScript = (pkg.scripts || {}).build;
+  if (buildScript) {
+    const ignored = fs.readFileSync(path.join(root, '.vercelignore'), 'utf8')
+      .split('\n').map((l) => l.trim())
+      .filter((l) => l && !l.startsWith('#'))
+      .map((l) => l.replace(/\/$/, ''));
+    const needs = ignored.filter((dir) => buildScript.includes(dir + '/'));
+    if (needs.length) {
+      assert(cfg.buildCommand === '',
+        `package.json's build script needs ${needs.join(', ')}, which .vercelignore excludes; `
+        + `vercel.json must set buildCommand to "" (currently ${JSON.stringify(cfg.buildCommand)})`);
+    }
+  }
 });
 
 check('everything index.html loads is present and not deployment-ignored', async () => {
