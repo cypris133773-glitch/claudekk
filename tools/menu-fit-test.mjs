@@ -93,6 +93,10 @@ function primeRun() {
   if (!B.game.running) B.game.startRun(cls);
   B.game.wave = 7;
   B.game.soulsEarned = 420;
+  // A seven-figure balance is the widest the souls badge ever gets, and width
+  // is the whole question for the corner it shares with the fullscreen button.
+  // Measuring it at "0 Souls" proves nothing about the account that has played.
+  B.profile.data.souls = 2500000;
   // The pause screen lists the wave's affixes with a blurb and a counterplay
   // line each. Three is the maximum a wave can carry and therefore the only
   // version worth measuring — a screen that fits with one proves nothing.
@@ -156,6 +160,28 @@ function probeScreen(name) {
     }
   }
 
+  // The fullscreen / pop-out control is position:fixed, so it is invisible to
+  // the menus' flex layout and can sit straight on top of a corner element
+  // that looks perfectly placed in the layout tree.
+  // Both are checked, not the first one found: an embed that cannot go
+  // fullscreen leaves #fullscreen-btn in the DOM at display:none and adds
+  // #popout-btn beside it, so picking one and testing its visibility silently
+  // skipped the control that was actually on screen.
+  const covered = [];
+  const corners = ['fullscreen-btn', 'popout-btn']
+    .map((id) => document.getElementById(id))
+    .filter((e) => e && getComputedStyle(e).display !== 'none');
+  for (const corner of corners) {
+    const c = corner.getBoundingClientRect();
+    for (const e of ui.querySelectorAll('.souls-badge, .back-bar button, .back-bar a')) {
+      const r = e.getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) continue;
+      const overlap = Math.max(0, Math.min(r.right, c.right) - Math.max(r.left, c.left))
+        * Math.max(0, Math.min(r.bottom, c.bottom) - Math.max(r.top, c.top));
+      if (overlap > 4) covered.push((e.textContent || e.className).trim().slice(0, 24));
+    }
+  }
+
   // How hard the safety net had to work. Anything under MIN_SCALE means the
   // screen does not really fit — it was shrunk until it did, and shrunk text
   // on a phone is its own failure.
@@ -168,6 +194,7 @@ function probeScreen(name) {
     buttons: ui.querySelectorAll('button').length,
     icons: icons.length,
     brokenIcons,
+    covered,
   };
 }
 
@@ -203,7 +230,7 @@ async function run() {
       const r = await frame.evaluate(probeScreen, name);
       // One CSS pixel of slack: sub-pixel layout rounding is not a scrollbar.
       const ok = r.overflowY <= 1 && r.overflowX <= 1 && r.offscreen.length === 0
-        && r.scale >= MIN_SCALE && r.brokenIcons.length === 0;
+        && r.scale >= MIN_SCALE && r.brokenIcons.length === 0 && r.covered.length === 0;
       if (!ok) failures++;
       results.push({ vp: vp.name, name, ok });
       const fit = r.scale < 1 ? ` (scaled to ${r.scale.toFixed(2)})` : '';
@@ -215,6 +242,7 @@ async function run() {
           r.scale < MIN_SCALE ? `had to shrink to ${r.scale.toFixed(2)}` : '',
           r.offscreen.length ? `offscreen: ${r.offscreen.join(', ')}` : '',
           r.brokenIcons.length ? `icons out of layout: ${r.brokenIcons.slice(0, 3).join(', ')}` : '',
+          r.covered.length ? `hidden under the corner button: ${r.covered.join(', ')}` : '',
         ].filter(Boolean).join('; ');
       console.log(`  [${ok ? 'PASS' : 'FAIL'}] ${name.padEnd(10)} ${detail}`);
     }

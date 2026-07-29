@@ -22,7 +22,11 @@ export function rankCooldownMult(rank) { return Math.max(0.45, 1 - 0.04 * (rank 
 function power(player, skill, rank = 0) {
   const p = { ...skill.power };
   const m = player.mods;
-  const rk = rankDamageMult(rank);
+  // Talents that name this skill. Applied on top of the global bag rather than
+  // merged into it, so a Mastery node is worth the same regardless of what the
+  // other branches happen to add.
+  const sm = player.skillMods(skill.id);
+  const rk = rankDamageMult(rank) * (1 + (sm.skillDamage || 0));
   const dmgMult = skill.kind === 'strike' || skill.kind === 'dash'
     ? player.stats.meleeMult
     : player.stats.spellMult;
@@ -31,16 +35,20 @@ function power(player, skill, rank = 0) {
   if (p.instant) p.instant *= rk;
   if (p.healPerSecond) p.healPerSecond *= rk;
   if (p.absorb) p.absorb *= rk;
-  if (p.radius) p.radius *= 1 + (m.aoeRadius || 0);
-  if (p.dot) p.dot = { ...p.dot, dps: p.dot.dps * (1 + (m.dotDamage || 0)) * dmgMult, duration: p.dot.duration + (m.dotDuration || 0) };
+  if (p.radius) p.radius *= 1 + (m.aoeRadius || 0) + (sm.skillRadius || 0);
+  // Rank and skillDamage reach the damage-over-time part too. A Mastery node
+  // on Rend or Corruption that left the bleed alone would be a node on a skill
+  // that is almost entirely bleed.
+  if (p.dot) p.dot = { ...p.dot, dps: p.dot.dps * (1 + (m.dotDamage || 0)) * dmgMult * rk, duration: p.dot.duration + (m.dotDuration || 0) + (sm.skillDuration || 0) };
+  if (p.duration && !p.totem) p.duration += sm.skillDuration || 0;
   // Ground zones tick like a damage-over-time effect, so they scale with the
   // same talents rather than being the one skill kind talents cannot touch.
   if (p.dps) {
-    p.dps *= (1 + (m.dotDamage || 0)) * dmgMult;
+    p.dps *= (1 + (m.dotDamage || 0)) * dmgMult * rk;
     p.duration += m.dotDuration || 0;
   }
-  if (p.damagePerSecond) p.damagePerSecond *= dmgMult;
-  if (p.burn) p.burn *= (1 + (m.burnDamage || 0)) * dmgMult;
+  if (p.damagePerSecond) p.damagePerSecond *= dmgMult * rk;
+  if (p.burn) p.burn *= (1 + (m.burnDamage || 0)) * dmgMult * rk;
   if (p.healPerSecond) p.healPerSecond *= player.stats.healMult;
   if (p.instant) p.instant *= player.stats.healMult;
   if (p.absorb) p.absorb = (p.absorb + (m.absorb || 0)) * player.stats.healMult;
@@ -54,14 +62,25 @@ function power(player, skill, rank = 0) {
 }
 
 export function skillCooldown(player, skill, rank = 0) {
-  let cd = skill.cooldown * (1 - clamp(player.mods.cooldownReduction || 0, 0, 0.6))
+  const sm = player.skillMods(skill.id);
+  let cd = skill.cooldown
+    * (1 - clamp((player.mods.cooldownReduction || 0) + (sm.skillCooldown || 0), 0, 0.7))
     * rankCooldownMult(rank);
   if (skill.id === 'ambush' && player.mods.ambushCdr) cd = Math.max(1, cd - player.mods.ambushCdr);
-  return cd;
+  // A skill with no downtime stops being a decision, so the floor is absolute
+  // rather than a share of the base — half a second on a 26s cooldown and half
+  // a second on a 5s one are the same promise.
+  return Math.max(0.5, cd);
 }
 
 export function skillCost(player, skill) {
-  return Math.max(0, skill.cost * (1 - (player.mods.costReduction || 0)));
+  const sm = player.skillMods(skill.id);
+  // Capped at 1, not below it. A deep Forge account could already drive cost
+  // to zero, and clipping that to a 10% floor quietly broke the classes whose
+  // resource does not regenerate — Rage and Hatred are earned by fighting, so
+  // a residual cost they cannot pay is a rotation that stops.
+  const cut = clamp((player.mods.costReduction || 0) + (sm.skillCost || 0), 0, 1);
+  return Math.max(0, skill.cost * (1 - cut));
 }
 
 /** Returns true if the skill was cast. */

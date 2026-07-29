@@ -76,9 +76,9 @@ check('every class has a pool of 10 skills with valid kinds', () => {
   }
 });
 
-check('every class has 3 talent branches of 6 nodes', () => {
+check('every class has 4 talent branches of 6 nodes', () => {
   for (const c of CLASSES) {
-    assert(c.talents.length === 3, `${c.id} has ${c.talents.length} branches`);
+    assert(c.talents.length === 4, `${c.id} has ${c.talents.length} branches`);
     for (const b of c.talents) {
       assert(b.nodes.length === 6, `${c.id}/${b.name} has ${b.nodes.length} nodes`);
       for (const n of b.nodes) {
@@ -86,6 +86,60 @@ check('every class has 3 talent branches of 6 nodes', () => {
         assert(Object.keys(n.effect).length > 0, `${n.id} has no effect`);
       }
     }
+  }
+});
+
+check('every skill-scoped talent names a real skill in its own class', () => {
+  for (const c of CLASSES) {
+    const ids = new Set(c.skills.map((s) => s.id));
+    for (const b of c.talents) {
+      for (const n of b.nodes) {
+        if (!n.skill) continue;
+        // A typo here is silent: the node buys ranks, writes them into a bag
+        // nothing ever reads, and the player pays points for nothing.
+        assert(ids.has(n.skill),
+          `${c.id}/${n.id} targets '${n.skill}', which is not one of its skills`);
+      }
+    }
+  }
+});
+
+check('a skill-scoped talent only affects the skill it names', async () => {
+  const { buildMods } = await import('../src/game/player.js');
+  for (const c of CLASSES) {
+    const scoped = c.talents.flatMap((b) => b.nodes).filter((n) => n.skill);
+    assert(scoped.length >= 6, `${c.id} has only ${scoped.length} skill-scoped talents`);
+    const node = scoped[0];
+    const mods = buildMods(c, { [node.id]: node.max }, {});
+    // The effect must land in that skill's bag and nowhere else — in
+    // particular it must not leak into the flat bag, where it would silently
+    // buff every skill in the game.
+    const bag = mods.skills[node.skill];
+    assert(bag, `${c.id}/${node.id} wrote nothing under '${node.skill}'`);
+    for (const key of Object.keys(node.effect)) {
+      assert(bag[key], `${c.id}/${node.id} did not write ${key} into its skill bag`);
+      assert(mods[key] === undefined,
+        `${c.id}/${node.id} leaked ${key} into the global modifier bag`);
+    }
+  }
+});
+
+check('every skill-scoped effect key is consumed by the skill engine', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const sources = (await Promise.all(
+    ['../src/game/skills.js', '../src/game/game.js']
+      .map((p) => readFile(new URL(p, import.meta.url), 'utf8'))
+  )).join('\n');
+  const keys = new Set();
+  for (const c of CLASSES) {
+    for (const b of c.talents) {
+      for (const n of b.nodes) {
+        if (n.skill) for (const k of Object.keys(n.effect)) keys.add(k);
+      }
+    }
+  }
+  for (const k of keys) {
+    assert(sources.includes(`.${k}`), `skill-scoped effect '${k}' is never read`);
   }
 });
 

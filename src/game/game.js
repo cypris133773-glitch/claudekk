@@ -115,6 +115,14 @@ export class Game {
     this.over = false;
     this.startTime = performance.now();
 
+    // Mastery talents that grant a skill free ranks. Applied before Head Start
+    // so a specialised skill is already ahead when the run's own ranks land on
+    // top of it — that head start is the whole reason to spec into one skill
+    // instead of spreading points across the generic branches.
+    this.player.skills.forEach((skill, i) => {
+      const free = Math.floor(this.player.skillMods(skill.id).startRank || 0);
+      for (let n = 0; n < free; n++) this.player.rankUp(i);
+    });
     // Head Start: free skill ranks before wave 1, spread across the loadout.
     const freebies = perm.startingUpgrades || 0;
     for (let i = 0; i < freebies; i++) this.player.rankUp(i % this.player.skills.length);

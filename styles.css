@@ -201,6 +201,12 @@ html, body {
   display: none;
 }
 body.show-fullscreen-btn #fullscreen-btn { display: block; }
+/* Both corner controls are position:fixed, so flex layout cannot see them and
+   anything in the same corner — the souls badge, most visibly — lands
+   underneath on a narrow phone. Reserve the width, but only while one of them
+   is actually shown. */
+body.show-fullscreen-btn .souls-badge,
+body.show-popout-btn .souls-badge { margin-right: 52px; }
 body.is-fullscreen #fullscreen-btn { background: rgba(110, 200, 255, 0.18); }
 
 /* --------------------------------------------------------------------- */
@@ -633,6 +639,22 @@ button:disabled { opacity: 0.35; cursor: default; }
 .talent-desc { font-size: 11.5px; color: var(--dim); line-height: 1.45; margin-top: 3px; }
 .talent-lock { font-size: 10.5px; color: #ff9a7a; margin-top: 4px; }
 .talent-btns { display: flex; gap: 6px; margin-top: 8px; }
+
+/* Which skill a Mastery node is about, and whether it is one of your four.
+   Dimming the whole node when the skill is unequipped would read as "locked";
+   this says the truth instead — buyable, currently doing nothing. */
+.talent-skill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.talent-skill canvas { flex: 0 0 auto; }
+.talent-skill.off { color: #ff9a7a; }
+.talent-skill.off canvas { opacity: 0.45; }
 
 /* --------------------------------------------------------------------- */
 /* Forge                                                                  */
@@ -1160,6 +1182,24 @@ body.show-popout-btn #popout-btn { display: block; }
   max-width: 100%;
 }
 .skill-slot.on .slot-name { color: var(--gold); }
+
+/* Mastery points already spent on this skill. Absolutely positioned so adding
+   it cannot change the slot's height and reflow a ten-button grid. */
+.skill-slot { position: relative; }
+.slot-mastery {
+  position: absolute;
+  top: -5px; right: -5px;
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--gold);
+  color: #14161d;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 16px;
+  text-align: center;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+}
 
 /* One detail line under the grid, instead of the same prose ten times. */
 .skill-detail {

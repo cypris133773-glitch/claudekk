@@ -119,6 +119,20 @@ export const CLASSES = [
           { id: 'w_p6', name: 'Giant Slayer', desc: '+25% damage to bosses, -8% damage taken.', max: 1, effect: { bossDamage: 0.25, damageReduction: 0.08 } },
         ],
       },
+      // Mastery. Every node here names one skill and does nothing at all unless
+      // that skill is one of your four. It is the branch that makes the loadout
+      // and the tree one decision instead of two: the generic branches make
+      // your character better, this one makes a *build*.
+      {
+        name: 'Mastery', color: '#ffd24a', nodes: [
+          { id: 'w_m1', name: 'Unstoppable Charge', skill: 'charge', desc: 'Charge hits 22% harder and reaches 12% further, per rank.', max: 4, effect: { skillDamage: 0.22, skillRadius: 0.12 } },
+          { id: 'w_m2', name: 'Endless Whirl', skill: 'whirlwind', desc: 'Whirlwind costs 12% less and its cooldown drops 8%, per rank.', max: 5, effect: { skillCost: 0.12, skillCooldown: 0.08 } },
+          { id: 'w_m3', name: 'Bloodletting', skill: 'rend', desc: 'Rend bleeds 25% harder and 1s longer, per rank.', max: 5, effect: { skillDamage: 0.25, skillDuration: 1 } },
+          { id: 'w_m4', name: 'Headsman', skill: 'execute', desc: 'Execute hits 20% harder and costs 10% less, per rank.', max: 4, effect: { skillDamage: 0.20, skillCost: 0.10 } },
+          { id: 'w_m5', name: 'Iron Resolve', skill: 'shieldwall', desc: 'Shield Wall lasts 1.5s longer and its cooldown drops 9%, per rank.', max: 4, effect: { skillDuration: 1.5, skillCooldown: 0.09 } },
+          { id: 'w_m6', name: 'Thunderlord', skill: 'thunderclap', desc: 'Thunder Clap starts at rank 3, reaches 25% wider and hits 30% harder.', max: 1, effect: { startRank: 3, skillRadius: 0.25, skillDamage: 0.30 } },
+        ],
+      },
     ],
   },
 
@@ -215,6 +229,20 @@ export const CLASSES = [
           { id: 'm_a4', name: 'Missile Barrage', desc: 'Basic attack fires 2 extra bolts.', max: 1, effect: { extraProjectiles: 2 } },
           { id: 'm_a5', name: 'Frugality', desc: 'Skills cost 5% less per rank.', max: 5, effect: { costReduction: 0.05 } },
           { id: 'm_a6', name: 'Time Anomaly', desc: 'Kills restore 10 mana and speed you up.', max: 1, effect: { onKillGain: 10, moveSpeed: 0.08 } },
+        ],
+      },
+      // Mastery. Every node here names one skill and does nothing at all unless
+      // that skill is one of your four. It is the branch that makes the loadout
+      // and the tree one decision instead of two: the generic branches make
+      // your character better, this one makes a *build*.
+      {
+        name: 'Mastery', color: '#ffd24a', nodes: [
+          { id: 'm_m1', name: 'Improved Fireball', skill: 'fireball', desc: 'Fireball hits 18% harder and costs 10% less, per rank.', max: 6, effect: { skillDamage: 0.18, skillCost: 0.10 } },
+          { id: 'm_m2', name: 'Deep Freeze', skill: 'frostnova', desc: 'Frost Nova reaches 14% wider and its cooldown drops 8%, per rank.', max: 5, effect: { skillRadius: 0.14, skillCooldown: 0.08 } },
+          { id: 'm_m3', name: 'Cataclysm', skill: 'meteor', desc: 'Meteor hits 30% harder and lands 12% wider, per rank.', max: 5, effect: { skillDamage: 0.30, skillRadius: 0.12 } },
+          { id: 'm_m4', name: 'Perpetual Blizzard', skill: 'blizzard', desc: 'Blizzard lasts 1.2s longer and ticks 22% harder, per rank.', max: 4, effect: { skillDuration: 1.2, skillDamage: 0.22 } },
+          { id: 'm_m5', name: 'Slipstream', skill: 'blink', desc: 'Blink\'s cooldown drops 12% and it costs 15% less, per rank.', max: 4, effect: { skillCooldown: 0.12, skillCost: 0.15 } },
+          { id: 'm_m6', name: 'Sun King', skill: 'pyroblast', desc: 'Pyroblast starts at rank 3 and hits 40% harder.', max: 1, effect: { startRank: 3, skillDamage: 0.40 } },
         ],
       },
     ],
@@ -315,6 +343,20 @@ export const CLASSES = [
           { id: 'k_s6', name: 'Soulfire', desc: 'Fire and shadow burn 40% hotter; area +15%.', max: 1, effect: { burnDamage: 0.40, aoeRadius: 0.15 } },
         ],
       },
+      // Mastery. Every node here names one skill and does nothing at all unless
+      // that skill is one of your four. It is the branch that makes the loadout
+      // and the tree one decision instead of two: the generic branches make
+      // your character better, this one makes a *build*.
+      {
+        name: 'Mastery', color: '#ffd24a', nodes: [
+          { id: 'k_m1', name: 'Festering Corruption', skill: 'corruption', desc: 'Corruption ticks 26% harder and lasts 1s longer, per rank.', max: 6, effect: { skillDamage: 0.26, skillDuration: 1 } },
+          { id: 'k_m2', name: 'Endless Drain', skill: 'drainlife', desc: 'Drain Life costs 12% less and its cooldown drops 9%, per rank.', max: 5, effect: { skillCost: 0.12, skillCooldown: 0.09 } },
+          { id: 'k_m3', name: 'Greater Fiend', skill: 'summonimp', desc: 'Your Fiend is 25% stronger and arrives 10% sooner, per rank.', max: 5, effect: { skillDamage: 0.25, skillCooldown: 0.10 } },
+          { id: 'k_m4', name: 'Cataclysmic Rain', skill: 'rainoffire', desc: 'Rain of Fire covers 15% more ground and burns 24% harder, per rank.', max: 4, effect: { skillRadius: 0.15, skillDamage: 0.24 } },
+          { id: 'k_m5', name: 'Unstable Mind', skill: 'unstable', desc: 'Unstable Affliction hits 28% harder and costs 10% less, per rank.', max: 4, effect: { skillDamage: 0.28, skillCost: 0.10 } },
+          { id: 'k_m6', name: 'Lord of Chaos', skill: 'chaosbolt', desc: 'Chaos Bolt starts at rank 3 and hits 35% harder.', max: 1, effect: { startRank: 3, skillDamage: 0.35 } },
+        ],
+      },
     ],
   },
 
@@ -411,6 +453,20 @@ export const CLASSES = [
           { id: 's_r4', name: 'Reincarnation', desc: 'Revive once per run at 40% health.', max: 1, effect: { cheatDeathRun: 0.4 } },
           { id: 's_r5', name: 'Stoneskin', desc: '+2% armor and 6% thorns per rank.', max: 6, effect: { armor: 0.02, thorns: 0.06 } },
           { id: 's_r6', name: 'Earth Shield', desc: '-12% damage taken and +2 hp/s out of combat.', max: 1, effect: { damageReduction: 0.12, regen: 2 } },
+        ],
+      },
+      // Mastery. Every node here names one skill and does nothing at all unless
+      // that skill is one of your four. It is the branch that makes the loadout
+      // and the tree one decision instead of two: the generic branches make
+      // your character better, this one makes a *build*.
+      {
+        name: 'Mastery', color: '#ffd24a', nodes: [
+          { id: 's_m1', name: 'Forked Lightning', skill: 'chainlightning', desc: 'Chain Lightning hits 20% harder and costs 10% less, per rank.', max: 6, effect: { skillDamage: 0.20, skillCost: 0.10 } },
+          { id: 's_m2', name: 'Molten Core', skill: 'lavaburst', desc: 'Lava Burst hits 24% harder and its cooldown drops 8%, per rank.', max: 5, effect: { skillDamage: 0.24, skillCooldown: 0.08 } },
+          { id: 's_m3', name: 'Enduring Totem', skill: 'searingtotem', desc: 'Your Searing Totem lasts 2s longer and hits 22% harder, per rank.', max: 5, effect: { skillDuration: 2, skillDamage: 0.22 } },
+          { id: 's_m4', name: 'Wellspring', skill: 'healingtotem', desc: 'Your Healing Totem lasts 2s longer and mends 20% more, per rank.', max: 4, effect: { skillDuration: 2, skillDamage: 0.20 } },
+          { id: 's_m5', name: 'Rolling Thunder', skill: 'thunderstorm', desc: 'Thunderstorm reaches 15% wider and its cooldown drops 9%, per rank.', max: 4, effect: { skillRadius: 0.15, skillCooldown: 0.09 } },
+          { id: 's_m6', name: 'Elemental Fury', skill: 'elementalblast', desc: 'Elemental Blast starts at rank 3 and hits 35% harder.', max: 1, effect: { startRank: 3, skillDamage: 0.35 } },
         ],
       },
     ],
@@ -511,6 +567,20 @@ export const CLASSES = [
           { id: 'p_s6', name: 'Shadow Fiend', desc: '+25% boss damage; kills heal 8 health.', max: 1, effect: { bossDamage: 0.25, killHeal: 8 } },
         ],
       },
+      // Mastery. Every node here names one skill and does nothing at all unless
+      // that skill is one of your four. It is the branch that makes the loadout
+      // and the tree one decision instead of two: the generic branches make
+      // your character better, this one makes a *build*.
+      {
+        name: 'Mastery', color: '#ffd24a', nodes: [
+          { id: 'p_m1', name: 'Focused Will', skill: 'smite', desc: 'Smite hits 18% harder and costs 12% less, per rank.', max: 6, effect: { skillDamage: 0.18, skillCost: 0.12 } },
+          { id: 'p_m2', name: 'Greater Shield', skill: 'shield', desc: 'Power Word: Shield absorbs 24% more and its cooldown drops 8%, per rank.', max: 5, effect: { skillDamage: 0.24, skillCooldown: 0.08 } },
+          { id: 'p_m3', name: 'Renewed Hope', skill: 'renew', desc: 'Renew mends 22% more and lasts 1.5s longer, per rank.', max: 5, effect: { skillDamage: 0.22, skillDuration: 1.5 } },
+          { id: 'p_m4', name: 'Divine Radiance', skill: 'holynova', desc: 'Holy Nova reaches 15% wider and hits 22% harder, per rank.', max: 4, effect: { skillRadius: 0.15, skillDamage: 0.22 } },
+          { id: 'p_m5', name: 'Twisted Thoughts', skill: 'mindblast', desc: 'Mind Blast hits 26% harder and its cooldown drops 10%, per rank.', max: 4, effect: { skillDamage: 0.26, skillCooldown: 0.10 } },
+          { id: 'p_m6', name: 'Voice of the Void', skill: 'mindsear', desc: 'Mind Sear starts at rank 3 and hits 35% harder.', max: 1, effect: { startRank: 3, skillDamage: 0.35 } },
+        ],
+      },
     ],
   },
 
@@ -609,6 +679,20 @@ export const CLASSES = [
           { id: 'r_s6', name: 'Symbols of Death', desc: '+18% damage; kills restore 8 health.', max: 1, effect: { allDamage: 0.18, killHeal: 8 } },
         ],
       },
+      // Mastery. Every node here names one skill and does nothing at all unless
+      // that skill is one of your four. It is the branch that makes the loadout
+      // and the tree one decision instead of two: the generic branches make
+      // your character better, this one makes a *build*.
+      {
+        name: 'Mastery', color: '#ffd24a', nodes: [
+          { id: 'r_m1', name: 'Perfected Ambush', skill: 'ambush', desc: 'Ambush hits 22% harder and costs 12% less, per rank.', max: 6, effect: { skillDamage: 0.22, skillCost: 0.12 } },
+          { id: 'r_m2', name: 'Whirling Steel', skill: 'fanofknives', desc: 'Fan of Knives reaches 14% wider and hits 20% harder, per rank.', max: 5, effect: { skillRadius: 0.14, skillDamage: 0.20 } },
+          { id: 'r_m3', name: 'Deeper Cuts', skill: 'eviscerate', desc: 'Eviscerate hits 26% harder and its cooldown drops 9%, per rank.', max: 5, effect: { skillDamage: 0.26, skillCooldown: 0.09 } },
+          { id: 'r_m4', name: 'Lingering Smoke', skill: 'smokebomb', desc: 'Smoke Bomb lasts 1.5s longer and covers 12% more ground, per rank.', max: 4, effect: { skillDuration: 1.5, skillRadius: 0.12 } },
+          { id: 'r_m5', name: 'Elusive', skill: 'evasion', desc: 'Evasion lasts 1.5s longer and its cooldown drops 10%, per rank.', max: 4, effect: { skillDuration: 1.5, skillCooldown: 0.10 } },
+          { id: 'r_m6', name: 'Bloodbath', skill: 'crimsontempest', desc: 'Crimson Tempest starts at rank 3 and hits 35% harder.', max: 1, effect: { startRank: 3, skillDamage: 0.35 } },
+        ],
+      },
     ],
   },
   // -------------------------------------------------------------------------
@@ -704,6 +788,20 @@ export const CLASSES = [
           { id: 'd_f4', name: 'Cycle of Hatred', desc: '-5% cooldowns per rank.', max: 6, effect: { cooldownReduction: 0.05 } },
           { id: 'd_f5', name: 'Burning Wound', desc: 'Burn and fel damage ticks 15% harder per rank.', max: 6, effect: { burnDamage: 0.15, dotDamage: 0.10 } },
           { id: 'd_f6', name: 'Fel Devastation', desc: '+25% damage to bosses and 8% lifesteal.', max: 1, effect: { bossDamage: 0.25, lifesteal: 0.08 } },
+        ],
+      },
+      // Mastery. Every node here names one skill and does nothing at all unless
+      // that skill is one of your four. It is the branch that makes the loadout
+      // and the tree one decision instead of two: the generic branches make
+      // your character better, this one makes a *build*.
+      {
+        name: 'Mastery', color: '#ffd24a', nodes: [
+          { id: 'd_m1', name: 'Momentum', skill: 'felrush', desc: 'Fel Rush hits 22% harder and its cooldown drops 10%, per rank.', max: 6, effect: { skillDamage: 0.22, skillCooldown: 0.10 } },
+          { id: 'd_m2', name: 'Burning Aura', skill: 'immolation', desc: 'Immolation Aura reaches 15% wider and burns 22% harder, per rank.', max: 5, effect: { skillRadius: 0.15, skillDamage: 0.22 } },
+          { id: 'd_m3', name: 'Voracious Cleave', skill: 'soulcleave', desc: 'Soul Cleave hits 24% harder and costs 12% less, per rank.', max: 5, effect: { skillDamage: 0.24, skillCost: 0.12 } },
+          { id: 'd_m4', name: 'Burning Sigil', skill: 'sigilofflame', desc: 'Sigil of Flame lasts 1.5s longer and burns 22% harder, per rank.', max: 4, effect: { skillDuration: 1.5, skillDamage: 0.22 } },
+          { id: 'd_m5', name: 'Blind Fury', skill: 'eyebeam', desc: 'Eye Beam hits 26% harder and its cooldown drops 9%, per rank.', max: 4, effect: { skillDamage: 0.26, skillCooldown: 0.09 } },
+          { id: 'd_m6', name: 'Demon Within', skill: 'metamorphosis', desc: 'Metamorphosis starts at rank 3 and lasts 4s longer.', max: 1, effect: { startRank: 3, skillDuration: 4 } },
         ],
       },
     ],

@@ -71,6 +71,8 @@ function prime() {
   B.game.soulsEarned = 420;
   B.profile.data.souls = 250000;
   B.game.affixes = B.AFFIXES.slice(0, 3);
+  // Land on the branch/tab worth looking at rather than the default first one.
+  if (window.__shotTab !== undefined) B.menus.talentBranch = window.__shotTab;
   B.game.offerUpgrades();
   B.game.result = {
     reachedWave: 7, wave: 6, kills: 88, souls: 420, duration: 305, damageDealt: 12345,
@@ -92,6 +94,9 @@ const page = await context.newPage();
 await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'load' });
 const frame = page.frames().find((f) => f !== page.mainFrame());
 await frame.waitForFunction(() => !!window.BLOCKFRAY, null, { timeout: 20000 });
+if (process.env.SHOT_TAB !== undefined) {
+  await frame.evaluate((t) => { window.__shotTab = t; }, Number(process.env.SHOT_TAB));
+}
 await frame.evaluate(prime);
 
 fs.mkdirSync(OUT, { recursive: true });

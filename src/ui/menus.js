@@ -332,11 +332,27 @@ export class Menus {
     // Ten icon buttons. The description belongs on one detail line under the
     // grid, not repeated ten times: a wall of prose is what made this
     // unreadable on a phone.
+    // Mastery points already spent, per skill. Picking four skills and
+    // speccing the tree are the same decision, so the screen where you pick
+    // has to say which skills you have already invested in — otherwise the
+    // points are found by accident, or paid for twice.
+    const cd = this.profile.classData(cls.id);
+    const invested = {};
+    for (const branch of cls.talents) {
+      for (const node of branch.nodes) {
+        if (!node.skill) continue;
+        const rank = cd.talents[node.id] || 0;
+        if (rank) invested[node.skill] = (invested[node.skill] || 0) + rank;
+      }
+    }
+
     const grid = el('div', 'skill-picker');
     const detail = el('div', 'skill-detail');
     const describe = (sk) => {
+      const pts = invested[sk.id] || 0;
       detail.innerHTML = `<b>${sk.name}</b><span>${sk.desc}</span>`
-        + `<i>${sk.cost} ${cls.resource.name} · ${sk.cooldown}s</i>`;
+        + `<i>${sk.cost} ${cls.resource.name} · ${sk.cooldown}s`
+        + `${pts ? ` · ${pts} Mastery point${pts > 1 ? 's' : ''} invested` : ''}</i>`;
     };
 
     for (const sk of cls.skills) {
@@ -344,6 +360,7 @@ export class Menus {
       const btn = el('button', 'skill-slot' + (on ? ' on' : ''));
       btn.appendChild(skillIconElement(sk, 46, { ready: true }));
       btn.appendChild(el('span', 'slot-name', sk.name));
+      if (invested[sk.id]) btn.appendChild(el('span', 'slot-mastery', String(invested[sk.id])));
       btn.title = `${sk.name} — ${sk.desc}`;
       btn.addEventListener('pointerenter', () => describe(sk));
       this.click(btn, () => {
@@ -417,15 +434,23 @@ export class Menus {
     const cols = el('div', 'talent-grid');
     cols.style.setProperty('--accent', branch.color);
 
+    // Which four skills this class will take in. A Mastery node is worth
+    // nothing unless its skill is one of them, and a player cannot be expected
+    // to hold the loadout in their head while reading the tree.
+    const equipped = new Set(this.profile.loadout(cls).map((s) => s.id));
+
     const makeNode = (node) => {
       const tier = branch.nodes.indexOf(node);
       const rank = cd.talents[node.id] || 0;
       const required = tier * 2;
       const locked = spent < required;
+      const target = node.skill ? cls.skills.find((s) => s.id === node.skill) : null;
+      const inKit = target ? equipped.has(target.id) : true;
       const row = el('div', 'talent-node'
         + (rank ? ' has-rank' : '')
         + (rank >= node.max ? ' maxed' : '')
-        + (locked ? ' locked' : ''));
+        + (locked ? ' locked' : '')
+        + (target && !inKit ? ' unequipped' : ''));
       row.innerHTML = `
         <div class="talent-head">
           <span class="talent-name">${node.name}</span>
@@ -434,6 +459,13 @@ export class Menus {
         <div class="talent-desc">${locked
           ? `Requires ${required} points in ${branch.name}`
           : node.desc}</div>`;
+      if (target && !locked) {
+        const tag = el('div', 'talent-skill' + (inKit ? '' : ' off'));
+        tag.appendChild(skillIconElement(target, 22));
+        tag.appendChild(el('span', null,
+          inKit ? target.name : `${target.name} — not equipped`));
+        row.querySelector('.talent-desc').before(tag);
+      }
       const btns = el('div', 'talent-btns');
       const minus = el('button', 'tiny-btn', '−');
       const plus = el('button', 'tiny-btn', '+');

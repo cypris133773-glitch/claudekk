@@ -10,18 +10,38 @@ import { LOADOUT_SIZE } from '../data/classes.js';
 /** Sum every modifier source into one flat bag of numbers. */
 export function buildMods(cls, talentRanks, permanent) {
   const mods = {};
+  // Talents that name a skill go into their own bag under that skill's id,
+  // not into the flat one. Everything global — armour, the Forge, the other
+  // two-and-a-bit branches — stays flat and applies to everything, exactly as
+  // before; only a node that says which skill it is about is kept apart.
+  //
+  // This is what makes the tree interact with the loadout instead of running
+  // alongside it. A rank in Unstoppable Charge is worth nothing unless Charge
+  // is one of your four, so picking the four and speccing the tree stop being
+  // two separate decisions.
+  mods.skills = {};
   const add = (key, value) => { mods[key] = (mods[key] || 0) + value; };
+  const addTo = (skillId, key, value) => {
+    const bag = mods.skills[skillId] || (mods.skills[skillId] = {});
+    bag[key] = (bag[key] || 0) + value;
+  };
 
   for (const branch of cls.talents) {
     for (const node of branch.nodes) {
       const rank = talentRanks[node.id] || 0;
       if (!rank) continue;
-      for (const [k, v] of Object.entries(node.effect)) add(k, v * rank);
+      for (const [k, v] of Object.entries(node.effect)) {
+        if (node.skill) addTo(node.skill, k, v * rank);
+        else add(k, v * rank);
+      }
     }
   }
   for (const [k, v] of Object.entries(permanent || {})) add(k, v);
   return mods;
 }
+
+/** Empty bag shared by every un-specced skill, so the hot path allocates nothing. */
+const NO_SKILL_MODS = Object.freeze({});
 
 export class Player extends Entity {
   /**
@@ -109,6 +129,11 @@ export class Player extends Entity {
   }
 
   get isMelee() { return this.cls.base.attackRange < 6; }
+
+  /** The talent bag scoped to one skill id; empty for anything un-specced. */
+  skillMods(id) {
+    return (this.mods.skills && this.mods.skills[id]) || NO_SKILL_MODS;
+  }
 
   /** Rank of the skill in slot `i`, 0 for un-upgraded. */
   rankOf(i) { return this.skillRanks[i] || 0; }

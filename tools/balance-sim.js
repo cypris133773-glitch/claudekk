@@ -275,10 +275,22 @@ if (stalled.length) {
   }
 }
 
-// A class that is wildly out of line with the others is a balance smell.
+// A class that is wildly out of line with the others is a balance smell — but
+// only once there are enough runs to tell a smell from a coin flip. Talent
+// points come from the *previous* run's best wave, so a batch that opens with
+// one bad run stays poor for the whole batch: at five runs a class can read as
+// median 10 and median 50 on consecutive invocations of this harness with no
+// code change between them. Chasing that as a regression costs more time than
+// the warning ever saves.
+const MIN_RUNS_FOR_OUTLIERS = 8;
 const medians = all.map((a) => ({ id: a.id, m: median(a.waves) }));
 const overall = median(medians.map((x) => x.m));
+if (runs < MIN_RUNS_FOR_OUTLIERS) {
+  console.log(`\n(${runs} runs per class is too few to flag outliers — `
+    + `re-run with ${MIN_RUNS_FOR_OUTLIERS}+ before treating a spread as real.)`);
+}
 for (const { id, m } of medians) {
+  if (runs < MIN_RUNS_FOR_OUTLIERS) break;
   if (overall > 0 && (m > overall * 1.8 || m < overall * 0.55)) {
     console.log(`⚠ ${id} median ${m} is far from the ${overall} baseline.`);
   }
