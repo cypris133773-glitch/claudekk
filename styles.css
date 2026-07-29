@@ -1758,3 +1758,59 @@ body.show-popout-btn #popout-btn { display: block; }
   content: ' · holding sets back';
   color: #ff9a7a;
 }
+
+/* Class level and XP. The bar is the glance; the numbers under it are the
+   decision — at level 40 the difference between "somewhere along" and "eleven
+   more runs" is what a player is actually asking. */
+.lvl-row { display: flex; align-items: center; gap: 6px; margin-top: 5px; }
+.lvl-num {
+  font-size: 10.5px;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  color: var(--gold);
+  flex: 0 0 auto;
+}
+.lvl-bar {
+  flex: 1 1 auto;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.5);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.65);
+  overflow: hidden;
+}
+.lvl-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #ffe58a, var(--gold));
+}
+.lvl-row.maxed .lvl-num { color: #ff9a7a; }
+.lvl-row.maxed .lvl-bar i { background: linear-gradient(90deg, #ffb27a, #ff5a3c); }
+.lvl-xp { font-size: 9px; color: rgba(255, 255, 255, 0.42); margin-top: 2px; }
+@media (max-height: 600px), (max-width: 360px) {
+  .lvl-xp { display: none; }
+}
+
+/* A landscape phone has ~375px for a nine-card grid plus the detail panel and
+   the difficulty row underneath. The level bar earns its place there — it is
+   the only thing on the card that changes between sessions — so the two static
+   lines give way instead: the role is repeated in the detail panel below, and
+   best-wave/points are on the Records screen. */
+@media (max-height: 480px) {
+  .class-card { padding: 6px 8px; gap: 4px; }
+  .class-role { display: none; }
+  .class-meta { display: none; }
+  .lvl-row { margin-top: 2px; }
+}
+
+/* Results screen: where the run's XP landed. */
+.results-level { margin-top: 12px; }
+.level-up {
+  text-align: center;
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: var(--gold);
+  text-shadow: 0 0 18px rgba(255, 210, 74, 0.55);
+  margin-bottom: 6px;
+}

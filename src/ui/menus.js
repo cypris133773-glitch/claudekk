@@ -149,6 +149,24 @@ export class Menus {
     return p;
   }
 
+  /**
+   * A class's level and how far into it, as one bar with the raw numbers under
+   * it. The numbers matter: a bar on its own tells a player they are "somewhere
+   * along", and at level 40 the difference between somewhere along and eleven
+   * more runs is the entire decision about what to play tonight.
+   */
+  levelBarHtml(classId) {
+    const p = this.profile.levelProgress(classId);
+    const label = p.maxed
+      ? `MAX · ${p.total.toLocaleString()} XP`
+      : `${p.into.toLocaleString()} / ${p.need.toLocaleString()} XP`;
+    return `<div class="lvl-row${p.maxed ? ' maxed' : ''}">
+        <span class="lvl-num">Lv ${p.level}</span>
+        <span class="lvl-bar"><i style="width:${(p.frac * 100).toFixed(1)}%"></i></span>
+      </div>
+      <div class="lvl-xp">${label}</div>`;
+  }
+
   soulsBadge() {
     // Icon and number only. Spelling the currency out here pushed the back bar
     // onto two lines on a 320px phone, which cost more than the word was worth
@@ -279,6 +297,7 @@ export class Menus {
           <span>wave ${cd.bestWave}</span>
           <span>${this.profile.availableTalentPoints(cls.id)} pts</span>
         </div>
+        ${this.levelBarHtml(cls.id)}
         <div class="class-diff">${'★'.repeat(cls.difficulty)}${'☆'.repeat(3 - cls.difficulty)}</div>`;
       this.click(card, () => {
         this.selectedClass = cls.id;
@@ -853,6 +872,7 @@ export class Menus {
       const row = el('div', 'cs-row');
       row.innerHTML = `
         <span class="cs-name" style="color:${c.color}">${c.name}</span>
+        <span>Lv ${this.profile.level(c.id)}</span>
         <span>wave ${cd.bestWave}</span>
         <span>${cd.kills} kills</span>
         <span>mastery ${this.profile.masteryRank(c.id)}</span>
@@ -1165,9 +1185,9 @@ export class Menus {
     const cd = this.profile.classData(g.cls.id);
     const rows = [
       ['Diamonds', '💠 ' + res.souls],
+      ['Experience', '+' + (res.xp || 0).toLocaleString()],
       ['Best streak', g.comboBest || 0],
       ['Class best', 'wave ' + cd.bestWave],
-      ['Mastery', this.profile.masteryRank(g.cls.id)],
     ];
     for (const [k, v] of rows) {
       const d = el('div', 'stat-cell');
@@ -1175,6 +1195,19 @@ export class Menus {
       grid.appendChild(d);
     }
     p.appendChild(grid);
+
+    // Where the class stands *now*, not where it stood before — the XP is
+    // already banked by the time this screen is built, and "where am I" is the
+    // question a player actually has at the end of a run.
+    const lvl = el('div', 'results-level');
+    const ups = res.levelUps || [];
+    if (ups.length) {
+      lvl.appendChild(el('div', 'level-up', ups.length === 1
+        ? `⬆ LEVEL ${ups[0]}`
+        : `⬆ LEVEL ${ups[ups.length - 1]} · ${ups.length} levels gained`));
+    }
+    lvl.innerHTML += this.levelBarHtml(g.cls.id);
+    p.appendChild(lvl);
 
     // What you are closest to. A results screen that only reports the past
     // gives no reason to press Play again; naming the nearest three things

@@ -707,6 +707,156 @@ check('every arena layout is actually playable', async () => {
   }
 });
 
+// --- Levels ----------------------------------------------------------------
+// The level cap is the longest-lived promise the game makes, so the shape of
+// the curve is worth pinning: quick at the start, a project at the end, and
+// never accidentally reachable in an afternoon.
+
+check('the level curve is monotonic, capped and consistent', async () => {
+  const { MAX_LEVEL, xpToNext, xpToReach, levelFromXp, levelProgress, talentPointsForLevel } =
+    await import('../src/data/levels.js');
+
+  assert(MAX_LEVEL === 60, `cap is ${MAX_LEVEL}`);
+  let prev = 0;
+  for (let L = 1; L < MAX_LEVEL; L++) {
+    const need = xpToNext(L);
+    assert(Number.isFinite(need) && need > 0, `level ${L} needs ${need}`);
+    assert(need > prev, `level ${L} is cheaper than the one before it`);
+    prev = need;
+  }
+  // At the cap nothing more is required, so every "can I level" test answers
+  // no without needing a special case at the call site.
+  assert(xpToNext(MAX_LEVEL) === Infinity, 'the cap still asks for XP');
+
+  // xpToReach and levelFromXp must be exact inverses at every boundary — one
+  // XP short of a level must not grant it, and exactly enough must.
+  for (let L = 1; L <= MAX_LEVEL; L++) {
+    const at = xpToReach(L);
+    assert(levelFromXp(at) === L, `${at} XP should be level ${L}, got ${levelFromXp(at)}`);
+    if (L > 1) {
+      assert(levelFromXp(at - 1) === L - 1,
+        `one XP short of level ${L} already grants it`);
+    }
+  }
+  assert(levelFromXp(0) === 1, 'a fresh character is not level 1');
+  assert(levelFromXp(-500) === 1, 'negative XP breaks the level');
+  assert(levelFromXp(1e18) === MAX_LEVEL, 'the cap can be exceeded');
+
+  const maxed = levelProgress(xpToReach(MAX_LEVEL));
+  assert(maxed.maxed && maxed.frac === 1, 'a maxed bar does not read as full');
+  const mid = levelProgress(xpToReach(10) + 5);
+  assert(mid.level === 10 && mid.into === 5 && mid.frac > 0 && mid.frac < 1,
+    'progress into a level is wrong');
+
+  assert(talentPointsForLevel(1) === 0, 'level 1 already has points');
+  assert(talentPointsForLevel(MAX_LEVEL) === MAX_LEVEL - 1, 'the cap pays the wrong points');
+});
+
+check('a full talent tree costs far more than the cap grants', async () => {
+  const { MAX_LEVEL, talentPointsForLevel } = await import('../src/data/levels.js');
+  const points = talentPointsForLevel(MAX_LEVEL);
+  for (const c of CLASSES) {
+    const total = c.talents.reduce((s, b) => s + b.nodes.reduce((t, n) => t + n.max, 0), 0);
+    // If the cap could fill a tree, the tree stops being a choice and becomes
+    // a waiting room — everyone ends up with the same character.
+    assert(total > points * 1.3,
+      `${c.id}'s tree costs ${total} and the cap grants ${points}: too easy to fill`);
+  }
+});
+
+check('the level grind is long at the top and quick at the bottom', async () => {
+  const { xpToReach, MAX_LEVEL, xpForRun } = await import('../src/data/levels.js');
+  const { waveBudget } = await import('../src/game/waves.js');
+  // A beginner run: wave 5, with the real spawn budgets behind it.
+  let kills = 0;
+  for (let w = 1; w <= 5; w++) kills += waveBudget(w);
+  const beginner = xpForRun({ wavesCleared: 5, kills });
+
+  const toL5 = xpToReach(5) / beginner;
+  assert(toL5 > 6 && toL5 < 16,
+    `level 5 takes ${toL5.toFixed(1)} beginner runs; the target is about ten`);
+  const toL2 = xpToReach(2) / beginner;
+  assert(toL2 >= 1.5 && toL2 <= 3.5, `level 2 takes ${toL2.toFixed(1)} runs`);
+
+  // And the tail has to actually be a tail: the last ten levels must cost more
+  // than the first fifty put together, or the cap is reachable by accident.
+  const first50 = xpToReach(50);
+  const last10 = xpToReach(MAX_LEVEL) - first50;
+  assert(last10 > first50,
+    `levels 50-60 cost ${last10} against ${first50} for 1-50: the tail is too flat`);
+});
+
+check('XP awarded live matches what the run is worth', async () => {
+  const { Game } = await import('../src/game/game.js');
+  const { xpForRun } = await import('../src/data/levels.js');
+  const { makeHarness } = await import('./harness.js');
+  const h = makeHarness();
+  const game = new Game(h.renderer, h.audio, h.profile);
+  game.startRun(CLASSES[0], { layout: 0 });
+
+  // The HUD bar fills from a live counter while the results screen banks a
+  // total. If those two ever disagree, the bar has been lying all run.
+  game.awardXp(0);
+  const p = game.player;
+  for (let i = 0; i < 40; i++) {
+    const mob = game.spawnMob('husk', p.x + 3, p.y, p.z + 3);
+    mob.hp = 1;
+    game.dealDamage(p, mob, 9999, { silent: true });
+  }
+  const kills = p.kills;
+  assert(kills > 0, 'the harness killed nothing');
+  const expected = xpForRun({ wavesCleared: 0, kills, eliteKills: 0, bossKills: 0 });
+  assert(Math.round(game.xpEarned) === expected,
+    `live XP ${game.xpEarned} does not match xpForRun's ${expected}`);
+});
+
+check('XP popups batch instead of one per kill', async () => {
+  const { Game } = await import('../src/game/game.js');
+  const { makeHarness } = await import('./harness.js');
+  const h = makeHarness();
+  const game = new Game(h.renderer, h.audio, h.profile);
+  game.startRun(CLASSES[0], { layout: 0 });
+
+  // Twenty awards in quick succession must produce one popup, not twenty.
+  // Unbatched, a wave-30 fight would put a hundred of these on screen.
+  for (let i = 0; i < 20; i++) { game.awardXp(2); game.updateXpPops(1 / 60); }
+  assert(game.xpPops.length === 0, 'a popup appeared while the killing was still going');
+  for (let i = 0; i < 60; i++) game.updateXpPops(1 / 60);
+  assert(game.xpPops.length === 1, `expected one batched popup, got ${game.xpPops.length}`);
+  assert(game.xpPops[0].amount === 40, `the batch totalled ${game.xpPops[0].amount}, not 40`);
+
+  // And they must expire, or a long run accumulates every popup it ever made.
+  for (let i = 0; i < 200; i++) game.updateXpPops(1 / 60);
+  assert(game.xpPops.length === 0, 'popups never expire');
+
+  // Never more than three at once, however hard they arrive.
+  for (let n = 0; n < 12; n++) {
+    game.awardXp(500);
+    for (let i = 0; i < 45; i++) game.updateXpPops(1 / 60);
+  }
+  assert(game.xpPops.length <= 3, `${game.xpPops.length} popups stacked up on screen`);
+});
+
+check('an older save keeps the talent points it already had', async () => {
+  const { Profile } = await import('../src/core/save.js');
+  const { talentPointsForBestWave } = await import('../src/data/permanent.js');
+  // A player deep in the old system: points came from best wave, and there is
+  // no XP in the save at all. Migrating without granting XP would wipe every
+  // talent build in the game and leave no points to rebuild with.
+  const profile = Object.create(Profile.prototype);
+  profile.data = {
+    classes: { warrior: { talents: { w_a1: 4 }, bestWave: 30, xp: 0 } },
+  };
+  const owed = talentPointsForBestWave(30);
+  assert(profile.migrateToLevels(), 'the migration did nothing');
+  assert(profile.totalTalentPoints('warrior') >= owed,
+    `player had ${owed} points and the migration left ${profile.totalTalentPoints('warrior')}`);
+  // Idempotent: booting twice must not keep granting XP.
+  const after = profile.data.classes.warrior.xp;
+  assert(!profile.migrateToLevels(), 'the migration ran a second time');
+  assert(profile.data.classes.warrior.xp === after, 'a second boot granted more XP');
+});
+
 // --- Armoury depth ---------------------------------------------------------
 
 check('the Armoury has enough slots and bands to stay legible', async () => {

@@ -12,6 +12,7 @@ import { permanentMods, masteryMods, masteryRank } from '../data/permanent.js';
 import { difficultyFor } from '../data/difficulty.js';
 import { affixesForWave, affixSoulBonus } from '../data/affixes.js';
 import { rollPotion, DROP_CHANCE, ELITE_DROP_CHANCE, BOSS_DROPS, POTION_LIFETIME } from '../data/potions.js';
+import { xpForRun, xpForWave, XP_PER_KILL, XP_ELITE_MULT, XP_BOSS_MULT } from '../data/levels.js';
 import { armorMods } from '../data/armor.js';
 import { forwardVec, clamp, rand, dist2 } from '../core/math.js';
 import { T } from '../render/atlas.js';
@@ -71,6 +72,15 @@ export class Game {
     this.tally = {
       eliteKills: 0, bossKills: 0, potionsDrunk: 0, skillsCast: 0, affixWaves: 0,
     };
+    // XP is accumulated live rather than totalled at the end, because the HUD
+    // bar has to fill while you play — a progress bar that only moves on the
+    // results screen is a results screen, not a progress bar.
+    this.xpEarned = 0;
+    // Pending XP waiting to be shown. One popup per kill would be a hundred
+    // popups a wave by wave 30; batching turns that into one readable number.
+    this.xpPending = 0;
+    this.xpFlush = 0;
+    this.xpPops = [];
   }
 
   /** True while the named wave affix is in force. */
@@ -250,7 +260,15 @@ export class Game {
       wave: wavesCleared, kills: this.player.kills,
       souls: this.result.souls, duration,
       quests: this.questReport(wavesCleared),
+      // Waves *cleared*, not reached: dying on wave 12 pays for eleven. Paying
+      // for the wave you died in would make walking into a pack and dying the
+      // fastest way to level, which is not a strategy worth rewarding.
+      // The live total, not a recomputation. The HUD bar has been showing this
+      // number all run; banking a different one would mean the bar was lying.
+      xp: Math.round(this.xpEarned),
     });
+    this.result.xp = Math.round(this.xpEarned);
+    this.result.levelUps = this.profile.lastLevelUps || [];
     this.questsFinished = this.profile.lastQuestsFinished || [];
   }
 
@@ -283,6 +301,42 @@ export class Game {
   // -------------------------------------------------------------------------
   // Helpers used by mobs, skills and effects
   // -------------------------------------------------------------------------
+
+  /**
+   * Bank XP and queue it to be shown.
+   *
+   * Nothing is drawn here. The amount goes into a pending pot that flushes
+   * once the killing stops for a moment, so a burst of eight kills reads as
+   * one "+16 XP" instead of eight "+2 XP" fighting each other for the same
+   * few pixels. That is the whole difference between a progress cue and
+   * visual noise.
+   */
+  awardXp(amount) {
+    if (!(amount > 0)) return;
+    this.xpEarned += amount;
+    this.xpPending += amount;
+    // Restarted on every award, so a continuous fight shows nothing until
+    // there is a gap — and a gap is exactly when a player has the attention
+    // to read a number.
+    this.xpFlush = 0.55;
+  }
+
+  updateXpPops(dt) {
+    if (this.xpPending > 0) {
+      this.xpFlush -= dt;
+      // Flushed on a timer, but also whenever the pot gets large enough that
+      // waiting would feel like the game had stopped counting.
+      if (this.xpFlush <= 0 || this.xpPending >= 400) {
+        this.xpPops.push({ amount: Math.round(this.xpPending), life: 1.15, max: 1.15 });
+        this.xpPending = 0;
+        this.xpFlush = 0;
+        // Three at once is the most that stays readable; older ones go first.
+        while (this.xpPops.length > 3) this.xpPops.shift();
+      }
+    }
+    for (const p of this.xpPops) p.life -= dt;
+    if (this.xpPops.length) this.xpPops = this.xpPops.filter((p) => p.life > 0);
+  }
 
   /**
    * A brief full-screen wash in the colour of whatever just happened. Drawn by
@@ -618,6 +672,7 @@ export class Game {
     this.rollPotionDrop(mob);
     if (mob.def.boss) this.tally.bossKills++;
     else if (mob.elite) this.tally.eliteKills++;
+    this.awardXp(XP_PER_KILL * (mob.def.boss ? XP_BOSS_MULT : mob.elite ? XP_ELITE_MULT : 1));
 
     // Affixes pay. A wave under three rules is the hardest thing in the run and
     // has to also be the best place to be, or the optimal play is to farm the
@@ -972,6 +1027,7 @@ export class Game {
     this.updateCombo(dt);
     this.updateAffixes(dt);
     this.updateGrievous(dt);
+    this.updateXpPops(dt);
     for (const t of this.telegraphs) t.update(dt);
     for (const s of this.shockwaves) s.update(dt);
     for (const z of this.zones) z.update(dt, this);
@@ -1070,6 +1126,7 @@ export class Game {
       // mean the rules cost a third of the run's depth and returned a rounding
       // error on the currency that depth exists to earn.
       if (this.affixes.length) this.tally.affixWaves++;
+      this.awardXp(xpForWave(this.wave));
       const bonus = Math.round(waveClearBonus(this.wave) * (1 + affixSoulBonus(this.affixes)));
       this.soulsEarned += bonus * (1 + (this.player.mods.soulGain || 0));
       this.notify(`Wave ${this.wave} cleared  +${bonus} 💠`, 2.2);

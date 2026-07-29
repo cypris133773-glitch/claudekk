@@ -6,6 +6,9 @@ import {
   talentPointsForBestWave, masteryRank, masteryProgress, masteryFromRun,
 } from '../data/permanent.js';
 import {
+  levelFromXp, levelProgress, talentPointsForLevel, xpForRun, xpToReach, MAX_LEVEL,
+} from '../data/levels.js';
+import {
   emptyQuestState, normaliseQuestState, applyProgress, activeQuests,
   claimQuest, rerollQuest, rerollCost,
 } from './questlog.js';
@@ -51,7 +54,7 @@ function emptyProfile() {
   for (const c of CLASSES) {
     classes[c.id] = {
       talents: {}, bestWave: 0, kills: 0, runs: 0, unlocked: true,
-      loadout: defaultLoadout(c), mastery: 0,
+      loadout: defaultLoadout(c), mastery: 0, xp: 0,
     };
   }
   return {
@@ -117,6 +120,7 @@ export class Profile {
         // has the wrong shape. Both have to end up playable.
         quests: normaliseQuestState(parsed.quests),
       };
+      if (this.migrateToLevels()) migrated = true;
       // Write it straight back under the new key, so the migration happens
       // once rather than on every boot for the rest of the account's life.
       if (migrated) this.save();
@@ -124,6 +128,29 @@ export class Profile {
       console.warn('Save data unreadable, starting fresh.', err);
       this.data = emptyProfile();
     }
+  }
+
+  /**
+   * Talent points used to come from best wave. They now come from level, and a
+   * save written before levels existed has no XP at all — so every player with
+   * a talent build would have opened this update to find it wiped and no
+   * points to rebuild it with.
+   *
+   * So: grant whatever XP their old point total was worth. They keep every
+   * point they had, their spent talents still validate, and from here on the
+   * points come from levelling like everyone else's. Runs first for anyone who
+   * has played, so someone deep in the game does not start at level 1.
+   */
+  migrateToLevels() {
+    let changed = false;
+    for (const cd of Object.values(this.data.classes)) {
+      if (cd.xp || !cd.bestWave) continue;
+      const owed = talentPointsForBestWave(cd.bestWave);
+      if (owed <= 0) continue;
+      cd.xp = xpToReach(Math.min(MAX_LEVEL, owed + 1));
+      changed = true;
+    }
+    return changed;
   }
 
   save() {
@@ -175,8 +202,18 @@ export class Profile {
     return Object.values(ranks).reduce((a, b) => a + b, 0);
   }
 
+  // --- Levels ---------------------------------------------------------------
+
+  /** Total XP this class has banked. */
+  classXp(classId) { return this.data.classes[classId].xp || 0; }
+
+  level(classId) { return levelFromXp(this.classXp(classId)); }
+
+  /** Level, progress into it, and the raw numbers the bar is drawn from. */
+  levelProgress(classId) { return levelProgress(this.classXp(classId)); }
+
   totalTalentPoints(classId) {
-    return talentPointsForBestWave(this.data.classes[classId].bestWave);
+    return talentPointsForLevel(this.level(classId));
   }
 
   availableTalentPoints(classId) {
@@ -222,8 +259,14 @@ export class Profile {
 
   rerollCost(q) { return rerollCost(q); }
 
-  finishRun(classId, { wave, kills, souls, duration, quests }) {
+  finishRun(classId, { wave, kills, souls, duration, quests, xp }) {
     const cd = this.data.classes[classId];
+    // Banked before anything else so `lastLevelUps` is available to the
+    // results screen in the same call that produced it.
+    const before = this.level(classId);
+    cd.xp = (cd.xp || 0) + Math.max(0, Math.round(xp || 0));
+    this.lastLevelUps = [];
+    for (let L = before + 1; L <= this.level(classId); L++) this.lastLevelUps.push(L);
     cd.runs++;
     cd.kills += kills;
     cd.bestWave = Math.max(cd.bestWave, wave);

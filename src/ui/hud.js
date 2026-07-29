@@ -4,6 +4,7 @@
 import { skillCooldown, skillCost } from '../game/skills.js';
 import { clamp } from '../core/math.js';
 import { drawSkillIcon } from './icons.js';
+import { levelProgress } from '../data/levels.js';
 
 const FONT = "700 %spx 'Segoe UI', system-ui, -apple-system, sans-serif";
 
@@ -114,6 +115,7 @@ export class Hud {
     this.drawAffixes();
     this.drawBuffs(p);
     this.drawCombo();
+    this.drawXpPops();
     this.drawNotifications();
     this.drawOffscreenMarkers();
     this.drawMinimap(p);
@@ -195,13 +197,18 @@ export class Hud {
     const w = this.touchMode
       ? Math.min(240, this.w * 0.46)
       : Math.min(340, this.w * 0.42);
-    // The absorb sliver is drawn 12px above the health bar, so the block has
-    // to start clear of the notch by at least that much.
-    const y = this.touchMode ? s.t + 16 : this.h - 78 - s.b;
+    // The block now carries a level bar above the absorb sliver above the
+    // health bar, so on touch it has to start clear of the notch by all three
+    // — 16px used to be enough and is not any more.
+    const y = this.touchMode ? s.t + 30 : this.h - 78 - s.b;
     // Slightly chunkier on touch: these are read at arm's length, mid-fight.
     const hpH = this.touchMode ? 22 : 20;
     const resH = this.touchMode ? 16 : 14;
 
+    // Level and XP, above the health bar and deliberately thin. It is the one
+    // number here that does not change during a fight, so it must not compete
+    // with the two that do — a fat XP bar over your health is a bar you resent.
+    this.drawLevelBar(pad, y - (p.absorb > 0 ? 22 : 11), w);
     this.bar(pad, y, w, hpH, p.hp / p.maxHp, '#e0473c', 'rgba(0,0,0,0.55)',
       `${Math.ceil(p.hp)} / ${p.maxHp}`);
     if (p.absorb > 0) {
@@ -280,6 +287,75 @@ export class Hud {
       x += w + gap;
     }
     c.textBaseline = 'top';
+  }
+
+  /**
+   * Level and progress into it, including whatever this run has already earned.
+   * Four pixels tall with the level number beside it — enough to notice fill,
+   * small enough to ignore while something is trying to kill you.
+   */
+  drawLevelBar(x, y, w) {
+    const g = this.game;
+    if (!g.cls || !g.profile) return;
+    const banked = g.profile.classXp ? g.profile.classXp(g.cls.id) : 0;
+    const prog = levelProgress(banked + (g.xpEarned || 0));
+    const c = this.ctx;
+    this.font(10);
+    c.textAlign = 'left';
+    c.textBaseline = 'middle';
+    c.fillStyle = prog.maxed ? '#ff9a7a' : '#c9a0ff';
+    const label = `Lv ${prog.level}`;
+    c.fillText(label, x, y + 4);
+    const lw = c.measureText(label).width + 6;
+
+    const bx = x + lw, bw = Math.max(20, w - lw);
+    c.fillStyle = 'rgba(0,0,0,0.55)';
+    this.roundRect(bx, y + 1, bw, 6, 3); c.fill();
+    if (prog.frac > 0) {
+      c.fillStyle = prog.maxed ? '#ff7a5a' : '#a35cff';
+      this.roundRect(bx + 1, y + 2, Math.max(1, (bw - 2) * prog.frac), 4, 2); c.fill();
+    }
+    c.strokeStyle = 'rgba(255,255,255,0.14)';
+    c.lineWidth = 1;
+    this.roundRect(bx + 0.5, y + 1.5, bw - 1, 5, 2.5); c.stroke();
+  }
+
+  /**
+   * The "+N XP" ticker, under the vitals on the left.
+   *
+   * Purple, because nothing else in the HUD is — health is red, resource is
+   * class-coloured, damage numbers are white and gold. It rises and fades over
+   * about a second, and the game batches the awards behind it, so a busy wave
+   * produces a handful of readable numbers rather than one per kill.
+   */
+  drawXpPops() {
+    const pops = this.game.xpPops;
+    if (!pops || !pops.length) return;
+    const c = this.ctx;
+    const s = this.safe;
+    const x = 18 + s.l;
+    // Clear of the left column by more than the rise, or a fresh popup starts
+    // inside the affix chip above it and the two are unreadable together.
+    const baseY = (this.leftColY || 120) + 24;
+    c.textAlign = 'left';
+    c.textBaseline = 'middle';
+    for (let i = 0; i < pops.length; i++) {
+      const p = pops[i];
+      const t = 1 - p.life / p.max;
+      // Quick in, slow out: full opacity almost immediately so it is never
+      // missed, then a long fade so it never snaps away.
+      const alpha = t < 0.12 ? t / 0.12 : Math.max(0, 1 - (t - 0.12) / 0.88);
+      const rise = t * 18;
+      const y = baseY + i * 19 - rise;
+      this.font(14);
+      c.globalAlpha = alpha;
+      c.shadowColor = 'rgba(0,0,0,0.9)';
+      c.shadowBlur = 5;
+      c.fillStyle = '#c9a0ff';
+      c.fillText(`+${p.amount.toLocaleString()} XP`, x, y);
+      c.shadowBlur = 0;
+      c.globalAlpha = 1;
+    }
   }
 
   drawWaveInfo() {
