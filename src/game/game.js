@@ -62,6 +62,12 @@ export class Game {
     this.stormTimer = 0;
     this.grievous = 0;
     this.grievousTimer = 0;
+    // Everything quests measure. Counted here rather than derived at the end
+    // because most of it — elites, potions, casts — leaves no trace once the
+    // run is over.
+    this.tally = {
+      eliteKills: 0, bossKills: 0, potionsDrunk: 0, skillsCast: 0, affixWaves: 0,
+    };
   }
 
   /** True while the named wave affix is in force. */
@@ -240,7 +246,35 @@ export class Game {
     this.profile.finishRun(this.cls.id, {
       wave: wavesCleared, kills: this.player.kills,
       souls: this.result.souls, duration,
+      quests: this.questReport(wavesCleared),
     });
+    this.questsFinished = this.profile.lastQuestsFinished || [];
+  }
+
+  /**
+   * What this run contributed, split the way the quest log needs it: `deltas`
+   * accumulate forever, `peaks` only ever replace a previous best. Getting
+   * that split wrong is the one bug here a player would actually notice — a
+   * "reach wave 20" quest ticking up four every run.
+   */
+  questReport(wavesCleared) {
+    return {
+      deltas: {
+        kills: this.player.kills,
+        eliteKills: this.tally.eliteKills,
+        bossKills: this.tally.bossKills,
+        wavesCleared,
+        damageDealt: Math.round(this.player.damageDealt),
+        potionsDrunk: this.tally.potionsDrunk,
+        skillsCast: this.tally.skillsCast,
+        affixWaves: this.tally.affixWaves,
+        runs: 1,
+      },
+      peaks: {
+        bestWave: this.wave,
+        bestCombo: this.comboBest,
+      },
+    };
   }
 
   // -------------------------------------------------------------------------
@@ -567,6 +601,8 @@ export class Game {
 
     this.affixesOnKill(mob);
     this.rollPotionDrop(mob);
+    if (mob.def.boss) this.tally.bossKills++;
+    else if (mob.elite) this.tally.eliteKills++;
 
     // Affixes pay. A wave under three rules is the hardest thing in the run and
     // has to also be the best place to be, or the optimal play is to farm the
@@ -585,7 +621,7 @@ export class Game {
     if (mob.def.boss) {
       this.screenShake = 0.6;
       this.audio.play('explode');
-      this.notify('BOSS SLAIN  +' + Math.round(souls) + ' souls', 2.6);
+      this.notify('BOSS SLAIN  +' + Math.round(souls) + ' 💠', 2.6);
     }
 
     // Chain Reaction / Living Bomb
@@ -708,6 +744,7 @@ export class Game {
         name: def.name,
       });
     }
+    this.tally.potionsDrunk++;
     this.notify(`${def.name} — ${def.blurb}`, 2.0);
     this.audio.play(def.heal ? 'quaff' : 'buff');
     this.burst(potion.x, potion.y + 0.3, potion.z, 18, def.glow);
@@ -986,9 +1023,10 @@ export class Game {
       // carry the affix multiplier too — paying the bonus only on kills would
       // mean the rules cost a third of the run's depth and returned a rounding
       // error on the currency that depth exists to earn.
+      if (this.affixes.length) this.tally.affixWaves++;
       const bonus = Math.round(waveClearBonus(this.wave) * (1 + affixSoulBonus(this.affixes)));
       this.soulsEarned += bonus * (1 + (this.player.mods.soulGain || 0));
-      this.notify(`Wave ${this.wave} cleared  +${bonus} souls`, 2.2);
+      this.notify(`Wave ${this.wave} cleared  +${bonus} 💠`, 2.2);
       this.player.heal(this.player.maxHp * 0.25);
       this.rerollsLeft = this.permMods.rerolls || 0;
       this.player.cheatDeathUsed = false;

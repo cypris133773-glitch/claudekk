@@ -707,6 +707,143 @@ check('every arena layout is actually playable', async () => {
   }
 });
 
+// --- Quests ----------------------------------------------------------------
+// The whole point of generating these is that "balanced" can be checked rather
+// than asserted. If the reward is not a fixed rate on measured effort, these
+// fail — which is exactly the bug a hand-written list of 500 would hide.
+
+check('all 500 quests are well formed and distinct enough to notice', async () => {
+  const { allQuests, QUEST_COUNT, TEMPLATES } = await import('../src/data/quests.js');
+  const list = allQuests();
+  assert(list.length === QUEST_COUNT, `generated ${list.length} quests, wanted ${QUEST_COUNT}`);
+  const ids = new Set();
+  for (const q of list) {
+    assert(!ids.has(q.id), `duplicate quest id ${q.id}`);
+    ids.add(q.id);
+    assert(q.goal >= 1, `${q.id} has goal ${q.goal}`);
+    assert(Number.isInteger(q.goal), `${q.id} goal ${q.goal} is not a whole number`);
+    assert(q.reward > 0, `${q.id} pays nothing`);
+    assert(q.title && q.title.length > 5, `${q.id} has no readable title`);
+    assert(q.icon && q.blurb, `${q.id} is missing presentation`);
+    assert(q.kind === 'count' || q.kind === 'peak', `${q.id} has kind ${q.kind}`);
+  }
+  // Three consecutive quests must never be the same template, or the log shows
+  // three near-identical rows and reads as broken.
+  for (let i = 0; i + 2 < list.length; i++) {
+    const t = new Set([list[i].templateId, list[i + 1].templateId, list[i + 2].templateId]);
+    assert(t.size === 3, `quests ${i}..${i + 2} draw from only ${t.size} templates`);
+  }
+  assert(TEMPLATES.length >= 10, 'too few templates for 500 quests to feel varied');
+});
+
+check('quest rewards are a fixed rate on effort, with no outliers', async () => {
+  const { allQuests, DIAMONDS_PER_EFFORT } = await import('../src/data/quests.js');
+  for (const q of allQuests()) {
+    const rate = q.reward / q.effort;
+    // The band exists because the payout is rounded to something legible and
+    // floored for the smallest quests. Anything outside it is a template whose
+    // effort figure does not describe the work.
+    assert(rate > DIAMONDS_PER_EFFORT * 0.55 && rate < DIAMONDS_PER_EFFORT * 1.9,
+      `${q.id} (${q.title}) pays ${q.reward} for ${q.effort.toFixed(1)} effort — rate ${rate.toFixed(2)}`);
+  }
+});
+
+check('quests get harder as you work through them', async () => {
+  const { questAt, TEMPLATES } = await import('../src/data/quests.js');
+  // Compared within a template: across templates the numbers are not
+  // commensurable ("kill 40" against "deal 20000 damage" says nothing).
+  for (const t of TEMPLATES) {
+    const efforts = [];
+    for (let i = 0; i < 500; i++) {
+      const q = questAt(i);
+      if (q.templateId === t.id) efforts.push(q.effort);
+    }
+    assert(efforts.length > 10, `${t.id} appears only ${efforts.length} times`);
+    const first = efforts.slice(0, 5).reduce((a, b) => a + b, 0) / 5;
+    const last = efforts.slice(-5).reduce((a, b) => a + b, 0) / 5;
+    assert(last > first * 1.6, `${t.id} barely ramps: ${first.toFixed(0)} -> ${last.toFixed(0)}`);
+  }
+});
+
+check('the quest log tracks, pays and refills without ever repeating', async () => {
+  const { emptyQuestState, activeQuests, applyProgress, claimQuest } =
+    await import('../src/core/questlog.js');
+  const { questAt, ACTIVE_SLOTS, QUEST_COUNT } = await import('../src/data/quests.js');
+
+  const state = emptyQuestState();
+  const profile = { data: { souls: 0, lifetimeSouls: 0 } };
+  assert(activeQuests(state).length === ACTIVE_SLOTS, 'wrong number of active quests');
+
+  // A peak metric must not accumulate. This is the bug worth a test: "reach
+  // wave 20" being satisfiable by clearing wave 4 five times.
+  const deepIndex = [...Array(QUEST_COUNT).keys()].find((i) => questAt(i).kind === 'peak');
+  const deep = questAt(deepIndex);
+  const st2 = { slots: [{ index: deepIndex, progress: 0 }], next: 0, completed: 0, earned: 0 };
+  for (let i = 0; i < 20; i++) applyProgress(st2, {}, { [deep.metric]: 3 });
+  assert(st2.slots[0].progress === 3, `peak metric accumulated to ${st2.slots[0].progress}`);
+  applyProgress(st2, {}, { [deep.metric]: deep.goal });
+  assert(st2.slots[0].progress === deep.goal, 'a peak metric did not record a new best');
+
+  // Claiming pays exactly the quest's reward, and only when finished.
+  const q0 = activeQuests(state)[0];
+  assert(claimQuest(state, q0.index, profile) === 0, 'an unfinished quest paid out');
+  applyProgress(state, { [q0.metric]: q0.goal * 3 }, { [q0.metric]: q0.goal * 3 });
+  const paid = claimQuest(state, q0.index, profile);
+  assert(paid === q0.reward, `claim paid ${paid}, expected ${q0.reward}`);
+  assert(profile.data.souls === q0.reward, 'the diamonds never reached the profile');
+  assert(state.completed === 1, 'the completed counter did not move');
+
+  // Work all the way through: never a duplicate on the board, never a dead
+  // slot, and the log wraps rather than running dry after 500.
+  const seen = new Set();
+  for (let n = 0; n < QUEST_COUNT + 40; n++) {
+    const board = activeQuests(state);
+    assert(board.length === ACTIVE_SLOTS, `board shrank to ${board.length} at claim ${n}`);
+    assert(new Set(board.map((q) => q.index)).size === ACTIVE_SLOTS,
+      `the same quest appeared twice on the board at claim ${n}`);
+    const q = board[0];
+    seen.add(q.index);
+    applyProgress(state, { [q.metric]: q.goal }, { [q.metric]: q.goal });
+    assert(claimQuest(state, q.index, profile) === q.reward, `claim ${n} paid the wrong amount`);
+  }
+  assert(seen.size > QUEST_COUNT * 0.3, `only ${seen.size} distinct quests were ever offered`);
+});
+
+check('a quest state from an older or damaged save is repaired, not thrown', async () => {
+  const { normaliseQuestState, activeQuests } = await import('../src/core/questlog.js');
+  const { ACTIVE_SLOTS } = await import('../src/data/quests.js');
+  // A save from before quests existed, a truncated one, a duplicated board and
+  // outright garbage all have to come back playable.
+  for (const bad of [undefined, null, {}, { slots: [] }, { slots: 'nope' },
+    { slots: [{ index: 4, progress: 2 }] },
+    { slots: [{ index: 7, progress: 1 }, { index: 7, progress: 9 }] },
+    { slots: [{ index: -5, progress: -3 }], next: NaN }]) {
+    const st = normaliseQuestState(bad);
+    assert(st.slots.length === ACTIVE_SLOTS, `repair produced ${st.slots.length} slots`);
+    assert(new Set(st.slots.map((s) => s.index)).size === ACTIVE_SLOTS, 'repair left a duplicate');
+    for (const q of activeQuests(st)) {
+      assert(q.goal >= 1 && q.progress >= 0, 'repair produced an unplayable quest');
+    }
+  }
+});
+
+check('a finished run reports every metric a quest can measure', async () => {
+  const { Game } = await import('../src/game/game.js');
+  const { METRICS } = await import('../src/data/quests.js');
+  const { makeHarness } = await import('./harness.js');
+  const h = makeHarness();
+  const game = new Game(h.renderer, h.audio, h.profile);
+  game.startRun(CLASSES[0], { layout: 0 });
+  const report = game.questReport(3);
+  // Every metric the quest generator can pick must be something a run actually
+  // reports, or that quest can never be completed by playing.
+  for (const [name, def] of Object.entries(METRICS)) {
+    const bag = def.kind === 'peak' ? report.peaks : report.deltas;
+    assert(name in bag, `a finished run never reports '${name}', so its quests are impossible`);
+    assert(Number.isFinite(bag[name]), `run reported a non-number for '${name}'`);
+  }
+});
+
 // --- Potions ---------------------------------------------------------------
 
 check('potions are weighted, colour-coded and never worthless', async () => {

@@ -18,6 +18,7 @@ import { skillCost } from '../game/skills.js';
 import { storage } from '../core/save.js';
 import { DIFFICULTIES } from '../data/difficulty.js';
 import { skillIconElement, iconElement, schoolFor, SCHOOLS } from './icons.js';
+import { QUEST_COUNT } from '../data/quests.js';
 
 const el = (tag, cls, html) => {
   const n = document.createElement(tag);
@@ -82,6 +83,7 @@ export class Menus {
       classes: () => this.buildClassSelect(),
       loadout: () => this.buildLoadout(),
       talents: () => this.buildTalents(),
+      quests: () => this.buildQuests(),
       forge: () => this.buildForge(),
       armoury: () => this.buildArmoury(),
       settings: () => this.buildSettings(),
@@ -137,7 +139,10 @@ export class Menus {
   }
 
   soulsBadge() {
-    return el('div', 'souls-badge', `<span>💠</span> ${this.profile.souls.toLocaleString()} Souls`);
+    // Icon and number only. Spelling the currency out here pushed the back bar
+    // onto two lines on a 320px phone, which cost more than the word was worth
+    // — every price in the game already carries the same 💠.
+    return el('div', 'souls-badge', `<span>💠</span> ${this.profile.souls.toLocaleString()}`);
   }
 
   /**
@@ -183,11 +188,17 @@ export class Menus {
     const menu = el('div', 'main-menu grid');
     const best = this.profile.data.stats.bestWave;
     const rating = armorRating(this.profile.armor);
+    // A claimable reward sitting unnoticed behind a menu is a reward that
+    // never happened, so the count is on the button itself.
+    const quests = this.profile.activeQuests();
+    const ready = quests.filter((q) => q.done).length;
+    const questDone = this.profile.questState.completed;
     const items = [
       { label: 'PLAY', hint: best ? `Best: wave ${best}` : 'Start your first run', primary: true, go: () => this.show('classes') },
       { label: 'THE FORGE', hint: 'Permanent upgrades', go: () => this.show('forge') },
       { label: 'ARMOURY', hint: rating ? `Armour rating ${rating}` : 'Buy and upgrade gear', go: () => this.show('armoury') },
       { label: 'TALENTS', hint: 'Spend talent points', go: () => this.show('talents') },
+      { label: 'QUESTS', hint: ready ? `${ready} ready to claim` : `${questDone} of 500 done`, go: () => this.show('quests') },
       { label: 'RECORDS', hint: 'Career statistics', go: () => this.show('stats') },
       { label: 'SETTINGS', hint: 'Controls & display', go: () => this.show('settings') },
       { label: 'HOW TO PLAY', hint: 'Controls reference', go: () => this.show('howto') },
@@ -396,6 +407,90 @@ export class Menus {
   // Talents
   // -------------------------------------------------------------------------
 
+  // -------------------------------------------------------------------------
+  // Quests
+  // -------------------------------------------------------------------------
+
+  /**
+   * Three quests, each a row with its own progress bar. Three rather than a
+   * list of five hundred because a wall of quests is not content, it is a
+   * scrollbar — and this game has none anywhere.
+   */
+  buildQuests() {
+    const wrap = el('div', 'screen');
+    wrap.appendChild(this.backBar('title'));
+
+    const st = this.profile.questState;
+    const quests = this.profile.activeQuests();
+    const ready = quests.filter((q) => q.done).length;
+    const p = this.panel('Quests',
+      `${st.completed} of ${QUEST_COUNT} complete · ${st.earned.toLocaleString()} diamonds earned`);
+
+    const list = el('div', 'quest-list');
+    for (const q of quests) {
+      const row = el('div', 'quest-row' + (q.done ? ' done' : ''));
+      row.appendChild(el('div', 'quest-icon', q.icon));
+
+      const body = el('div', 'quest-body');
+      const head = el('div', 'quest-head');
+      head.appendChild(el('b', null, q.title));
+      head.appendChild(el('span', 'quest-reward', `💠 ${q.reward.toLocaleString()}`));
+      body.appendChild(head);
+      body.appendChild(el('p', 'quest-blurb', q.blurb));
+
+      const bar = el('div', 'quest-bar');
+      const fill = el('i');
+      fill.style.width = `${Math.min(100, q.progress / q.goal * 100).toFixed(1)}%`;
+      bar.appendChild(fill);
+      body.appendChild(bar);
+      // Numbers under the bar, not inside it: inside, they are unreadable at
+      // the two ends of the fill, which is exactly where they matter.
+      body.appendChild(el('span', 'quest-count',
+        `${Math.floor(q.progress).toLocaleString()} / ${q.goal.toLocaleString()} ${q.unit}`));
+      row.appendChild(body);
+
+      const actions = el('div', 'quest-actions');
+      if (q.done) {
+        const claim = el('button', 'buy-btn', 'CLAIM');
+        actions.appendChild(this.click(claim, () => {
+          if (this.profile.claimQuest(q.index)) {
+            this.ctx.audio.play('questdone');
+            this.refresh();
+          }
+        }));
+      } else {
+        // Without a way out, a log deadlocks in practice: "reach wave 62"
+        // sitting in a slot while your best is 20 blocks a third of the board
+        // for as long as it takes to get there.
+        const cost = this.profile.rerollCost(q);
+        const skip = el('button', 'ghost-btn small', `Skip · 💠${cost.toLocaleString()}`);
+        skip.disabled = this.profile.souls < cost;
+        actions.appendChild(this.click(skip, () => {
+          if (this.profile.rerollQuest(q.index)) {
+            this.ctx.audio.play('buy');
+            this.refresh();
+          } else {
+            this.ctx.audio.play('deny');
+          }
+        }));
+      }
+      row.appendChild(actions);
+      list.appendChild(row);
+    }
+    p.appendChild(list);
+
+    p.appendChild(el('p', 'footnote', ready
+      ? `${ready} quest${ready > 1 ? 's' : ''} ready to claim.`
+      : 'Progress is banked when a run ends. Finish the run to bank it.'));
+
+    const actions = el('div', 'actions');
+    actions.appendChild(this.click(el('button', 'big-btn', '▶ Play'),
+      () => this.show('classes')));
+    p.appendChild(actions);
+    wrap.appendChild(p);
+    return wrap;
+  }
+
   buildTalents() {
     const wrap = el('div', 'screen');
     const picker = el('div', 'class-picker');
@@ -405,7 +500,11 @@ export class Menus {
       this.click(b, () => { this.talentClass = c.id; this.talentBranch = 0; this.show('talents'); });
       picker.appendChild(b);
     }
-    wrap.appendChild(this.backBar('title', picker));
+    // The picker gets its own row rather than riding inside the back bar.
+    // With nine classes it wraps, and a wrapped pill lands underneath the
+    // fixed corner control — which looks placed but cannot be tapped.
+    wrap.appendChild(this.backBar('title'));
+    wrap.appendChild(picker);
 
     const cls = CLASSES.find((c) => c.id === this.talentClass);
     const cd = this.profile.classData(cls.id);
@@ -515,7 +614,7 @@ export class Menus {
     const wrap = el('div', 'screen');
     wrap.appendChild(this.backBar('title'));
     const p = this.panel('The Forge',
-      'Permanent upgrades bought with Souls. They apply to every class, forever.');
+      'Permanent upgrades bought with diamonds. They apply to every class, forever.');
 
     const grid = el('div', 'forge-grid');
     p.appendChild(this.paged('forge', PERMANENT, byHeight(3, 4, 10), grid, (def) => {
@@ -641,7 +740,7 @@ export class Menus {
       ['Best wave', s.bestWave],
       ['Total runs', s.runs],
       ['Total kills', s.kills.toLocaleString()],
-      ['Souls earned', this.profile.data.lifetimeSouls.toLocaleString()],
+      ['Diamonds earned', this.profile.data.lifetimeSouls.toLocaleString()],
       ['Time played', fmtTime(s.timePlayed)],
     ];
     for (const [k, v] of rows) {
@@ -651,8 +750,10 @@ export class Menus {
     }
     p.appendChild(grid);
 
+    // Paged rather than a single column: nine classes is more rows than a
+    // 568px-tall phone has room for, and this screen has no scrollbar.
     const table = el('div', 'class-stats');
-    for (const c of CLASSES) {
+    this.paged('stats:classes', CLASSES, byHeight(4, 6, 9), table, (c) => {
       const cd = this.profile.classData(c.id);
       const row = el('div', 'cs-row');
       row.innerHTML = `
@@ -661,8 +762,8 @@ export class Menus {
         <span>${cd.kills} kills</span>
         <span>mastery ${this.profile.masteryRank(c.id)}</span>
         <span>${this.profile.availableTalentPoints(c.id)} pts</span>`;
-      table.appendChild(row);
-    }
+      return row;
+    });
     p.appendChild(table);
 
     const danger = el('div', 'actions');
@@ -788,7 +889,7 @@ export class Menus {
       `<h3>The loop</h3><ul>
         <li>Waves never stop. Every 5th wave is a boss.</li>
         <li>Clear a wave, pick <b>one of three upgrades</b> for this run.</li>
-        <li>Dying banks <b>Souls</b> — spend them in the <b>Forge</b> and <b>Armoury</b>.</li>
+        <li>Dying banks <b>Diamonds</b> — spend them in the <b>Forge</b>, <b>Armoury</b> and on quest skips.</li>
         <li>Deeper waves grant <b>talent points</b> and <b>mastery</b> for that class.</li>
         <li>Each class has <b>eight skills</b>; four are equipped at a time.</li>
       </ul>`,
@@ -888,13 +989,13 @@ export class Menus {
 
   buildPause() {
     const wrap = el('div', 'screen overlay');
-    const p = this.panel('Paused', `Wave ${this.ctx.game.wave} · ${Math.round(this.ctx.game.soulsEarned)} souls this run`);
+    const p = this.panel('Paused', `Wave ${this.ctx.game.wave} · ${Math.round(this.ctx.game.soulsEarned)} diamonds this run`);
     const menu = el('div', 'main-menu');
     menu.appendChild(this.click(el('button', 'menu-btn primary', '<span class="menu-label">RESUME</span>'),
       () => this.ctx.resumeRun()));
     menu.appendChild(this.click(el('button', 'menu-btn', '<span class="menu-label">SETTINGS</span>'),
       () => this.show('settings')));
-    menu.appendChild(this.click(el('button', 'menu-btn', '<span class="menu-label">ABANDON RUN</span><span class="menu-hint">Bank your souls and return to the menu</span>'),
+    menu.appendChild(this.click(el('button', 'menu-btn', '<span class="menu-label">ABANDON RUN</span><span class="menu-hint">Bank your diamonds and return to the menu</span>'),
       () => this.ctx.quitRun()));
     p.appendChild(menu);
 
@@ -968,7 +1069,7 @@ export class Menus {
     const grid = el('div', 'stat-grid');
     const cd = this.profile.classData(g.cls.id);
     const rows = [
-      ['Souls', '💠 ' + res.souls],
+      ['Diamonds', '💠 ' + res.souls],
       ['Best streak', g.comboBest || 0],
       ['Class best', 'wave ' + cd.bestWave],
       ['Mastery', this.profile.masteryRank(g.cls.id)],

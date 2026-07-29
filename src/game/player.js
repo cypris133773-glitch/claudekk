@@ -296,7 +296,10 @@ export class Player extends Entity {
     for (let i = 0; i < this.skills.length; i++) {
       if (input.skills[i]) {
         input.skills[i] = false;
-        castSkill(game, this, i);
+        // Counted at the call site rather than inside castSkill, which also
+        // runs for pets and for the harness — a quest for "cast 600 skills"
+        // must mean the player's own casts.
+        if (castSkill(game, this, i) && game.tally) game.tally.skillsCast++;
       }
     }
 

@@ -1458,3 +1458,75 @@ body.show-popout-btn #popout-btn { display: block; }
   .affix-text b { font-size: 11.5px; }
   .affix-text em { font-size: 10.5px; }
 }
+
+/* --------------------------------------------------------------------- */
+/* Quests                                                                 */
+/* --------------------------------------------------------------------- */
+
+.quest-list { display: flex; flex-direction: column; gap: 9px; margin-top: 4px; }
+.quest-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(42, 49, 68, 0.85), rgba(19, 23, 33, 0.85));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    0 2px 0 rgba(0, 0, 0, 0.45);
+}
+/* A finished quest has to be unmistakable from across the room — this is the
+   one row on the screen that wants tapping. */
+.quest-row.done {
+  border-color: var(--gold);
+  background: linear-gradient(180deg, rgba(255, 210, 74, 0.16), rgba(60, 45, 12, 0.75));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 210, 74, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 3px 0 rgba(120, 88, 12, 0.6),
+    0 10px 22px rgba(255, 190, 60, 0.18);
+}
+.quest-icon { font-size: 22px; line-height: 1; flex: 0 0 26px; text-align: center; }
+.quest-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.quest-head { display: flex; align-items: baseline; gap: 8px; }
+.quest-head b { font-size: 13.5px; }
+.quest-reward { margin-left: auto; font-size: 12px; font-weight: 800; color: #d9b3ff; white-space: nowrap; }
+.quest-blurb { margin: 0; font-size: 11.5px; color: var(--dim); }
+.quest-bar {
+  height: 7px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+.quest-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--accent), #2f6ae0);
+}
+.quest-row.done .quest-bar i { background: linear-gradient(90deg, #ffe58a, var(--gold)); }
+.quest-count { font-size: 10.5px; color: rgba(255, 255, 255, 0.45); }
+.quest-actions { flex: 0 0 auto; display: flex; align-items: center; }
+.ghost-btn.small { padding: 8px 11px; font-size: 12px; white-space: nowrap; }
+
+@media (max-height: 520px) {
+  .quest-row { padding: 7px 9px; gap: 8px; }
+  .quest-blurb { display: none; }
+  .quest-icon { font-size: 18px; flex: 0 0 20px; }
+}
+
+/* Nine classes and nine main-menu buttons do not fit a 320x568 phone at full
+   size. Everything here is proportion, not information: the same rows and the
+   same buttons, tightened, rather than a screen scaled down until the labels
+   stop being readable. */
+@media (max-height: 600px) {
+  .main-menu.grid { gap: 6px; }
+  .menu-btn { padding: 7px 11px; border-radius: 10px; }
+  .menu-label { font-size: 13.5px; letter-spacing: 1px; }
+  .menu-hint { font-size: 10px; }
+  .logo { margin-bottom: 2px; }
+  .class-picker .pill { padding: 5px 9px; font-size: 11.5px; }
+  .branch-tabs .pill { padding: 5px 9px; font-size: 11.5px; }
+}

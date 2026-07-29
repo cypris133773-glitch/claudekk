@@ -5,6 +5,10 @@ import { CLASSES, defaultLoadout, resolveLoadout } from '../data/classes.js';
 import {
   talentPointsForBestWave, masteryRank, masteryProgress, masteryFromRun,
 } from '../data/permanent.js';
+import {
+  emptyQuestState, normaliseQuestState, applyProgress, activeQuests,
+  claimQuest, rerollQuest, rerollCost,
+} from './questlog.js';
 
 const KEY = 'craftarena.save.v1';
 // The game shipped as BLOCKFRAY, and anyone who played it has their whole
@@ -54,6 +58,7 @@ function emptyProfile() {
     version: 1,
     souls: 0,
     lifetimeSouls: 0,
+    quests: emptyQuestState(),
     permanent: {},
     armor: {},
     classes,
@@ -107,6 +112,10 @@ export class Profile {
         classes: Object.fromEntries(
           Object.entries(base.classes).map(([id, v]) => [id, { ...v, ...((parsed.classes || {})[id] || {}) }])
         ),
+        // Repaired rather than merged: a save from before quests existed has
+        // no state at all, and one from a build with a different slot count
+        // has the wrong shape. Both have to end up playable.
+        quests: normaliseQuestState(parsed.quests),
       };
       // Write it straight back under the new key, so the migration happens
       // once rather than on every boot for the rest of the account's life.
@@ -180,7 +189,40 @@ export class Profile {
   }
 
   /** Record the outcome of a run and bank the souls it earned. */
-  finishRun(classId, { wave, kills, souls, duration }) {
+  // --- Quests --------------------------------------------------------------
+
+  get questState() {
+    if (!this.data.quests) this.data.quests = emptyQuestState();
+    return this.data.quests;
+  }
+
+  activeQuests() { return activeQuests(this.questState); }
+
+  /**
+   * Fold a finished run's numbers into the quest log. Called once, from
+   * finishRun, rather than per kill: a quest that updated live would need the
+   * log saved on every hit, and a run that ends in a crash would bank progress
+   * for a run the player never actually completed.
+   */
+  applyQuestProgress(deltas, peaks) {
+    return applyProgress(this.questState, deltas, peaks);
+  }
+
+  claimQuest(index) {
+    const paid = claimQuest(this.questState, index, this);
+    if (paid) this.save();
+    return paid;
+  }
+
+  rerollQuest(index) {
+    const ok = rerollQuest(this.questState, index, this);
+    if (ok) this.save();
+    return ok;
+  }
+
+  rerollCost(q) { return rerollCost(q); }
+
+  finishRun(classId, { wave, kills, souls, duration, quests }) {
     const cd = this.data.classes[classId];
     cd.runs++;
     cd.kills += kills;
@@ -194,6 +236,12 @@ export class Profile {
     this.data.stats.timePlayed += duration;
     this.data.stats.deaths++;
     this.data.lastClass = classId;
+    // Quest progress is banked here so it lands in the same write as the run
+    // it came from — two separate saves means a crash between them can pay a
+    // quest for a run that was never recorded, or the reverse.
+    this.lastQuestsFinished = quests
+      ? applyProgress(this.questState, quests.deltas, quests.peaks)
+      : [];
     this.save();
   }
 }
