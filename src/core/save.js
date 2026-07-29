@@ -6,7 +6,13 @@ import {
   talentPointsForBestWave, masteryRank, masteryProgress, masteryFromRun,
 } from '../data/permanent.js';
 
-const KEY = 'blockfray.save.v1';
+const KEY = 'craftarena.save.v1';
+// The game shipped as BLOCKFRAY, and anyone who played it has their whole
+// account under the old key. Renaming without reading the old one first would
+// have looked, from the player's side, exactly like the update deleted their
+// progress. Read once, write under the new key, and leave the old entry alone
+// so a rollback to an older build still finds it.
+const LEGACY_KEYS = ['blockfray.save.v1'];
 
 /**
  * localStorage that cannot throw. Merely *reading* the property raises a
@@ -20,7 +26,7 @@ export const storage = {
     try {
       const s = window.localStorage;
       if (!s) return false;
-      const probe = '__blockfray_probe__';
+      const probe = '__craftarena_probe__';
       s.setItem(probe, '1');
       s.removeItem(probe);
       return true;
@@ -82,7 +88,14 @@ export class Profile {
 
   load() {
     try {
-      const raw = storage.get(KEY);
+      let raw = storage.get(KEY);
+      let migrated = false;
+      if (!raw) {
+        for (const legacy of LEGACY_KEYS) {
+          raw = storage.get(legacy);
+          if (raw) { migrated = true; break; }
+        }
+      }
       if (!raw) return;
       const parsed = JSON.parse(raw);
       // Merge so new fields added in updates get sane defaults.
@@ -95,6 +108,9 @@ export class Profile {
           Object.entries(base.classes).map(([id, v]) => [id, { ...v, ...((parsed.classes || {})[id] || {}) }])
         ),
       };
+      // Write it straight back under the new key, so the migration happens
+      // once rather than on every boot for the rest of the account's life.
+      if (migrated) this.save();
     } catch (err) {
       console.warn('Save data unreadable, starting fresh.', err);
       this.data = emptyProfile();

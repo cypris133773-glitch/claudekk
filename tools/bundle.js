@@ -1,6 +1,6 @@
 // Builds the whole game into one self-contained HTML file.
 //
-//   node tools/bundle.js [outfile]        # default: dist/blockfray.html
+//   node tools/bundle.js [outfile]        # default: dist/craftarena.html
 //
 // Useful for anywhere a multi-file ES module tree is awkward: itch.io uploads,
 // a single-file drop into a desktop wrapper, sharing a build over chat, or any
@@ -21,7 +21,7 @@ const ENTRY = 'src/main.js';
 // that supply their own <html>/<head>/<body> wrapper.
 const FRAGMENT = process.argv.includes('--fragment');
 const args = process.argv.slice(2).filter((a) => !a.startsWith('--'));
-const OUT = args[0] || (FRAGMENT ? 'dist/blockfray-fragment.html' : 'dist/blockfray.html');
+const OUT = args[0] || (FRAGMENT ? 'dist/craftarena-fragment.html' : 'dist/craftarena.html');
 
 const modules = new Map();
 

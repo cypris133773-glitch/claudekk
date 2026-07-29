@@ -29,7 +29,7 @@ import { clamp } from './core/math.js';
 })();
 
 export const BUILD = '2026-07-29 16:22 UTC';
-console.info('BLOCKFRAY build', BUILD);
+console.info('CRAFT ARENA build', BUILD);
 
 const glCanvas = document.getElementById('view');
 const hudCanvas = document.getElementById('hud');
@@ -47,16 +47,16 @@ function fatal(message, detail) {
 // Anything unhandled becomes a visible message. A silent black screen is the
 // worst possible failure mode — it gives the player nothing to report.
 window.addEventListener('error', (e) => {
-  window.__blockfrayError = String((e.error && e.error.message) || e.message || e);
+  window.__craftarenaError = String((e.error && e.error.message) || e.message || e);
   console.error(e.error || e.message);
   // A throw during module evaluation leaves the page blank with no menu, which
   // is indistinguishable from a crash. Surface it instead.
-  if (!window.BLOCKFRAY) {
-    fatal('The game failed to start.', window.__blockfrayError);
+  if (!window.CRAFTARENA) {
+    fatal('The game failed to start.', window.__craftarenaError);
   }
 });
 window.addEventListener('unhandledrejection', (e) => {
-  window.__blockfrayError = 'unhandled promise: ' + String(e.reason);
+  window.__craftarenaError = 'unhandled promise: ' + String(e.reason);
 });
 
 let renderer;
@@ -309,11 +309,11 @@ window.addEventListener('gamepaddisconnected', () => {
 
 // Landscape hint: informational only, dismissible, never blocks input.
 const rotateHint = document.getElementById('rotate-hint');
-if (isTouchDevice() && !storage.get('blockfray.rotateHintSeen')) {
+if (isTouchDevice() && !storage.get('craftarena.rotateHintSeen')) {
   rotateHint.classList.remove('hidden');
   document.getElementById('rotate-dismiss').addEventListener('click', () => {
     rotateHint.classList.add('hidden');
-    storage.set('blockfray.rotateHintSeen', '1');
+    storage.set('craftarena.rotateHintSeen', '1');
   });
   setTimeout(() => rotateHint.classList.add('hidden'), 6000);
 }
@@ -441,4 +441,4 @@ document.addEventListener('gesturestart', (e) => e.preventDefault());
 // Expose a tiny handle for debugging and for a future Steam/Electron wrapper.
 // Exposed for the diagnostics screen and the headless test harnesses; a
 // shipped build is a single file, so there is nothing else to inspect with.
-window.BLOCKFRAY = { game, profile, renderer, audio, menus, input, CLASSES, AFFIXES };
+window.CRAFTARENA = { game, profile, renderer, audio, menus, input, CLASSES, AFFIXES };

@@ -1,4 +1,4 @@
-# Shipping BLOCKFRAY on Steam
+# Shipping CRAFT ARENA on Steam
 
 The game is a static web build, so getting it onto Steam means wrapping it in a
 desktop shell. Nothing in the codebase assumes a browser beyond standard web
@@ -25,10 +25,10 @@ npm create tauri-app@latest
 
 ```json
 {
-  "productName": "BLOCKFRAY",
+  "productName": "CRAFT ARENA",
   "app": {
     "windows": [{
-      "title": "BLOCKFRAY",
+      "title": "CRAFT ARENA",
       "width": 1280, "height": 720,
       "minWidth": 960, "minHeight": 540,
       "fullscreen": false, "resizable": true

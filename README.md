@@ -1,4 +1,4 @@
-# BLOCKFRAY — Endless Voxel Arena
+# CRAFT ARENA — Endless Voxel Arena
 
 A first-person, blocky arena brawler that runs in the browser on **phones and
 PC**. Pick one of six classes, survive an endless ladder of waves, and spend
@@ -24,13 +24,13 @@ ES modules require `http://`, so use `npm start` locally.
 | **GitHub Pages** | Enable once under *Settings → Pages → Source → GitHub Actions*. Every push to `main` then deploys via `.github/workflows/pages.yml`. The workflow cannot enable Pages for you — creating a Pages site needs admin scope the default workflow token does not have. |
 | **Vercel** | Import the repository. `vercel.json` sets `outputDirectory: "."` and `framework: null`, because the game is served straight from the repo root with no build step. Without that Vercel looks for a `public/` directory, does not find one, and fails the build. Note that `vercel.json` is schema-validated on every deploy and rejects any key it does not know — including a `"//"` comment, which is legal JSON and a build failure here. `npm test` guards both. |
 | **Netlify / Cloudflare Pages / S3** | Publish directory `.`, no build command. |
-| **Single file** | `npm run build` writes `dist/blockfray.html` — the whole game in one file with zero external requests. Drop it anywhere, including itch.io. |
+| **Single file** | `npm run build` writes `dist/craftarena.html` — the whole game in one file with zero external requests. Drop it anywhere, including itch.io. |
 
 ### Single-file build
 
 ```bash
-npm run build              # dist/blockfray.html          (standalone document)
-npm run build:fragment     # dist/blockfray-fragment.html (no <html>/<body>)
+npm run build              # dist/craftarena.html          (standalone document)
+npm run build:fragment     # dist/craftarena-fragment.html (no <html>/<body>)
 ```
 
 `tools/bundle.js` inlines the CSS and flattens the module tree behind a small

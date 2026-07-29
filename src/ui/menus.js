@@ -175,7 +175,7 @@ export class Menus {
   buildTitle() {
     const wrap = el('div', 'screen title-screen');
     const logo = el('div', 'logo');
-    logo.appendChild(el('h1', 'game-title', 'BLOCKFRAY'));
+    logo.appendChild(el('h1', 'game-title', 'CRAFT ARENA'));
     logo.appendChild(el('p', 'game-sub', 'Endless Voxel Arena'));
     wrap.appendChild(logo);
     wrap.appendChild(this.soulsBadge());
@@ -853,7 +853,7 @@ export class Menus {
         ['Game running', String(this.ctx.game.running)],
         ['Build', this.ctx.build || 'dev'],
         ['Storage', storage.available() ? 'available' : 'BLOCKED (progress will not save)'],
-        ['Last error', window.__blockfrayError || 'none'],
+        ['Last error', window.__craftarenaError || 'none'],
       ];
       const perPage = byHeight(5, 8, 16);
       const pageCount = Math.max(1, Math.ceil(rows.length / perPage));

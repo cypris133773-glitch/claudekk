@@ -216,7 +216,7 @@ const median = (xs) => {
   return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
 };
 
-console.log(`\nBLOCKFRAY balance simulation — ${runs} run(s) per class`
+console.log(`\nCRAFT ARENA balance simulation — ${runs} run(s) per class`
   + (forge ? `, Forge level ${forge}` : ', no permanent upgrades')
   + (armor ? `, armour tier ${armor}` : '')
   + `, difficulty ${DIFFICULTY}`

@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const FRAGMENT = path.join(ROOT, 'dist/blockfray-fragment.html');
+const FRAGMENT = path.join(ROOT, 'dist/craftarena-fragment.html');
 
 const require_ = createRequire(import.meta.url);
 async function loadChromium() {
@@ -88,7 +88,7 @@ const SCREENS = [
  * button makes.
  */
 function primeRun() {
-  const B = window.BLOCKFRAY;
+  const B = window.CRAFTARENA;
   const cls = B.CLASSES.find((c) => c.id === B.profile.data.lastClass) || B.CLASSES[0];
   if (!B.game.running) B.game.startRun(cls);
   B.game.wave = 7;
@@ -121,7 +121,7 @@ const VIEWPORTS = [
  * scroll to and every button's centre lands inside the viewport.
  */
 function probeScreen(name) {
-  const B = window.BLOCKFRAY;
+  const B = window.CRAFTARENA;
   B.menus.show(name);
   const ui = document.getElementById('ui');
   const vw = window.innerWidth, vh = window.innerHeight;
@@ -205,7 +205,7 @@ let failures = 0;
 
 async function run() {
   if (!fs.existsSync(FRAGMENT)) {
-    console.error('Missing dist/blockfray-fragment.html — run: npm run build:fragment');
+    console.error('Missing dist/craftarena-fragment.html — run: npm run build:fragment');
     process.exit(1);
   }
   const chromium = await loadChromium();
@@ -222,7 +222,7 @@ async function run() {
     const page = await context.newPage();
     await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'load' });
     const frame = page.frames().find((f) => f !== page.mainFrame());
-    await frame.waitForFunction(() => !!window.BLOCKFRAY, null, { timeout: 20000 });
+    await frame.waitForFunction(() => !!window.CRAFTARENA, null, { timeout: 20000 });
     await frame.evaluate(primeRun);
 
     console.log(`\n=== ${vp.name}  ${vp.width}x${vp.height} ===`);

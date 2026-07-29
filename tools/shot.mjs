@@ -14,7 +14,7 @@ import { createRequire } from 'node:module';
 
 const require_ = createRequire(import.meta.url);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const FRAGMENT = path.join(ROOT, 'dist', 'blockfray-fragment.html');
+const FRAGMENT = path.join(ROOT, 'dist', 'craftarena-fragment.html');
 const OUT = process.env.SHOT_DIR || path.join(ROOT, '.shots');
 
 async function loadChromium() {
@@ -64,7 +64,7 @@ function startServer() {
 }
 
 function prime() {
-  const B = window.BLOCKFRAY;
+  const B = window.CRAFTARENA;
   const cls = B.CLASSES[0];
   if (!B.game.running) B.game.startRun(cls);
   B.game.wave = 7;
@@ -93,7 +93,7 @@ const context = await browser.newContext({
 const page = await context.newPage();
 await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'load' });
 const frame = page.frames().find((f) => f !== page.mainFrame());
-await frame.waitForFunction(() => !!window.BLOCKFRAY, null, { timeout: 20000 });
+await frame.waitForFunction(() => !!window.CRAFTARENA, null, { timeout: 20000 });
 if (process.env.SHOT_TAB !== undefined) {
   await frame.evaluate((t) => { window.__shotTab = t; }, Number(process.env.SHOT_TAB));
 }
@@ -101,7 +101,7 @@ await frame.evaluate(prime);
 
 fs.mkdirSync(OUT, { recursive: true });
 for (const name of screens) {
-  await frame.evaluate((n) => window.BLOCKFRAY.menus.show(n), name);
+  await frame.evaluate((n) => window.CRAFTARENA.menus.show(n), name);
   // Let the entry fade settle so the shot is of the resting state.
   await page.waitForTimeout(450);
   const file = path.join(OUT, `${name}-${width}x${height}.png`);

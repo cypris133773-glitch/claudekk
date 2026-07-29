@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * End-to-end playability test for BLOCKFRAY on a phone, inside a fully
+ * End-to-end playability test for CRAFTARENA on a phone, inside a fully
  * sandboxed iframe.
  *
  *   node tools/playability-test.mjs [--json] [--only=portrait|landscape]
@@ -27,7 +27,7 @@
  *      else: opaque origin, no localStorage, no fullscreen, no pointer lock.
  *      That is the hostile host the game actually ships into.
  *
- * Reading window.BLOCKFRAY.input.buttonRects to find where the on-screen
+ * Reading window.CRAFTARENA.input.buttonRects to find where the on-screen
  * buttons are drawn is test targeting, not input bypass: it is the same
  * information a player gets from looking at the screen.
  */
@@ -39,7 +39,7 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const FRAGMENT = path.join(ROOT, 'dist/blockfray-fragment.html');
+const FRAGMENT = path.join(ROOT, 'dist/craftarena-fragment.html');
 
 // --- options ---------------------------------------------------------------
 
@@ -128,7 +128,7 @@ function startServer() {
  * Read-only: it never writes to the game.
  */
 function installProbe() {
-  const B = window.BLOCKFRAY;
+  const B = window.CRAFTARENA;
   const blank = () => ({
     frames: 0, t0: performance.now(),
     maxSpeed: 0, maxVy: 0, airFrames: 0, groundFrames: 0,
@@ -236,9 +236,9 @@ function installProbe() {
       const hud = document.getElementById('hud');
       const boot = document.getElementById('boot');
       return {
-        booted: !!window.BLOCKFRAY,
-        build: (window.BLOCKFRAY && window.BLOCKFRAY.BUILD) || null,
-        error: window.__blockfrayError || null,
+        booted: !!window.CRAFTARENA,
+        build: (window.CRAFTARENA && window.CRAFTARENA.BUILD) || null,
+        error: window.__craftarenaError || null,
         bootVisible: boot ? !boot.classList.contains('hidden') : false,
         bootText: boot ? boot.textContent.trim().slice(0, 200) : null,
         inIframe: window.self !== window.top,
@@ -252,8 +252,8 @@ function installProbe() {
         hudRect: hud ? (({ x, y, width, height }) => ({ x, y, width, height }))(hud.getBoundingClientRect()) : null,
         fullscreenEnabled: document.fullscreenEnabled,
         storageOk: (() => { try { window.localStorage.setItem('__p', '1'); window.localStorage.removeItem('__p'); return true; } catch { return false; } })(),
-        pointerLockBlocked: !!(window.BLOCKFRAY && window.BLOCKFRAY.input.pointerLockBlocked),
-        settings: window.BLOCKFRAY ? { ...window.BLOCKFRAY.profile.settings } : null,
+        pointerLockBlocked: !!(window.CRAFTARENA && window.CRAFTARENA.input.pointerLockBlocked),
+        settings: window.CRAFTARENA ? { ...window.CRAFTARENA.profile.settings } : null,
       };
     },
   };
@@ -393,7 +393,7 @@ async function runViewport(browser, port, vp) {
 
     let booted = true;
     try {
-      await frame.waitForFunction(() => !!window.BLOCKFRAY, null, { timeout: 20000 });
+      await frame.waitForFunction(() => !!window.CRAFTARENA, null, { timeout: 20000 });
     } catch { booted = false; }
 
     await frame.evaluate(installProbe).catch(() => {});
@@ -402,9 +402,9 @@ async function runViewport(browser, port, vp) {
 
     rep.add('boot in sandboxed frame', booted,
       booted
-        ? `BLOCKFRAY live; sandbox opaque origin (localStorage usable: ${env.storageOk}), `
+        ? `CRAFTARENA live; sandbox opaque origin (localStorage usable: ${env.storageOk}), `
           + `inIframe=${env.inIframe}, canvas ${env.viewCss?.join('x')} css / ${env.viewBuf?.join('x')} buf`
-        : 'window.BLOCKFRAY never appeared within 20s',
+        : 'window.CRAFTARENA never appeared within 20s',
       env || {});
     if (!booted) { await ctx.close(); return rep; }
 
@@ -436,8 +436,8 @@ async function runViewport(browser, port, vp) {
     let inRun = true;
     try {
       await frame.waitForFunction(
-        () => window.BLOCKFRAY.game.running && window.BLOCKFRAY.input.enabled
-          && window.BLOCKFRAY.menus.screen === null,
+        () => window.CRAFTARENA.game.running && window.CRAFTARENA.input.enabled
+          && window.CRAFTARENA.menus.screen === null,
         null, { timeout: 20000 });
     } catch { inRun = false; }
     await shot('ingame');
@@ -636,7 +636,7 @@ async function runViewport(browser, port, vp) {
         await touch.tap(b.cx, b.cy, 110, 30);
         await sleep(450);
         const after = await frame.evaluate(() => {
-          const B = window.BLOCKFRAY;
+          const B = window.CRAFTARENA;
           return { screen: B.menus.screen, paused: B.game.paused, running: B.game.running };
         });
         const opened = after.screen === 'pause' && after.paused;

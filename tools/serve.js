@@ -44,5 +44,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`BLOCKFRAY dev server → http://localhost:${PORT}`);
+  console.log(`CRAFT ARENA dev server → http://localhost:${PORT}`);
 });

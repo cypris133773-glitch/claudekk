@@ -16,14 +16,14 @@ const browser = await chromium.launch({
 
 const startRun = async (page) => {
   await page.evaluate(async () => {
-    const B = window.BLOCKFRAY;
+    const B = window.CRAFTARENA;
     const m = await import('./src/data/classes.js').catch(() => import('/src/data/classes.js'));
     B.menus.show(null);
     B.game.startRun(m.CLASS_BY_ID.warrior);
     B.__input = B.input || null;
   });
   // Enable input the way the real start path does.
-  await page.evaluate(() => { window.BLOCKFRAY.input.setEnabled(true); });
+  await page.evaluate(() => { window.CRAFTARENA.input.setEnabled(true); });
   await page.waitForTimeout(200);
 };
 
@@ -39,7 +39,7 @@ const startRun = async (page) => {
   await startRun(page);
 
   const before = await page.evaluate(() => {
-    const p = window.BLOCKFRAY.game.player;
+    const p = window.CRAFTARENA.game.player;
     return { x: p.x, z: p.z, yaw: p.yaw };
   });
 
@@ -58,7 +58,7 @@ const startRun = async (page) => {
     await page.waitForTimeout(16);
   }
   const stick = await page.evaluate(() => {
-    const B = window.BLOCKFRAY;
+    const B = window.CRAFTARENA;
     const j = B.input.joystick;
     return {
       joystick: !!j,
@@ -76,7 +76,7 @@ const startRun = async (page) => {
     await page.waitForTimeout(16);
   }
   await touchSeq('touchEnd', 730, 200);
-  const yawAfter = await page.evaluate(() => window.BLOCKFRAY.game.player.yaw);
+  const yawAfter = await page.evaluate(() => window.CRAFTARENA.game.player.yaw);
   const yawDelta = Math.abs(yawAfter - before.yaw);
 
   console.log('TOUCH stick:', JSON.stringify(stick), 'yawDelta:', yawDelta.toFixed(3));
@@ -101,7 +101,7 @@ const startRun = async (page) => {
   await page.waitForTimeout(600);
   await startRun(page);
 
-  const mouseYawBefore = await page.evaluate(() => window.BLOCKFRAY.game.player.yaw);
+  const mouseYawBefore = await page.evaluate(() => window.CRAFTARENA.game.player.yaw);
   await page.mouse.move(500, 320);
   await page.mouse.down();
   for (let i = 0; i < 12; i++) {
@@ -109,7 +109,7 @@ const startRun = async (page) => {
     await page.waitForTimeout(16);
   }
   const res = await page.evaluate(() => {
-    const B = window.BLOCKFRAY;
+    const B = window.CRAFTARENA;
     return {
       attack: B.input.mouseDown === true,
       dragLook: B.input.dragLook === true,
