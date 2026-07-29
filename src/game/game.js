@@ -305,7 +305,13 @@ export class Game {
   }
 
   /** The enemy the player is looking at, for targeted skills. */
-  aimTarget(player, maxDist) {
+  /**
+   * `minDot` is how far off-centre a target may be. Skills use a wide cone so
+   * a chain or a dash finds something; aim assist uses a tight one, because an
+   * assist that acquires targets you were not pointing at does not help you
+   * aim — it takes the aim away.
+   */
+  aimTarget(player, maxDist, minDot = 0.55) {
     const dir = forwardVec(player.yaw, player.pitch);
     let best = null, bestScore = -1;
     for (const m of this.mobs) {
@@ -314,7 +320,7 @@ export class Game {
       const d = Math.hypot(dx, dy, dz);
       if (d > maxDist || d < 0.001) continue;
       const dot = (dx * dir[0] + dy * dir[1] + dz * dir[2]) / d;
-      if (dot < 0.72) continue;
+      if (dot < minDot) continue;
       const score = dot - d / maxDist * 0.3;
       if (score > bestScore) { bestScore = score; best = m; }
     }
@@ -552,10 +558,27 @@ export class Game {
   }
 
   explode(x, y, z, radius, damage, opts = {}) {
-    this.shockwave(x, y, z, radius, opts.color || '#ff8a3c');
-    this.burst(x, y, z, Math.min(40, 8 + radius * 3), opts.color || '#ff8a3c');
+    const color = opts.color || '#ff8a3c';
+    this.shockwave(x, y, z, radius, color);
+    // A second, wider and slower ring: the leading edge sells the reach, the
+    // trailing one sells the weight.
+    this.shockwaves.push(new Shockwave(x, y, z, radius * 1.45, color, 0.62));
+    this.burst(x, y, z, Math.min(70, 16 + radius * 6), color);
+    // Debris thrown upward and out, which is what a blast in a voxel world
+    // should kick up. Cheap and gated behind the fancy switch like the rest.
+    if (this.r.fancy) {
+      const chunks = Math.min(14, 4 + Math.round(radius));
+      for (let i = 0; i < chunks; i++) {
+        const a = (i / chunks) * Math.PI * 2 + Math.random();
+        const sp = radius * rand(2.4, 1.1);
+        this.gibs.push(new Gib(
+          x + Math.cos(a) * 0.5, y + 0.4, z + Math.sin(a) * 0.5,
+          Math.cos(a) * sp, rand(11, 5), Math.sin(a) * sp,
+          hexToRgb(color), rand(0.26, 0.12), rand(1.6, 0.9), T.BLANK));
+      }
+    }
     this.audio.play('explode');
-    this.screenShake = Math.max(this.screenShake, Math.min(0.5, radius * 0.05));
+    this.screenShake = Math.max(this.screenShake, Math.min(0.75, radius * 0.075));
 
     if (opts.team === TEAM.PLAYER) {
       for (const m of this.enemiesInRadius(x, y, z, radius)) {
@@ -852,17 +875,27 @@ export class Game {
 
   drawBeams() {
     for (const b of this.beams) {
-      const steps = 10;
       const t = b.life / b.max;
+      // Denser sampling and a thicker core: ten sparse cubes read as a dotted
+      // line, which is not what a bolt of lightning looks like.
+      const steps = 22;
       for (let i = 0; i <= steps; i++) {
         const k = i / steps;
         const x = b.x0 + (b.x1 - b.x0) * k;
         const y = b.y0 + (b.y1 - b.y0) * k;
         const z = b.z0 + (b.z1 - b.z0) * k;
-        const s = 0.14 * t + 0.04;
-        this.r.drawBox(x + rand(0.06, -0.06), y + rand(0.06, -0.06), z + rand(0.06, -0.06),
-          s, s, s, { tile: 0, color: b.color, emissive: 1, alpha: t });
+        // Jitter grows toward the middle, so the bolt arcs rather than wobbling
+        // uniformly along its whole length.
+        const wob = Math.sin(k * Math.PI) * 0.22;
+        const s = (0.26 * t + 0.06) * (0.6 + Math.sin(k * Math.PI) * 0.6);
+        this.r.drawBox(
+          x + rand(wob, -wob), y + rand(wob, -wob), z + rand(wob, -wob),
+          s, s, s, { tile: T.BLANK, color: b.color, emissive: 1, alpha: t });
       }
+      // Flare at the impact end.
+      const flare = 0.5 * t;
+      this.r.drawBox(b.x1, b.y1, b.z1, flare, flare, flare,
+        { tile: T.BLANK, color: b.color, emissive: 1, alpha: t * 0.9 });
     }
   }
 }

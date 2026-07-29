@@ -27,7 +27,7 @@ import { clamp } from './core/math.js';
     'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
 })();
 
-export const BUILD = '2026-07-29 10:56 UTC';
+export const BUILD = '2026-07-29 13:56 UTC';
 console.info('BLOCKFRAY build', BUILD);
 
 const glCanvas = document.getElementById('view');
@@ -367,6 +367,10 @@ function frame(now) {
     const p = game.player;
     p.yaw -= lx;
     p.pitch = clamp(p.pitch - ly, -1.45, 1.45);
+    // Aim assist must never fight the hand that is turning. Recording how hard
+    // the player is looking lets the assist stand down while they are, and do
+    // its work in the gaps — which is where tracking a moving target is hard.
+    p.lookInput = Math.max(Math.hypot(lx, ly), (p.lookInput || 0) * 0.82);
 
     if (input.takePause()) { pauseRun(); }
 

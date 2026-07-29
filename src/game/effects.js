@@ -253,14 +253,33 @@ export class Shockwave {
 
   draw(r) {
     const p = 1 - this.timer / this.duration;
-    const rr = this.radius * p;
-    const segs = Math.max(10, Math.round(this.radius * 5));
-    const a0 = p * 1.4;
-    for (let i = 0; i < segs; i++) {
-      const a = a0 + (i / segs) * Math.PI * 2;
-      const s = 0.42 * (1 - p);
-      r.drawBox(this.x + Math.cos(a) * rr, this.y + 0.4 + p * 0.6, this.z + Math.sin(a) * rr,
-        s, s, s, { tile: T.BLANK, color: this.color, emissive: 1, alpha: 1 - p });
+    const segs = Math.max(14, Math.round(this.radius * 7));
+    // Three rings at different radii and heights instead of one. A single
+    // expanding circle of blocks reads as a diagram; a stacked, leaning wall
+    // of them reads as a blast.
+    for (let ring = 0; ring < 3; ring++) {
+      const lag = ring * 0.16;
+      const rp = Math.max(0, p - lag) / (1 - lag || 1);
+      if (rp <= 0) continue;
+      const rr = this.radius * rp;
+      const a0 = p * 1.4 + ring * 0.5;
+      const height = this.y + 0.35 + rp * (0.7 + ring * 0.55);
+      const alpha = (1 - rp) * (1 - ring * 0.22);
+      const s = (0.55 - ring * 0.10) * (1 - rp * 0.8);
+      if (s <= 0.01 || alpha <= 0.02) continue;
+      for (let i = 0; i < segs; i++) {
+        const a = a0 + (i / segs) * Math.PI * 2;
+        r.drawBox(this.x + Math.cos(a) * rr, height, this.z + Math.sin(a) * rr,
+          s, s * 1.8, s, { tile: T.BLANK, color: this.color, emissive: 1, alpha });
+      }
+    }
+    // A column of light at the origin for the first half, so the eye is drawn
+    // to where it went off rather than only to the edge that is leaving.
+    if (p < 0.55) {
+      const a = (1 - p / 0.55);
+      r.drawBox(this.x, this.y + 1.4 + p * 3, this.z,
+        this.radius * 0.30 * a, 3.2 + p * 5, this.radius * 0.30 * a,
+        { tile: T.BLANK, color: this.color, emissive: 1, alpha: a * 0.55 });
     }
   }
 }

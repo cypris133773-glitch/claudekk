@@ -655,6 +655,27 @@ async function runViewport(browser, port, vp) {
       }
     }
 
+    // ---- 8d. aim assist must never fight the hand that is turning ---------
+    // A strong assist that pulls back onto a target while the player is
+    // sweeping the view cancels the drag: you turn, and nothing happens. That
+    // reads as broken controls, not as help.
+    {
+      const [rx, ry] = pickFree(0.75, 0.35);
+      await frame.evaluate(() => window.__PLAYTEST.reset());
+      // Deliberately drag *away* across a wide arc, the motion an assist is
+      // most likely to undo.
+      await touch.dragHold(30, rx, ry, rx - 240, ry, 22, 16);
+      await sleep(200);
+      const r = await frame.evaluate(() => window.__PLAYTEST.read());
+      await touch.release();
+      await sleep(120);
+      const turned = Math.abs(r.yawDeltaNow) > 0.4;
+      rep.add('aim assist does not cancel a look drag', turned,
+        `yaw moved ${n(r.yawDeltaNow, 3)} rad over a 240px drag`
+        + (turned ? '' : ' — the assist is overriding player input'),
+        { yawDelta: r.yawDeltaNow });
+    }
+
     // ---- 9. the wave actually runs ----------------------------------------
     {
       await frame.evaluate(() => window.__PLAYTEST.reset());

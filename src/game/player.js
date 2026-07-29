@@ -180,8 +180,15 @@ export class Player extends Entity {
    */
   applyAimAssist(dt, game) {
     if (!this.aimAssist) return;
+    // Hands off while the player is actively turning. Without this the assist
+    // cancels the drag — you sweep the view and it snaps back, which reads as
+    // broken controls rather than as help.
+    this.lookInput = (this.lookInput || 0) * Math.max(0, 1 - dt * 6);
+    if (this.lookInput > 0.0016) return;
     const range = this.isMelee ? 9 : 34;
-    const target = game.aimTarget(this, range);
+    // Tight cone: roughly 20 degrees. Anything wider and the assist starts
+    // acquiring targets rather than tracking the one you chose.
+    const target = game.aimTarget(this, range, 0.94);
     if (!target) return;
     const dx = target.x - this.x;
     const dz = target.z - this.z;
@@ -195,12 +202,21 @@ export class Player extends Entity {
     const dpitch = wantPitch - this.pitch;
     const off = Math.hypot(dyaw, dpitch);
     // Already on target: leave it completely alone.
-    if (off < 0.05) return;
+    if (off < 0.035) return;
     // Strength falls off with how far the aim is from the target, so it helps
     // with tracking and never drags the view somewhere you did not point it.
-    const pull = Math.min(1, 0.055 / off) * Math.min(1, dt * 9);
-    this.yaw += dyaw * pull;
-    this.pitch = clamp(this.pitch + dpitch * pull, -1.45, 1.45);
+    // Tuned up from a 9/s rate: the first pass was so gentle that in a moving
+    // fight it never caught up with anything.
+    // Hard ceiling on how fast the assist may turn the view: about 40 degrees
+    // a second. Past that it stops being a correction and starts being a
+    // camera taking over.
+    const MAX_RATE = 0.7;
+    const pull = Math.min(1, dt * 14);
+    const maxStep = MAX_RATE * dt;
+    const stepYaw = clamp(dyaw * pull, -maxStep, maxStep);
+    const stepPitch = clamp(dpitch * pull, -maxStep, maxStep);
+    this.yaw += stepYaw;
+    this.pitch = clamp(this.pitch + stepPitch, -1.45, 1.45);
   }
 
   update(dt, game, input) {

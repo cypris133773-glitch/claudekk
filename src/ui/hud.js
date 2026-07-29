@@ -114,6 +114,7 @@ export class Hud {
     this.drawCombo();
     this.drawNotifications();
     this.drawOffscreenMarkers();
+    this.drawMinimap(p);
     this.drawSkills(p);
     if (this.touchMode) this.drawJoystick();
     this.drawDamageVignette(p);
@@ -473,6 +474,98 @@ export class Hud {
     c.strokeStyle = 'rgba(255,255,255,0.55)';
     c.lineWidth = 2;
     c.stroke();
+  }
+
+  /**
+   * Radar. Shows the arena around you, rotated so "up" is where you are
+   * facing — a north-up map forces a mental rotation mid-fight, which is
+   * exactly when nobody has the attention for it. Enemies are dots sized by
+   * threat; anything outside the range is pinned to the rim so a boss is
+   * never simply absent.
+   */
+  drawMinimap(p) {
+    const c = this.ctx;
+    const s = this.safe;
+    const g = this.game;
+    const r = this.touchMode ? clamp(this.w * 0.11, 42, 58) : 68;
+    const cx = this.w - s.r - r - 16;
+    const cy = s.t + r + (this.touchMode ? 58 : 72);
+    const range = 46;                      // world blocks the radar covers
+
+    c.save();
+    // Dish.
+    c.beginPath();
+    c.arc(cx, cy, r, 0, Math.PI * 2);
+    c.fillStyle = 'rgba(8,10,16,0.62)';
+    c.fill();
+    c.strokeStyle = 'rgba(255,255,255,0.20)';
+    c.lineWidth = 1.5;
+    c.stroke();
+
+    // Facing wedge, so the map reads as a view cone rather than a circle.
+    c.beginPath();
+    c.moveTo(cx, cy);
+    c.arc(cx, cy, r, -Math.PI / 2 - 0.62, -Math.PI / 2 + 0.62);
+    c.closePath();
+    c.fillStyle = 'rgba(255,255,255,0.07)';
+    c.fill();
+
+    // Clip so nothing spills out of the dish.
+    c.beginPath();
+    c.arc(cx, cy, r - 1, 0, Math.PI * 2);
+    c.clip();
+
+    const cos = Math.cos(p.yaw), sin = Math.sin(p.yaw);
+    for (const m of g.mobs) {
+      if (m.dead) continue;
+      const dx = m.x - p.x, dz = m.z - p.z;
+      // Into view space: the player's facing becomes straight up.
+      const rx = dx * cos - dz * sin;
+      const rz = -dx * sin - dz * cos;
+      const dist = Math.hypot(rx, rz);
+      const k = (r - 5) / range;
+      let px = cx + rx * k;
+      let py = cy + rz * k;
+      const outside = dist > range;
+      if (outside) {
+        // Pinned to the rim: an off-radar boss still has to be findable.
+        if (!m.def.boss && !m.elite) continue;
+        const a = Math.atan2(rz, rx);
+        px = cx + Math.cos(a) * (r - 5);
+        py = cy + Math.sin(a) * (r - 5);
+      }
+      const size = m.def.boss ? 4.5 : m.elite ? 3.2 : 2.1;
+      c.beginPath();
+      c.arc(px, py, size, 0, Math.PI * 2);
+      c.fillStyle = m.def.boss ? '#ff5a3c' : m.elite ? '#ffd24a' : '#ff9a7a';
+      c.globalAlpha = outside ? 0.75 : 1;
+      c.fill();
+      c.globalAlpha = 1;
+    }
+
+    // Allies, so a summoned fiend or totem is not mistaken for a threat.
+    for (const pet of g.pets) {
+      if (pet.dead) continue;
+      const dx = pet.x - p.x, dz = pet.z - p.z;
+      const rx = dx * cos - dz * sin;
+      const rz = -dx * sin - dz * cos;
+      if (Math.hypot(rx, rz) > range) continue;
+      const k = (r - 5) / range;
+      c.beginPath();
+      c.arc(cx + rx * k, cy + rz * k, 2, 0, Math.PI * 2);
+      c.fillStyle = '#7dff9d';
+      c.fill();
+    }
+    c.restore();
+
+    // The player, always dead centre and always pointing up.
+    c.beginPath();
+    c.moveTo(cx, cy - 5);
+    c.lineTo(cx + 3.6, cy + 4);
+    c.lineTo(cx - 3.6, cy + 4);
+    c.closePath();
+    c.fillStyle = '#ffffff';
+    c.fill();
   }
 
   /** Skill buttons — clickable on touch, keybind hints on desktop. */

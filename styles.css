@@ -1185,3 +1185,104 @@ body.show-popout-btn #popout-btn { display: block; }
 .goal-icon { font-size: 16px; text-align: center; }
 .goal-text { font-size: 12.5px; font-weight: 700; }
 .goal-need { font-size: 11px; color: var(--gold); white-space: nowrap; }
+
+/* --------------------------------------------------------------------- */
+/* Panel dressing — the menus should look forged, not printed             */
+/* --------------------------------------------------------------------- */
+
+.panel {
+  position: relative;
+  background:
+    radial-gradient(120% 90% at 50% -10%, rgba(255, 210, 74, 0.07), transparent 60%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(0, 0, 0, 0.14));
+  box-shadow:
+    0 18px 48px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+/* A hairline of gold across the top edge, brightest in the middle. */
+.panel::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 210, 74, 0.55), transparent);
+  pointer-events: none;
+}
+
+.panel-head h1 {
+  background: linear-gradient(180deg, #fff 30%, #c9b27a);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  letter-spacing: 0.6px;
+}
+
+.big-btn {
+  background: linear-gradient(180deg, #5b8cff, #3457c9);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow:
+    0 6px 18px rgba(52, 87, 201, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+.big-btn:hover { filter: brightness(1.1); }
+.big-btn:active { transform: translateY(1px); }
+
+.menu-btn {
+  position: relative;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(0, 0, 0, 0.12));
+  transition: border-color 120ms ease, background 120ms ease, transform 90ms ease;
+}
+.menu-btn:hover { border-color: rgba(255, 210, 74, 0.55); }
+.menu-btn:active { transform: translateY(1px); }
+.menu-btn.primary {
+  background: linear-gradient(180deg, rgba(255, 210, 74, 0.16), rgba(255, 150, 40, 0.05));
+  border-color: rgba(255, 210, 74, 0.5);
+}
+
+.class-card, .forge-card, .skill-slot, .diff-btn, .rank-card, .talent-node {
+  transition: border-color 120ms ease, background 120ms ease, transform 90ms ease;
+}
+.class-card:hover, .forge-card:hover, .skill-slot:hover, .diff-btn:hover {
+  border-color: rgba(255, 210, 74, 0.45);
+}
+.class-card.selected {
+  box-shadow: 0 0 0 1px var(--accent) inset, 0 8px 22px rgba(0, 0, 0, 0.35);
+}
+
+.souls-badge {
+  background: linear-gradient(180deg, rgba(201, 166, 255, 0.16), rgba(0, 0, 0, 0.2));
+  border: 1px solid rgba(201, 166, 255, 0.35);
+}
+
+/* The title breathes rather than sitting flat. */
+.game-title {
+  background: linear-gradient(180deg, #fff 20%, #ffd24a 60%, #b3762a);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 4px 18px rgba(255, 170, 60, 0.28));
+}
+@media (prefers-reduced-motion: no-preference) {
+  .title-screen .logo { animation: title-rise 520ms cubic-bezier(.2, .8, .3, 1) both; }
+  .title-screen .menu-btn { animation: rise 380ms cubic-bezier(.2, .8, .3, 1) both; }
+  .title-screen .menu-btn:nth-child(2) { animation-delay: 40ms; }
+  .title-screen .menu-btn:nth-child(3) { animation-delay: 80ms; }
+  .title-screen .menu-btn:nth-child(4) { animation-delay: 120ms; }
+  .title-screen .menu-btn:nth-child(5) { animation-delay: 160ms; }
+  .title-screen .menu-btn:nth-child(6) { animation-delay: 200ms; }
+  .title-screen .menu-btn:nth-child(7) { animation-delay: 240ms; }
+  .title-screen .menu-btn:nth-child(8) { animation-delay: 280ms; }
+  .panel { animation: rise 260ms cubic-bezier(.2, .8, .3, 1) both; }
+}
+/* Opacity only. Animating transform here shifts elements while fitScreen is
+   measuring the page, so the screen is judged taller than it is and scaled
+   down for no reason — a fade cannot lie about layout. */
+@keyframes rise {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes title-rise {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
