@@ -48,6 +48,12 @@ export class Game {
     this.screenShake = 0;
     this.hitMarker = 0;
     this.soulsEarned = 0;
+    // Kill combo. The whole point is to make pressing forward pay: souls are
+    // the only currency, and the multiplier only survives if you keep killing.
+    this.combo = 0;
+    this.comboTimer = 0;
+    this.comboBest = 0;
+    this.recordBeaten = false;
   }
 
   // -------------------------------------------------------------------------
@@ -110,6 +116,14 @@ export class Game {
 
   nextWave() {
     this.wave++;
+    // The one moment a run stops being routine. Called out once, loudly.
+    const best = (this.profile.classData(this.cls.id) || {}).bestWave || 0;
+    if (!this.recordBeaten && best > 0 && this.wave > best) {
+      this.recordBeaten = true;
+      this.notify('NEW RECORD', 3.2);
+      this.audio.play('rankup');
+      this.screenShake = Math.max(this.screenShake, 0.35);
+    }
     this.director.startWave(this.wave);
     this.notify(isBossWave(this.wave) ? `WAVE ${this.wave} — BOSS` : `WAVE ${this.wave}`, 2.4);
     this.audio.play('wave');
@@ -463,12 +477,41 @@ export class Game {
     return healed;
   }
 
+  /** Seconds a combo survives without a kill. Shrinks as it climbs, so a long
+   *  streak has to be *earned* rather than coasted on. */
+  get comboWindow() {
+    return Math.max(1.6, 4.0 - this.combo * 0.06);
+  }
+
+  /** Multiplier the current streak is worth. Capped so it stays a bonus. */
+  get comboMult() {
+    return 1 + Math.min(2.0, this.combo * 0.04);
+  }
+
+  updateCombo(dt) {
+    if (this.combo <= 0) return;
+    this.comboTimer -= dt;
+    if (this.comboTimer > 0) return;
+    this.combo = 0;
+    this.comboTimer = 0;
+  }
+
   onEnemyKilled(mob, killer, opts) {
     if (mob.counted) return;
     mob.counted = true;
     if (!(mob instanceof Mob)) return;
 
-    const soulMult = 1 + (this.player.mods.soulGain || 0);
+    this.combo++;
+    this.comboTimer = this.comboWindow;
+    this.comboBest = Math.max(this.comboBest, this.combo);
+    // Every tenth kill in a streak is called out, with the cue pitched up by
+    // the streak so the ear tracks it without looking at the counter.
+    if (this.combo % 10 === 0) {
+      this.notify(`${this.combo} KILL STREAK  ×${this.comboMult.toFixed(2)}`, 1.6);
+      this.audio.play('levelup');
+    }
+
+    const soulMult = (1 + (this.player.mods.soulGain || 0)) * this.comboMult;
     const souls = mob.souls * soulMult;
     this.soulsEarned += souls;
     this.player.souls += souls;
@@ -607,6 +650,7 @@ export class Game {
     for (const p of this.particles) p.update(dt);
     for (const g of this.gibs) g.update(dt, this);
     this.updateHeartbeat(dt);
+    this.updateCombo(dt);
     for (const t of this.telegraphs) t.update(dt);
     for (const s of this.shockwaves) s.update(dt);
     for (const z of this.zones) z.update(dt, this);

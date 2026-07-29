@@ -1169,3 +1169,19 @@ body.show-popout-btn #popout-btn { display: block; }
   text-align: center;
   line-height: 15px;
 }
+
+/* Results: what you are closest to, so there is a reason to press Play. */
+.goals { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.goal {
+  display: grid;
+  grid-template-columns: 26px 1fr auto;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+.goal-icon { font-size: 16px; text-align: center; }
+.goal-text { font-size: 12.5px; font-weight: 700; }
+.goal-need { font-size: 11px; color: var(--gold); white-space: nowrap; }

@@ -111,6 +111,7 @@ export class Hud {
     this.drawVitals(p);
     this.drawWaveInfo();
     this.drawBuffs(p);
+    this.drawCombo();
     this.drawNotifications();
     this.drawOffscreenMarkers();
     this.drawSkills(p);
@@ -273,6 +274,41 @@ export class Hud {
       c.fillText('Rampage x' + p.rampageStacks,
         16 + this.safe.l, y + size + (p.buffs.length ? 12 : 0));
     }
+  }
+
+  /**
+   * The kill streak, drawn where the eye already is: just above the crosshair.
+   * It grows and reddens as it climbs, and the shrinking bar under it is the
+   * thing that actually creates the pressure — the streak is always about to
+   * die, and pressing forward is the only way to keep it.
+   */
+  drawCombo() {
+    const g = this.game;
+    if (!g.combo || g.combo < 3) return;
+    const c = this.ctx;
+    const heat = Math.min(1, g.combo / 40);
+    const x = this.w / 2;
+    const y = this.h / 2 - (this.touchMode ? 74 : 92);
+
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.shadowColor = 'rgba(0,0,0,0.85)';
+    c.shadowBlur = 8;
+    this.font(Math.round(22 + heat * 20));
+    c.fillStyle = `rgb(255, ${Math.round(210 - heat * 130)}, ${Math.round(90 - heat * 70)})`;
+    c.fillText(`${g.combo}`, x, y);
+    this.font(12);
+    c.fillStyle = 'rgba(255,255,255,0.8)';
+    c.fillText(`×${g.comboMult.toFixed(2)} souls`, x, y + 20 + heat * 10);
+    c.shadowBlur = 0;
+
+    // Time left, as a bar that drains.
+    const w = 84 + heat * 40;
+    const frac = clamp(g.comboTimer / g.comboWindow, 0, 1);
+    c.fillStyle = 'rgba(0,0,0,0.5)';
+    this.roundRect(x - w / 2, y + 32 + heat * 10, w, 4, 2); c.fill();
+    c.fillStyle = `rgb(255, ${Math.round(200 - heat * 120)}, 70)`;
+    this.roundRect(x - w / 2, y + 32 + heat * 10, w * frac, 4, 2); c.fill();
   }
 
   drawNotifications() {

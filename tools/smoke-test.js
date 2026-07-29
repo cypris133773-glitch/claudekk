@@ -573,6 +573,55 @@ check('the Armoury is deep enough to outlast the Forge', () => {
   assert(total > 1e7, `a full kit only costs ${Math.round(total)} souls`);
 });
 
+
+// --- The compulsion loop ---------------------------------------------------
+// The combo is the only thing rewarding aggression over caution, so its
+// shape matters: it must be reachable, worth chasing, and genuinely lost if
+// you stop pushing.
+
+check('the kill combo rewards pressing forward and decays if you stop', async () => {
+  const { Game } = await import('../src/game/game.js');
+  const stubRenderer = {
+    setWorld() {}, setTheme() {}, project: () => null, skyTint: [0, 0, 0], fancy: false,
+  };
+  const stubAudio = {
+    play() {}, startMusic() {}, stopMusic() {}, setMusicIntensity() {}, ensure() {},
+  };
+  const classes = {};
+  for (const c of CLASSES) {
+    classes[c.id] = { talents: {}, bestWave: 0, kills: 0, runs: 0, mastery: 0, loadout: [] };
+  }
+  const profile = {
+    data: { permanent: {}, armor: {}, classes, souls: 0, stats: {} },
+    settings: { showDamage: false, difficulty: 1 },
+    classData: (id) => classes[id],
+    loadout: (cls) => resolveLoadout(cls, []),
+    finishRun() {}, save() {},
+  };
+  const game = new Game(stubRenderer, stubAudio, profile);
+  game.startRun(CLASSES[0], { layout: 0 });
+
+  assert(game.comboMult === 1, 'a fresh run already has a multiplier');
+
+  // The window must shrink as the streak climbs, or a long streak coasts.
+  game.combo = 0;
+  const early = game.comboWindow;
+  game.combo = 40;
+  assert(game.comboWindow < early, 'the combo window never tightens');
+  assert(game.comboWindow >= 1.6, 'the window shrinks to something unplayable');
+
+  // The multiplier has to be worth chasing, and capped so it stays a bonus.
+  assert(game.comboMult > 1.5, `40 kills is only worth x${game.comboMult}`);
+  game.combo = 500;
+  assert(game.comboMult <= 3.01, `the multiplier runs away at x${game.comboMult}`);
+
+  // And it must actually expire.
+  game.combo = 12;
+  game.comboTimer = game.comboWindow;
+  for (let i = 0; i < 600; i++) game.updateCombo(1 / 60);
+  assert(game.combo === 0, 'the combo never decays');
+});
+
 // --- Math ------------------------------------------------------------------
 
 check('clamp behaves', () => {

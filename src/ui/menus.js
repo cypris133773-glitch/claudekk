@@ -912,18 +912,16 @@ export class Menus {
     const g = this.ctx.game;
     const res = g.result;
     const wrap = el('div', 'screen overlay');
-    const p = this.panel('You fell on wave ' + res.reachedWave,
+    const p = this.panel(`Wave ${res.reachedWave}`,
       `${g.cls.name} · ${res.kills} kills · ${fmtTime(res.duration)}`);
 
     const grid = el('div', 'stat-grid');
     const cd = this.profile.classData(g.cls.id);
     const rows = [
-      ['Waves cleared', res.wave],
-      ['Kills', res.kills],
-      ['Souls banked', '💠 ' + res.souls],
-      ['Talent points free', this.profile.availableTalentPoints(g.cls.id)],
-      ['Mastery', this.profile.masteryRank(g.cls.id)],
+      ['Souls', '💠 ' + res.souls],
+      ['Best streak', g.comboBest || 0],
       ['Class best', 'wave ' + cd.bestWave],
+      ['Mastery', this.profile.masteryRank(g.cls.id)],
     ];
     for (const [k, v] of rows) {
       const d = el('div', 'stat-cell');
@@ -931,22 +929,87 @@ export class Menus {
       grid.appendChild(d);
     }
     p.appendChild(grid);
-    p.appendChild(this.masteryBar(g.cls.id));
+
+    // What you are closest to. A results screen that only reports the past
+    // gives no reason to press Play again; naming the nearest three things
+    // and how far off they are gives three.
+    const goals = this.nextGoals(g);
+    if (goals.length) {
+      const box = el('div', 'goals');
+      for (const goal of goals) {
+        const row = el('div', 'goal');
+        row.innerHTML = `<span class="goal-icon">${goal.icon}</span>`
+          + `<span class="goal-text">${goal.label}</span>`
+          + `<span class="goal-need">${goal.need}</span>`;
+        box.appendChild(row);
+      }
+      p.appendChild(box);
+    }
 
     const actions = el('div', 'actions');
-    actions.appendChild(this.click(el('button', 'ghost-btn', 'Forge'), () => this.show('forge')));
-    actions.appendChild(this.click(el('button', 'ghost-btn', 'Armoury'), () => this.show('armoury')));
-    actions.appendChild(this.click(el('button', 'ghost-btn', 'Talents'), () => {
+    actions.appendChild(this.click(el('button', 'ghost-btn', '⚒'), () => this.show('forge')));
+    actions.appendChild(this.click(el('button', 'ghost-btn', '🛡'), () => this.show('armoury')));
+    actions.appendChild(this.click(el('button', 'ghost-btn', '✦'), () => {
       this.talentClass = g.cls.id;
       this.show('talents');
     }));
-    actions.appendChild(this.click(el('button', 'big-btn', 'RUN IT BACK'), () => {
+    actions.appendChild(this.click(el('button', 'big-btn', '▶ RUN IT BACK'), () => {
       this.ctx.startRun(g.cls);
     }));
     p.appendChild(actions);
     p.appendChild(this.click(el('button', 'ghost-btn wide', 'Main menu'), () => this.show('title')));
     wrap.appendChild(p);
     return wrap;
+  }
+
+  /** The three nearest things the player is working toward. */
+  nextGoals(g) {
+    const out = [];
+    const souls = this.profile.souls;
+    const cd = this.profile.classData(g.cls.id);
+
+    // The cheapest Forge track they cannot yet afford — or can.
+    let bestForge = null;
+    for (const def of PERMANENT) {
+      const lv = this.profile.data.permanent[def.id] || 0;
+      if (lv >= def.max) continue;
+      const cost = upgradeCost(def, lv);
+      if (!bestForge || cost < bestForge.cost) bestForge = { def, cost, lv };
+    }
+    if (bestForge) {
+      out.push({
+        icon: bestForge.def.icon,
+        label: `${bestForge.def.name} ${bestForge.lv + 1}`,
+        need: souls >= bestForge.cost
+          ? 'ready'
+          : `${(bestForge.cost - souls).toLocaleString()} more`,
+      });
+    }
+
+    // The next armour set, which is always gated by the weakest slot.
+    const nxt = nextArmorSet(this.profile.armor);
+    if (nxt) {
+      out.push({
+        icon: '🛡',
+        label: nxt.set.name,
+        need: `every slot to T${nxt.set.tier}`,
+      });
+    }
+
+    // The next mastery rank for this class.
+    const m = this.profile.masteryProgress(g.cls.id);
+    out.push({
+      icon: '★',
+      label: `${g.cls.name} mastery ${m.rank + 1}`,
+      need: `${Math.max(0, m.need - m.into).toLocaleString()} to go`,
+    });
+
+    // A talent point waiting to be spent beats anything you have to earn.
+    const free = this.profile.availableTalentPoints(g.cls.id);
+    if (free > 0) {
+      out.unshift({ icon: '✦', label: 'Unspent talent points', need: String(free) });
+    }
+    return out.slice(0, 3);
   }
 }
 
