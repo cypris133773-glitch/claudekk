@@ -212,6 +212,87 @@ export class Gib {
 }
 
 /** Glowing ring on the ground warning of an incoming AoE. */
+/**
+ * A potion lying on the arena floor, waiting to be walked over.
+ *
+ * It falls, settles, then bobs and spins so it stays visible in a crowd, and
+ * throws a column of motes upward — a small object on a busy voxel floor is
+ * otherwise invisible from head height, and a pickup nobody can see is not a
+ * decision, it is a thing that occasionally happens.
+ *
+ * The last four seconds blink, because a potion that vanishes without warning
+ * feels stolen.
+ */
+export class Potion {
+  constructor(x, y, z, def, lifetime) {
+    this.x = x; this.y = y; this.z = z;
+    this.def = def;
+    this.color = hexToRgb(def.color);
+    this.glow = hexToRgb(def.glow);
+    this.vy = 5.5;
+    this.vx = rand(2.2, -2.2);
+    this.vz = rand(2.2, -2.2);
+    this.life = lifetime;
+    this.maxLife = lifetime;
+    this.spin = Math.random() * Math.PI * 2;
+    this.resting = false;
+    this.dead = false;
+  }
+
+  update(dt, game) {
+    this.life -= dt;
+    if (this.life <= 0) { this.dead = true; return; }
+    this.spin += dt * 2.2;
+
+    if (!this.resting) {
+      this.vy -= 24 * dt;
+      const world = game.world;
+      const nx = this.x + this.vx * dt;
+      if (!world.isSolid(nx, this.y, this.z)) this.x = nx; else this.vx *= -0.4;
+      const nz = this.z + this.vz * dt;
+      if (!world.isSolid(this.x, this.y, nz)) this.z = nz; else this.vz *= -0.4;
+      const ny = this.y + this.vy * dt;
+      if (this.vy < 0 && world.isSolid(this.x, ny - 0.16, this.z)) {
+        this.y = Math.floor(ny - 0.16) + 1.16;
+        this.vy = 0; this.vx = 0; this.vz = 0;
+        this.resting = true;
+        this.restY = this.y;
+      } else {
+        this.y = ny;
+      }
+    }
+
+    // Generous pickup radius. This is a phone game played with a thumb, and a
+    // pickup you have to stand exactly on is a pickup you walk past.
+    const p = game.player;
+    if (p && !p.dead && Math.hypot(p.x - this.x, p.z - this.z) < 1.5
+      && Math.abs(p.y - this.y) < 2.4) {
+      game.collectPotion(this);
+      this.dead = true;
+    }
+  }
+
+  draw(r) {
+    // Blink out over the last four seconds rather than simply vanishing.
+    if (this.life < 4 && Math.floor(this.life * 6) % 2 === 0) return;
+    const bob = this.resting ? Math.sin(this.spin * 1.6) * 0.09 : 0;
+    const y = this.y + bob;
+    // Body, cork and a soft halo underneath, so it reads on a dark floor.
+    r.drawBox(this.x, y, this.z, 0.26, 0.30, 0.26,
+      { tile: T.CRYSTAL, color: this.color, emissive: 0.85, yaw: this.spin });
+    r.drawBox(this.x, y + 0.21, this.z, 0.11, 0.10, 0.11,
+      { tile: T.BLANK, color: this.glow, emissive: 1, yaw: this.spin });
+    r.drawBox(this.x, y - 0.20, this.z, 0.62, 0.002, 0.62,
+      { tile: T.BLANK, color: this.glow, emissive: 1, alpha: 0.22 });
+    // A slow column of motes, which is what actually catches the eye at range.
+    for (let i = 0; i < 3; i++) {
+      const t = (this.spin * 0.5 + i / 3) % 1;
+      r.drawBox(this.x, y + 0.15 + t * 0.9, this.z, 0.07, 0.07, 0.07,
+        { tile: T.BLANK, color: this.glow, emissive: 1, alpha: 0.75 * (1 - t) });
+    }
+  }
+}
+
 export class Telegraph {
   constructor(x, y, z, radius, duration, onComplete, color = '#ff5a3c') {
     this.x = x; this.y = y; this.z = z;

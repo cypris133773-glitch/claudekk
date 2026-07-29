@@ -707,6 +707,73 @@ check('every arena layout is actually playable', async () => {
   }
 });
 
+// --- Potions ---------------------------------------------------------------
+
+check('potions are weighted, colour-coded and never worthless', async () => {
+  const { POTIONS, rollPotion, DROP_CHANCE, ELITE_DROP_CHANCE } = await import('../src/data/potions.js');
+  const ids = new Set();
+  for (const p of POTIONS) {
+    assert(!ids.has(p.id), `duplicate potion id ${p.id}`);
+    ids.add(p.id);
+    assert(/^#[0-9a-f]{6}$/i.test(p.color), `${p.id} has no usable colour`);
+    // Every potion must actually do something. A pickup that grants nothing is
+    // worse than no pickup: it teaches the player to ignore the whole system.
+    const does = p.heal || p.damageBonus || p.moveSpeed || p.attackSpeedBonus;
+    assert(does, `${p.id} grants nothing`);
+    // Anything with a lasting effect needs a duration, and anything instant
+    // must not have one.
+    if (p.heal) assert(p.duration === 0, `${p.id} is instant but has a duration`);
+    else assert(p.duration > 0, `${p.id} is a buff with no duration`);
+  }
+  assert(ELITE_DROP_CHANCE > DROP_CHANCE, 'elites are no more generous than trash');
+  assert(DROP_CHANCE < 0.2, 'potions drop often enough to become a rotation');
+
+  // The roll must reach every type, or a declared potion is unreachable.
+  const seen = new Set();
+  for (let i = 0; i < 4000; i++) seen.add(rollPotion().id);
+  assert(seen.size === POTIONS.length, `roll only ever produced ${seen.size} of ${POTIONS.length}`);
+});
+
+check('a dropped potion is picked up and actually does something', async () => {
+  const { Game } = await import('../src/game/game.js');
+  const { Potion } = await import('../src/game/effects.js');
+  const { POTION_BY_ID } = await import('../src/data/potions.js');
+  const { makeHarness } = await import('./harness.js');
+
+  const h = makeHarness();
+  const game = new Game(h.renderer, h.audio, h.profile);
+  game.startRun(CLASSES[0], { layout: 0 });
+  const p = game.player;
+
+  // Health: dropped at the player's feet, walked over, restores health.
+  p.hp = p.maxHp * 0.4;
+  const before = p.hp;
+  game.potions.push(new Potion(p.x, p.y + 0.2, p.z, POTION_BY_ID.health, 20));
+  for (let i = 0; i < 90; i++) game.update(1 / 60, h.input());
+  assert(p.hp > before, 'the health potion healed nothing');
+  assert(game.potions.length === 0, 'the potion was not consumed');
+
+  // Damage: applies a buff that the player's stats actually read.
+  const baseMult = p.stats.meleeMult;
+  game.potions.push(new Potion(p.x, p.y + 0.2, p.z, POTION_BY_ID.damage, 20));
+  for (let i = 0; i < 90; i++) game.update(1 / 60, h.input());
+  assert(p.hasBuff('potion_damage'), 'the damage potion granted no buff');
+  assert(p.stats.meleeMult > baseMult, 'the damage buff does not reach the damage stat');
+
+  // Speed: same, on the movement stat the controller actually reads.
+  const baseSpeed = p.moveSpeed;
+  game.potions.push(new Potion(p.x, p.y + 0.2, p.z, POTION_BY_ID.speed, 20));
+  for (let i = 0; i < 90; i++) game.update(1 / 60, h.input());
+  assert(p.hasBuff('potion_speed'), 'the speed potion granted no buff');
+  assert(p.moveSpeed > baseSpeed, 'the speed buff does not reach the movement stat');
+
+  // And a potion nobody collects must eventually clear itself, or a long run
+  // accumulates every drop it ever made.
+  game.potions.push(new Potion(p.x + 40, p.y + 0.2, p.z + 40, POTION_BY_ID.health, 1.0));
+  for (let i = 0; i < 120; i++) game.update(1 / 60, h.input());
+  assert(game.potions.length === 0, 'an uncollected potion never despawned');
+});
+
 // --- Pricing ---------------------------------------------------------------
 
 check('every shop applies the global price multiplier', async () => {

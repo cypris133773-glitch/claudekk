@@ -5,12 +5,13 @@ import { BLOCKS } from '../world/blocks.js';
 import { Player, buildMods } from './player.js';
 import { Mob, MOB_TYPES } from './mobs.js';
 import { Fiend } from './pets.js';
-import { Projectile, Particle, Gib, Telegraph, Shockwave, Zone, FloatText, hexToRgb } from './effects.js';
+import { Projectile, Particle, Gib, Telegraph, Shockwave, Zone, Potion, FloatText, hexToRgb } from './effects.js';
 import { TEAM } from './entity.js';
 import { WaveDirector, waveScaling, waveClearBonus, isBossWave } from './waves.js';
 import { permanentMods, masteryMods, masteryRank } from '../data/permanent.js';
 import { difficultyFor } from '../data/difficulty.js';
 import { affixesForWave, affixSoulBonus } from '../data/affixes.js';
+import { rollPotion, DROP_CHANCE, ELITE_DROP_CHANCE, BOSS_DROPS, POTION_LIFETIME } from '../data/potions.js';
 import { armorMods } from '../data/armor.js';
 import { forwardVec, clamp, rand, dist2 } from '../core/math.js';
 import { T } from '../render/atlas.js';
@@ -32,6 +33,7 @@ export class Game {
     this.telegraphs = [];
     this.shockwaves = [];
     this.zones = [];
+    this.potions = [];
     this.floaters = [];
     this.beams = [];
     this.gibs = [];
@@ -564,6 +566,7 @@ export class Game {
     }
 
     this.affixesOnKill(mob);
+    this.rollPotionDrop(mob);
 
     // Affixes pay. A wave under three rules is the hardest thing in the run and
     // has to also be the best place to be, or the optimal play is to farm the
@@ -663,6 +666,52 @@ export class Game {
         });
       }
     }
+  }
+
+  /**
+   * Decide whether a kill leaves a potion behind. Elites and bosses are far
+   * more generous on purpose: those are the kills you spend cooldowns on, and
+   * a set-piece that pays nothing teaches you to walk around it.
+   */
+  rollPotionDrop(mob) {
+    if (!mob.def) return;
+    // A Spiteful shade is spawned by a kill, so paying out for killing it
+    // would turn one affix into an unbounded potion fountain.
+    if (mob.isShade) return;
+    let drops = 0;
+    if (mob.def.boss) drops = BOSS_DROPS;
+    else if (Math.random() < (mob.elite ? ELITE_DROP_CHANCE : DROP_CHANCE)) drops = 1;
+    for (let i = 0; i < drops; i++) {
+      const def = rollPotion();
+      this.potions.push(new Potion(
+        mob.x + rand(0.6, -0.6), mob.centerY + 0.3, mob.z + rand(0.6, -0.6),
+        def, POTION_LIFETIME));
+    }
+    if (drops) this.audio.play('drop');
+  }
+
+  /** Walked over a potion. */
+  collectPotion(potion) {
+    const def = potion.def;
+    const p = this.player;
+    if (def.heal) this.healEntity(p, p, p.maxHp * def.heal);
+    if (def.duration > 0) {
+      // Keyed by the potion id, so a second Draught of Fury refreshes the
+      // timer instead of stacking into something the balance never saw.
+      p.addBuff('potion_' + def.id, {
+        duration: def.duration,
+        damageBonus: def.damageBonus || 0,
+        moveSpeed: def.moveSpeed || 0,
+        attackSpeedBonus: def.attackSpeedBonus || 0,
+        icon: '🧪',
+        color: def.color,
+        name: def.name,
+      });
+    }
+    this.notify(`${def.name} — ${def.blurb}`, 2.0);
+    this.audio.play(def.heal ? 'quaff' : 'buff');
+    this.burst(potion.x, potion.y + 0.3, potion.z, 18, def.glow);
+    this.shockwave(potion.x, potion.y, potion.z, 1.8, def.glow);
   }
 
   /** Leave a lingering hazard on the ground. */
@@ -843,6 +892,7 @@ export class Game {
     for (const t of this.telegraphs) t.update(dt);
     for (const s of this.shockwaves) s.update(dt);
     for (const z of this.zones) z.update(dt, this);
+    for (const q of this.potions) q.update(dt, this);
     for (const f of this.floaters) f.update(dt);
     for (const b of this.beams) b.life -= dt;
     for (const n of this.notifications) n.life -= dt;
@@ -861,6 +911,7 @@ export class Game {
     this.telegraphs = this.telegraphs.filter((t) => !t.dead);
     this.shockwaves = this.shockwaves.filter((s) => !s.dead);
     this.zones = this.zones.filter((z) => !z.dead);
+    this.potions = this.potions.filter((q) => !q.dead);
     this.floaters = this.floaters.filter((f) => !f.dead);
     this.beams = this.beams.filter((b) => b.life > 0);
     this.notifications = this.notifications.filter((n) => n.life > 0);
@@ -978,6 +1029,7 @@ export class Game {
     for (const p of this.projectiles) p.draw(this.r);
     for (const t of this.telegraphs) t.draw(this.r);
     for (const z of this.zones) z.draw(this.r);
+    for (const q of this.potions) q.draw(this.r);
     for (const s of this.shockwaves) s.draw(this.r);
     for (const g of this.gibs) g.draw(this.r);
     for (const p of this.particles) p.draw(this.r);

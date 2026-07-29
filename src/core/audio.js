@@ -252,6 +252,37 @@ export class Audio {
           this.tone({ freq: 262 * Math.pow(1.5, i), type: 'triangle', dur: 0.5, gain: 0.16, delay: 0.5 + d }));
         break;
       case 'dodge': this.noise({ dur: 0.13, gain: 0.11, freq: 2600, q: 2.2, sweep: -1500 }); break;
+      // A potion hitting the floor: a short glassy tick, quiet enough to sit
+      // under a busy fight but distinct enough to turn your head.
+      case 'drop':
+        this.tone({ freq: 1180, type: 'sine', dur: 0.07, gain: 0.13 });
+        this.tone({ freq: 1560, type: 'sine', dur: 0.09, gain: 0.09, delay: 0.05 });
+        break;
+      // Drinking one: a swallow, then the glass ringing as it empties.
+      case 'quaff':
+        this.tone({ freq: 240, type: 'sine', dur: 0.13, gain: 0.20, sweep: 200 });
+        this.tone({ freq: 880, type: 'triangle', dur: 0.22, gain: 0.14, sweep: 420, delay: 0.09 });
+        break;
+      // Something big landing: used by the heavier slams and by Consecration.
+      case 'holy':
+        this.tone({ freq: 520, type: 'sine', dur: 0.34, gain: 0.16, sweep: 300 });
+        this.tone({ freq: 784, type: 'sine', dur: 0.42, gain: 0.12, sweep: 220, delay: 0.06 });
+        this.tone({ freq: 1046, type: 'sine', dur: 0.5, gain: 0.09, sweep: 160, delay: 0.13 });
+        break;
+      // A bowstring released. Drier and tighter than the generic 'shoot'.
+      case 'bow':
+        this.noise({ dur: 0.07, gain: 0.16, freq: 2400, q: 3, sweep: -1400 });
+        this.tone({ freq: 300, type: 'triangle', dur: 0.09, gain: 0.10, sweep: -160 });
+        break;
+      // A quest ticking over, and a quest completed. The second is meant to be
+      // heard across a room; it is the payoff for a whole session of play.
+      case 'questtick': this.tone({ freq: 900, type: 'sine', dur: 0.07, gain: 0.09 }); break;
+      case 'questdone':
+        this.tone({ freq: 523, type: 'triangle', dur: 0.16, gain: 0.18 });
+        this.tone({ freq: 659, type: 'triangle', dur: 0.16, gain: 0.18, delay: 0.11 });
+        this.tone({ freq: 784, type: 'triangle', dur: 0.16, gain: 0.18, delay: 0.22 });
+        this.tone({ freq: 1046, type: 'triangle', dur: 0.34, gain: 0.20, delay: 0.33 });
+        break;
       // A heartbeat under low health. Quiet by design — a warning, not a siren.
       case 'lowhp':
         this.tone({ freq: 66, type: 'sine', dur: 0.16, gain: 0.20 });
