@@ -419,17 +419,40 @@ button:disabled { opacity: 0.35; cursor: default; }
 .title-screen { justify-content: center; align-items: center; text-align: center; }
 
 .logo { margin-bottom: 8px; }
+/* The title, extruded.
+   Order matters and is the opposite of the obvious one. A gradient fill is the
+   element's *background* clipped to the glyphs, so a pseudo-element at
+   z-index:-1 does not reliably land beneath it — it landed on top and hid the
+   gradient entirely. So the element itself carries the dark extrusion, which a
+   plain colour can do, and the lit face is an ::after stacked above it. */
 .game-title {
+  position: relative;
   margin: 0;
   font-size: clamp(44px, 12vw, 92px);
   letter-spacing: clamp(4px, 2vw, 14px);
   font-weight: 900;
-  background: linear-gradient(180deg, #fff, #6ec8ff 60%, #2f6ae0);
+  color: #3a220a;
+  text-shadow:
+    0 1px 0 #573413, 0 2px 0 #4e2f11, 0 3px 0 #452a0f,
+    0 4px 0 #3c250d, 0 5px 0 #33200b, 0 6px 0 #2a1b09,
+    0 7px 0 #211607, 0 9px 16px rgba(0, 0, 0, 0.85),
+    0 0 52px rgba(232, 168, 60, 0.4);
+}
+.game-title::after {
+  content: attr(data-text);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  background: linear-gradient(180deg, #ffffff 0%, #fff6de 24%, #ffd97a 54%, #f0a83c 80%, #c9791a 100%);
   -webkit-background-clip: text;
   background-clip: text;
+  -webkit-text-fill-color: transparent;
   color: transparent;
-  text-shadow: 0 8px 40px rgba(47, 106, 224, 0.35);
+  text-shadow: none;
+  pointer-events: none;
 }
+
 .game-sub { margin: 0; color: var(--dim); letter-spacing: 5px; font-size: 13px; }
 
 .main-menu {

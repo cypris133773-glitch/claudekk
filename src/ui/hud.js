@@ -120,6 +120,38 @@ export class Hud {
     this.drawSkills(p);
     if (this.touchMode) this.drawJoystick();
     this.drawDamageVignette(p);
+    this.drawImpactFlash();
+  }
+
+  /**
+   * The wash from a big blast or a boss dying. Drawn last so it sits over the
+   * whole HUD, and additively weak enough that the health bars stay readable
+   * through it — a flash that hides your own health at the moment a boss
+   * explodes is a flash that kills you.
+   */
+  drawImpactFlash() {
+    const g = this.game;
+    if (!g.flash || g.flash <= 0.01) return;
+    const c = this.ctx;
+    const a = g.flash;
+    const grad = c.createRadialGradient(
+      this.w / 2, this.h / 2, 0,
+      this.w / 2, this.h / 2, Math.max(this.w, this.h) * 0.75);
+    const col = g.flashColor || '#ffffff';
+    grad.addColorStop(0, this.rgba(col, a * 0.5));
+    grad.addColorStop(0.55, this.rgba(col, a * 0.22));
+    grad.addColorStop(1, this.rgba(col, 0));
+    c.save();
+    c.globalCompositeOperation = 'lighter';
+    c.fillStyle = grad;
+    c.fillRect(0, 0, this.w, this.h);
+    c.restore();
+  }
+
+  /** '#ff8a3c' + alpha -> 'rgba(255,138,60,0.4)'. */
+  rgba(hex, alpha) {
+    const n = parseInt(hex.slice(1), 16);
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha.toFixed(3)})`;
   }
 
   drawDamageVignette(p) {

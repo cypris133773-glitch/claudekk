@@ -105,9 +105,43 @@ export function drawIcon(c, glyph, x, y, size, opts = {}) {
   c.strokeStyle = 'rgba(255,255,255,0.22)';
   c.stroke();
 
-  // Outer border.
+  // A diagonal sheen across the upper half. One highlight is what separates a
+  // flat coloured square from something with a surface — it is the cheapest
+  // convincing thing an icon can have, and every slot in the genre has one.
+  c.save();
+  roundRectPath(c, x, y, size, size, r);
+  c.clip();
+  const sheen = c.createLinearGradient(x, y, x + size * 0.7, y + size * 0.7);
+  sheen.addColorStop(0, `rgba(255,255,255,${ready ? 0.30 : 0.12})`);
+  sheen.addColorStop(0.5, 'rgba(255,255,255,0.06)');
+  sheen.addColorStop(0.75, 'rgba(255,255,255,0)');
+  c.fillStyle = sheen;
+  c.beginPath();
+  c.moveTo(x, y);
+  c.lineTo(x + size, y);
+  c.lineTo(x, y + size);
+  c.closePath();
+  c.fill();
+  // And a dark pool in the lower right, so the field has a bottom as well as
+  // a top. Without it the sheen reads as a stain rather than as light.
+  const pool = c.createRadialGradient(
+    x + size * 0.85, y + size * 0.9, 0,
+    x + size * 0.85, y + size * 0.9, size * 0.85);
+  pool.addColorStop(0, 'rgba(0,0,0,0.42)');
+  pool.addColorStop(1, 'rgba(0,0,0,0)');
+  c.fillStyle = pool;
+  c.fillRect(x, y, size, size);
+  c.restore();
+
+  // Outer border, doubled: a dark seat under a bright rim. A single stroke
+  // sits on the background; two make the icon look set into the panel.
   c.globalAlpha = 1;
   c.lineWidth = Math.max(1.5, size * 0.07);
+  roundRectPath(c, x + c.lineWidth / 2, y + c.lineWidth / 2,
+    size - c.lineWidth, size - c.lineWidth, r);
+  c.strokeStyle = 'rgba(0,0,0,0.55)';
+  c.stroke();
+  c.lineWidth = Math.max(1, size * 0.045);
   roundRectPath(c, x + c.lineWidth / 2, y + c.lineWidth / 2,
     size - c.lineWidth, size - c.lineWidth, r);
   c.strokeStyle = ready ? school.edge : 'rgba(255,255,255,0.18)';
@@ -118,6 +152,16 @@ export function drawIcon(c, glyph, x, y, size, opts = {}) {
   c.textBaseline = 'middle';
   c.font = `${Math.round(size * 0.52)}px 'Segoe UI Emoji', 'Noto Color Emoji', system-ui, sans-serif`;
   c.globalAlpha = ready ? 1 : 0.5;
+  if (ready) {
+    c.shadowColor = school.glow;
+    c.shadowBlur = size * 0.22;
+  }
+  // Drawn twice: a dark offset copy first, so the glyph keeps its shape over a
+  // bright field. Emoji are full-colour and a glow alone does not separate
+  // them from a light background.
+  c.fillStyle = 'rgba(0,0,0,0.55)';
+  c.shadowBlur = 0;
+  c.fillText(glyph, x + size / 2 + size * 0.03, y + size * 0.57);
   if (ready) {
     c.shadowColor = school.glow;
     c.shadowBlur = size * 0.22;

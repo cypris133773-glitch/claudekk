@@ -191,7 +191,12 @@ export class Menus {
   buildTitle() {
     const wrap = el('div', 'screen title-screen');
     const logo = el('div', 'logo');
-    logo.appendChild(el('h1', 'game-title', 'CRAFT ARENA'));
+    // The extruded copy behind the letters is a ::before that reads its text
+    // from this attribute — the gradient fill is clipped to the glyphs and so
+    // cannot cast a shadow itself.
+    const title = el('h1', 'game-title', 'CRAFT ARENA');
+    title.setAttribute('data-text', 'CRAFT ARENA');
+    logo.appendChild(title);
     logo.appendChild(el('p', 'game-sub', 'Endless Voxel Arena'));
     wrap.appendChild(logo);
     wrap.appendChild(this.soulsBadge());

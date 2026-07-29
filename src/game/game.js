@@ -62,6 +62,9 @@ export class Game {
     this.stormTimer = 0;
     this.grievous = 0;
     this.grievousTimer = 0;
+    this.hitstop = 0;
+    this.flash = 0;
+    this.flashColor = '#ffffff';
     // Everything quests measure. Counted here rather than derived at the end
     // because most of it — elites, potions, casts — leaves no trace once the
     // run is over.
@@ -281,6 +284,17 @@ export class Game {
   // Helpers used by mobs, skills and effects
   // -------------------------------------------------------------------------
 
+  /**
+   * A brief full-screen wash in the colour of whatever just happened. Drawn by
+   * the HUD, decayed here, and deliberately short — anything longer than a few
+   * frames stops being punctuation and starts obscuring the fight.
+   */
+  impactFlash(color, strength) {
+    if (strength <= (this.flash || 0)) return;
+    this.flash = Math.min(0.9, strength);
+    this.flashColor = color || '#ffffff';
+  }
+
   notify(text, duration = 1.6) {
     this.notifications.push({ text, life: duration, max: duration });
     if (this.notifications.length > 4) this.notifications.shift();
@@ -491,6 +505,7 @@ export class Game {
       this.audio.play(crit ? 'crit' : 'hit');
       if (crit) {
         this.screenShake = Math.max(this.screenShake, 0.22);
+        this.hitstop = Math.max(this.hitstop, 0.045);
         // Sparks thrown along the blow, not scattered: the direction is what
         // makes a critical read as a hit rather than a light show.
         const kx = opts.kx || 0, kz = opts.kz || 0;
@@ -620,6 +635,8 @@ export class Game {
     this.audio.play(mob.def.boss ? 'bossdown' : 'gib');
     if (mob.def.boss) {
       this.screenShake = 0.6;
+      this.hitstop = Math.max(this.hitstop, 0.28);
+      this.impactFlash('#ffd24a', 0.85);
       this.audio.play('explode');
       this.notify('BOSS SLAIN  +' + Math.round(souls) + ' 💠', 2.6);
     }
@@ -670,6 +687,25 @@ export class Game {
     }
     this.audio.play('explode');
     this.screenShake = Math.max(this.screenShake, Math.min(0.75, radius * 0.075));
+    // Big blasts stop time and wash the screen; small ones do neither. Tying
+    // both to the radius is what keeps a Meteor feeling different from a
+    // Fireball rather than every cast producing the same light show.
+    if (radius >= 4) {
+      this.hitstop = Math.max(this.hitstop, Math.min(0.13, radius * 0.017));
+      this.impactFlash(color, Math.min(0.5, radius * 0.045));
+      // A rising column of fire at the seat of the blast. A ring alone reads
+      // as flat on a voxel floor; the column is what gives it a middle.
+      if (this.r.fancy) {
+        for (let i = 0; i < Math.min(26, radius * 4); i++) {
+          const a = Math.random() * Math.PI * 2;
+          const rr = Math.random() * radius * 0.4;
+          this.particles.push(new Particle(
+            x + Math.cos(a) * rr, y, z + Math.sin(a) * rr,
+            Math.cos(a) * rand(2.2, 0.2), rand(14, 7), Math.sin(a) * rand(2.2, 0.2),
+            color, rand(0.9, 0.45), rand(0.4, 0.18), 9));
+        }
+      }
+    }
 
     if (opts.team === TEAM.PLAYER) {
       for (const m of this.enemiesInRadius(x, y, z, radius)) {
@@ -903,6 +939,16 @@ export class Game {
 
   update(dt, input) {
     if (!this.running || this.paused) return;
+    // Hit stop. A few frames of near-frozen time on a crit or a kill is the
+    // single cheapest thing that makes a blow land — the eye reads the pause
+    // as weight. Time is *slowed*, never skipped: dropping frames outright
+    // would let a fast projectile tunnel through a wall, and the fixed step
+    // above this call is what keeps the simulation stable.
+    if (this.hitstop > 0) {
+      this.hitstop = Math.max(0, this.hitstop - dt);
+      dt *= 0.16;
+    }
+    this.flash = Math.max(0, (this.flash || 0) - dt * 4.5);
     this.time += dt;
     this.timeSinceCombat += dt;
     this.screenShake = Math.max(0, this.screenShake - dt * 1.8);
