@@ -204,17 +204,24 @@ export class Player extends Entity {
    * close, so a deliberate lead shot is still the player's.
    */
   applyAimAssist(dt, game) {
+    this.aimLock = null;
     if (!this.aimAssist) return;
-    // Hands off while the player is actively turning. Without this the assist
-    // cancels the drag — you sweep the view and it snaps back, which reads as
-    // broken controls rather than as help.
-    this.lookInput = (this.lookInput || 0) * Math.max(0, 1 - dt * 6);
-    if (this.lookInput > 0.0016) return;
     const range = this.isMelee ? 9 : 34;
     // Tight cone: roughly 20 degrees. Anything wider and the assist starts
     // acquiring targets rather than tracking the one you chose.
     const target = game.aimTarget(this, range, 0.94);
+    // Published whether or not the view is actually being nudged this frame,
+    // because the HUD outlines it: the assist was invisible before, so it was
+    // impossible to tell a miss caused by a bad angle from one caused by the
+    // assist having locked something else.
+    this.aimLock = target || null;
     if (!target) return;
+    // Hands off while the player is actively turning. Without this the assist
+    // cancels the drag — you sweep the view and it snaps back, which reads as
+    // broken controls rather than as help. The lock still stands, so the
+    // outline does not flicker off every time you move your thumb.
+    this.lookInput = (this.lookInput || 0) * Math.max(0, 1 - dt * 6);
+    if (this.lookInput > 0.0016) return;
     const dx = target.x - this.x;
     const dz = target.z - this.z;
     const dy = target.centerY - this.eyeY;
@@ -477,6 +484,38 @@ export class Player extends Entity {
       const tipF = 0.20;
       r.drawBox(px + fwd[0] * tipF, py + fwd[1] * tipF + 0.06, pz + fwd[2] * tipF,
         0.075, 0.075, 0.075, { tile, color, emissive: 1, yaw, pitch });
+    } else if (w.type === 'bow') {
+      // A bow held vertically: two limbs angled off a grip, with a bright
+      // string between the tips. Reads as ranged at a glance, which a sword
+      // model on the game's only long-range class did not.
+      const bp = pitch + 1.35;
+      const ux = Math.sin(yaw) * Math.sin(bp);
+      const uy = Math.cos(bp);
+      const uz = Math.cos(yaw) * Math.sin(bp);
+      const along = (t) => [px - ux * t, py - uy * t, pz - uz * t];
+      r.drawBox(px, py, pz, 0.030, 0.13, 0.030, { tile, color, yaw, pitch: bp });
+      for (const s of [-1, 1]) {
+        const a = along(s * 0.13);
+        r.drawBox(a[0], a[1], a[2], 0.026, 0.13, 0.026,
+          { tile, color, yaw, pitch: bp + s * 0.42 });
+      }
+      // The string, drawn as one thin emissive span so the draw reads.
+      r.drawBox(px + fwd[0] * 0.02, py, pz + fwd[2] * 0.02, 0.010, 0.40, 0.010,
+        { tile: T.BLANK, color: [0.85, 0.9, 0.8], emissive: 0.5, yaw, pitch: bp });
+    } else if (w.type === 'hammer') {
+      // A warhammer: short haft, heavy blocky head. Weight is the whole read.
+      const bp = pitch + 1.35;
+      const ux = Math.sin(yaw) * Math.sin(bp);
+      const uy = Math.cos(bp);
+      const uz = Math.cos(yaw) * Math.sin(bp);
+      const along = (t) => [px - ux * t, py - uy * t, pz - uz * t];
+      const head = along(-0.06);
+      r.drawBox(head[0], head[1], head[2], 0.11, 0.10, 0.09, { tile, color, yaw, pitch: bp });
+      r.drawBox(px, py, pz, 0.032, 0.30, 0.032,
+        { tile: T.LOG_SIDE, color: [0.40, 0.29, 0.19], yaw, pitch: bp });
+      const cap = along(0.19);
+      r.drawBox(cap[0], cap[1], cap[2], 0.048, 0.030, 0.044,
+        { tile, color, emissive: 0.35, yaw, pitch: bp });
     } else {
       const len = w.type === 'dagger' ? 0.22 : 0.32;
       const bp = pitch + 1.35;

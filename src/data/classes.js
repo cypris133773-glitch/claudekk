@@ -18,6 +18,13 @@ export const RESOURCE = {
   // fighting and spent immediately, which is what makes the Demonslayer a
   // class you play forwards.
   HATRED: { key: 'hatred', name: 'Hatred', color: '#ff3ca0', max: 100, regen: 0, startFull: false, onHitGain: 7, onKillGain: 14 },
+  // Faith trickles rather than pours, and is topped up by both dealing and
+  // taking hits. A Paladin who disengages runs dry, which is the point: the
+  // armour exists to let you hold ground, not to let you walk away from it.
+  FAITH: { key: 'faith', name: 'Faith', color: '#ffe9a8', max: 110, regen: 3, startFull: true, onHitGain: 5, onTakeGain: 8 },
+  // Focus is the most generous pool in the game because the Hunter's limit is
+  // never the resource — it is whether there is still room to back into.
+  FOCUS: { key: 'focus', name: 'Focus', color: '#8ce06a', max: 100, regen: 22, startFull: true },
 };
 
 /** How many skills are equipped at once — four buttons, four keys. */
@@ -802,6 +809,234 @@ export const CLASSES = [
           { id: 'd_m4', name: 'Burning Sigil', skill: 'sigilofflame', desc: 'Sigil of Flame lasts 1.5s longer and burns 22% harder, per rank.', max: 4, effect: { skillDuration: 1.5, skillDamage: 0.22 } },
           { id: 'd_m5', name: 'Blind Fury', skill: 'eyebeam', desc: 'Eye Beam hits 26% harder and its cooldown drops 9%, per rank.', max: 4, effect: { skillDamage: 0.26, skillCooldown: 0.09 } },
           { id: 'd_m6', name: 'Demon Within', skill: 'metamorphosis', desc: 'Metamorphosis starts at rank 3 and lasts 4s longer.', max: 1, effect: { startRank: 3, skillDuration: 4 } },
+        ],
+      },
+    ],
+  },
+  // -------------------------------------------------------------------------
+  {
+    id: 'paladin',
+    name: 'Paladin',
+    role: 'Armoured Zealot',
+    tagline: 'Hold the line, and make holding it hurt.',
+    color: '#e8c56a',
+    accent: '#fff2c4',
+    resource: RESOURCE.FAITH,
+    // The tankiest class in the game, and the slowest. Faith is spent from a
+    // pool that only refills by taking and landing hits, so a Paladin who backs
+    // off stops working — the armour is there to let you stay in, not to let
+    // you leave.
+    base: { hp: 175, armor: 0.32, speed: 4.7, attackDamage: 24, attackSpeed: 1.35, attackRange: 3.5, critChance: 0.07, critMult: 1.8 },
+    weapon: { type: 'hammer', tile: 'GOLD', color: '#ffe6a8', length: 1.2 },
+    difficulty: 1,
+    skills: [
+      {
+        id: 'crusaderstrike', name: 'Crusader Strike', kind: 'strike', cost: 12, cooldown: 3, icon: '⚒',
+        desc: 'A hammer blow that returns Faith and heals you for part of it.',
+        power: { damage: 40, range: 3.6, arc: 0.9, lifesteal: 0.25 },
+      },
+      {
+        id: 'consecration', name: 'Consecration', kind: 'zone', cost: 22, cooldown: 9, icon: '🕯',
+        desc: 'Bless the ground beneath you: it burns the unholy for 8s.',
+        power: { radius: 6.0, dps: 30, duration: 8, range: 0, delay: 0.15, color: '#ffe9a8' },
+      },
+      {
+        id: 'divineshield', name: 'Divine Shield', kind: 'buff', cost: 26, cooldown: 30, icon: '🛡',
+        desc: 'For 5s you take 80% less damage and cannot be knocked back.',
+        power: { duration: 5, damageTaken: 0.20, rooted: false },
+      },
+      {
+        id: 'judgement', name: 'Judgement', kind: 'projectile', cost: 18, cooldown: 5, icon: '⚖',
+        desc: 'Hurl a verdict of light that detonates on the first thing it meets.',
+        power: { damage: 52, speed: 44, radius: 2.6, color: '#ffe9a8', size: 0.3 },
+      },
+      {
+        id: 'hammerofwrath', name: 'Hammer of Wrath', kind: 'aoe_target', cost: 28, cooldown: 8, icon: '🔨',
+        desc: 'Call down a hammer of light that stuns everything it lands on.',
+        power: { damage: 66, radius: 4.4, range: 18, delay: 0.55, stun: 1.4, knockback: 6, color: '#fff2c4' },
+      },
+      {
+        id: 'layonhands', name: 'Lay on Hands', kind: 'heal', cost: 34, cooldown: 26, icon: '✋',
+        desc: 'A full mend: restore a large share of your health at once.',
+        power: { instant: 90, healPerSecond: 0, duration: 0 },
+      },
+      {
+        id: 'avengershield', name: "Avenger's Shield", kind: 'chain', cost: 24, cooldown: 7, icon: '🛡',
+        desc: 'Throw your shield: it bounces between enemies, stunning each.',
+        power: { damage: 46, chainDamage: 34, jumps: 3, range: 16, stun: 0.8, color: '#ffe9a8' },
+      },
+      {
+        id: 'blessing', name: 'Blessing of Might', kind: 'buff', cost: 26, cooldown: 24, icon: '📜',
+        desc: 'For 12s you deal 30% more damage and take 15% less.',
+        power: { duration: 12, damageBonus: 0.30, damageTaken: 0.85 },
+      },
+      {
+        id: 'divinestorm', name: 'Divine Storm', kind: 'aoe_self', cost: 30, cooldown: 8, icon: '🌟',
+        desc: 'Sweep everything around you with light and heal for the damage.',
+        power: { radius: 5.6, damage: 48, ticks: 1, knockback: 4, lifesteal: 0.3, color: '#fff2c4' },
+      },
+      {
+        id: 'avengingwrath', name: 'Avenging Wrath', kind: 'buff', cost: 36, cooldown: 40, icon: '👑',
+        desc: 'For 12s: +45% damage, +25% attack speed and constant self-healing.',
+        power: { duration: 12, damageBonus: 0.45, attackSpeedBonus: 0.25, regen: 6 },
+      },
+    ],
+    talents: [
+      {
+        name: 'Retribution', color: '#ffd98a', nodes: [
+          { id: 'l_r1', name: 'Zeal', desc: '+6% melee damage per rank.', max: 8, effect: { meleeDamage: 0.06 } },
+          { id: 'l_r2', name: 'Vengeance', desc: '+4% crit chance per rank.', max: 6, effect: { critChance: 0.04 } },
+          { id: 'l_r3', name: 'Sanctified Wrath', desc: '+0.08 crit damage per rank.', max: 5, effect: { critMult: 0.08 } },
+          { id: 'l_r4', name: 'Repentance', desc: 'Area effects reach 8% further per rank.', max: 5, effect: { aoeRadius: 0.08 } },
+          { id: 'l_r5', name: 'Righteous Fury', desc: '+5% attack speed per rank.', max: 5, effect: { attackSpeed: 0.05 } },
+          { id: 'l_r6', name: 'Final Verdict', desc: '+20% damage and +25% damage to bosses.', max: 1, effect: { allDamage: 0.20, bossDamage: 0.25 } },
+        ],
+      },
+      {
+        name: 'Protection', color: '#8fb3ff', nodes: [
+          { id: 'l_p1', name: 'Stoneforged', desc: '+26 max health per rank.', max: 8, effect: { maxHp: 26 } },
+          { id: 'l_p2', name: 'Sanctuary', desc: '+3% armor per rank.', max: 6, effect: { armor: 0.03 } },
+          { id: 'l_p3', name: 'Reckoning', desc: 'Reflect 12% of damage taken per rank.', max: 5, effect: { thorns: 0.12 } },
+          { id: 'l_p4', name: 'Ardent Defender', desc: 'Survive a lethal hit once per wave at 30% hp.', max: 1, effect: { cheatDeath: 1 } },
+          { id: 'l_p5', name: 'Guarded', desc: 'Take 3% less damage per rank.', max: 5, effect: { damageReduction: 0.03 } },
+          { id: 'l_p6', name: 'Aegis', desc: '+120 absorb and -10% damage taken.', max: 1, effect: { absorb: 120, damageReduction: 0.10 } },
+        ],
+      },
+      {
+        name: 'Holy', color: '#ffe9a8', nodes: [
+          { id: 'l_h1', name: 'Illumination', desc: '+8% healing done per rank.', max: 6, effect: { healing: 0.08 } },
+          { id: 'l_h2', name: 'Benediction', desc: 'Heal 3% of damage dealt per rank.', max: 6, effect: { lifesteal: 0.03 } },
+          { id: 'l_h3', name: 'Devotion', desc: 'Regenerate 1.5 hp/s per rank out of combat.', max: 5, effect: { regen: 1.5 } },
+          { id: 'l_h4', name: 'Conviction', desc: '+16 max Faith and +2 Faith per hit, per rank.', max: 5, effect: { resourceMax: 16, onHitGain: 2 } },
+          { id: 'l_h5', name: 'Grace', desc: 'Cooldowns recover 4% faster per rank.', max: 6, effect: { cooldownReduction: 0.04 } },
+          { id: 'l_h6', name: 'Beacon of Light', desc: 'Healing yourself also burns nearby enemies for 40% of it.', max: 1, effect: { atonement: 0.40 } },
+        ],
+      },
+      // Mastery. Every node here names one skill and does nothing at all unless
+      // that skill is one of your four. It is the branch that makes the loadout
+      // and the tree one decision instead of two: the generic branches make
+      // your character better, this one makes a *build*.
+      {
+        name: 'Mastery', color: '#ffd24a', nodes: [
+          { id: 'l_m1', name: 'Zealous Strike', skill: 'crusaderstrike', desc: 'Crusader Strike hits 20% harder and costs 12% less, per rank.', max: 6, effect: { skillDamage: 0.20, skillCost: 0.12 } },
+          { id: 'l_m2', name: 'Hallowed Ground', skill: 'consecration', desc: 'Consecration lasts 1.5s longer and burns 22% harder, per rank.', max: 5, effect: { skillDuration: 1.5, skillDamage: 0.22 } },
+          { id: 'l_m3', name: 'Unbreakable', skill: 'divineshield', desc: 'Divine Shield lasts 1s longer and its cooldown drops 10%, per rank.', max: 5, effect: { skillDuration: 1, skillCooldown: 0.10 } },
+          { id: 'l_m4', name: 'Swift Verdict', skill: 'judgement', desc: 'Judgement hits 24% harder and its cooldown drops 9%, per rank.', max: 4, effect: { skillDamage: 0.24, skillCooldown: 0.09 } },
+          { id: 'l_m5', name: 'Wrathful', skill: 'hammerofwrath', desc: 'Hammer of Wrath lands 14% wider and hits 24% harder, per rank.', max: 4, effect: { skillRadius: 0.14, skillDamage: 0.24 } },
+          { id: 'l_m6', name: 'Eternal Flame', skill: 'divinestorm', desc: 'Divine Storm starts at rank 3 and hits 35% harder.', max: 1, effect: { startRank: 3, skillDamage: 0.35 } },
+        ],
+      },
+    ],
+  },
+
+  // -------------------------------------------------------------------------
+  {
+    id: 'hunter',
+    name: 'Hunter',
+    role: 'Ranged / Beast',
+    tagline: 'Keep the distance. Let the pet close it.',
+    color: '#7bbf5a',
+    accent: '#cdf5a8',
+    resource: RESOURCE.FOCUS,
+    // The longest reach in the game and the thinnest margin: a Hunter caught in
+    // melee is a Hunter losing. Focus regenerates fast, so the limit is not the
+    // resource — it is whether you still have room to back into.
+    base: { hp: 120, armor: 0.14, speed: 5.9, attackDamage: 22, attackSpeed: 1.95, attackRange: 22, critChance: 0.13, critMult: 2.0 },
+    weapon: { type: 'bow', tile: 'LOG_SIDE', color: '#c9a06a', length: 1.15, projectile: { speed: 52, color: '#cdf5a8', size: 0.22, gravity: 0 } },
+    difficulty: 2,
+    skills: [
+      {
+        id: 'arcaneshot', name: 'Arcane Shot', kind: 'projectile', cost: 12, cooldown: 1.5, icon: '🏹',
+        desc: 'A fast shot that costs almost nothing. The rotation filler.',
+        power: { damage: 44, speed: 58, radius: 1.2, color: '#cdf5a8', size: 0.2 },
+      },
+      {
+        id: 'multishot', name: 'Multi-Shot', kind: 'cone', cost: 24, cooldown: 6, icon: '🎯',
+        desc: 'A fan of arrows that hits everything in a wide arc ahead of you.',
+        power: { damage: 46, range: 16, arc: 1.1, color: '#cdf5a8' },
+      },
+      {
+        id: 'summonbeast', name: 'Call Beast', kind: 'summon', cost: 28, cooldown: 22, icon: '🐺',
+        desc: 'Your beast fights at your side and holds what closes on you.',
+        power: { hp: 200, damage: 26, duration: 45, maxPets: 1, speed: 7.2, color: '#9dcf7a' },
+      },
+      {
+        id: 'explosiveshot', name: 'Explosive Shot', kind: 'aoe_target', cost: 30, cooldown: 8, icon: '💥',
+        desc: 'A shell that detonates where it lands and leaves the ground burning.',
+        power: { damage: 62, radius: 4.6, range: 22, delay: 0.4, burn: 14, knockback: 5, color: '#ffb27a' },
+      },
+      {
+        id: 'disengage', name: 'Disengage', kind: 'dash', cost: 14, cooldown: 7, icon: '🪶',
+        desc: 'Leap backwards out of reach, hurting whatever you leave behind.',
+        power: { distance: 13, speed: 36, damage: 26, knockback: 9, radius: 2.6, backwards: true },
+      },
+      {
+        id: 'serpentsting', name: "Serpent's Sting", kind: 'projectile', cost: 18, cooldown: 4, icon: '🐍',
+        desc: 'A venomed arrow that poisons for heavy damage over 10s.',
+        power: { damage: 30, speed: 50, radius: 1.2, dot: { dps: 20, duration: 10 }, color: '#8ce06a', size: 0.2 },
+      },
+      {
+        id: 'volley', name: 'Volley', kind: 'zone', cost: 32, cooldown: 12, icon: '🌧',
+        desc: 'Rain arrows on a patch of ground for 7s.',
+        power: { radius: 6.2, dps: 34, duration: 7, range: 22, delay: 0.35, color: '#cdf5a8' },
+      },
+      {
+        id: 'aspect', name: 'Aspect of the Hawk', kind: 'buff', cost: 24, cooldown: 22, icon: '🦅',
+        desc: 'For 12s you shoot 45% faster and move 18% quicker.',
+        power: { duration: 12, attackSpeedBonus: 0.45, moveSpeed: 0.18 },
+      },
+      {
+        id: 'freezingtrap', name: 'Freezing Trap', kind: 'aoe_target', cost: 22, cooldown: 14, icon: '🧊',
+        desc: 'Set a trap that freezes everything caught in its radius.',
+        power: { damage: 20, radius: 5.0, range: 16, delay: 0.5, freeze: 3.0, color: '#8fe3ff' },
+      },
+      {
+        id: 'killshot', name: 'Kill Shot', kind: 'projectile', cost: 40, cooldown: 10, icon: '☠',
+        desc: 'A single aimed shot. Triple damage against anything below 35% health.',
+        power: { damage: 90, speed: 70, radius: 1.6, executeThreshold: 0.35, executeMult: 3, color: '#ff9a7a', size: 0.26 },
+      },
+    ],
+    talents: [
+      {
+        name: 'Marksmanship', color: '#cdf5a8', nodes: [
+          { id: 'h_m1', name: 'Steady Aim', desc: '+7% spell damage per rank.', max: 8, effect: { spellDamage: 0.07 } },
+          { id: 'h_m2', name: 'Lethal Shots', desc: '+4% crit chance per rank.', max: 6, effect: { critChance: 0.04 } },
+          { id: 'h_m3', name: 'Mortal Shots', desc: '+0.09 crit damage per rank.', max: 5, effect: { critMult: 0.09 } },
+          { id: 'h_m4', name: 'Efficiency', desc: 'Skills cost 5% less per rank.', max: 6, effect: { costReduction: 0.05 } },
+          { id: 'h_m5', name: 'Trueshot', desc: 'Projectiles pierce one more target per rank.', max: 3, effect: { pierce: 1 } },
+          { id: 'h_m6', name: 'Aimed Shot', desc: '+22% damage and +6% crit chance.', max: 1, effect: { allDamage: 0.22, critChance: 0.06 } },
+        ],
+      },
+      {
+        name: 'Beast Mastery', color: '#9dcf7a', nodes: [
+          { id: 'h_b1', name: 'Ferocity', desc: 'Your beasts are 12% stronger per rank.', max: 6, effect: { petPower: 0.12 } },
+          { id: 'h_b2', name: 'Pack Leader', desc: '+1 beast at a time.', max: 2, effect: { maxPets: 1 } },
+          { id: 'h_b3', name: 'Endurance Training', desc: 'Beasts last 4s longer per rank.', max: 5, effect: { totemDuration: 4 } },
+          { id: 'h_b4', name: 'Bestial Wrath', desc: 'Beasts return 25% of their damage to you as health.', max: 1, effect: { soulLink: 0.25 } },
+          { id: 'h_b5', name: 'Kindred Spirit', desc: 'Restore 7 health per kill, per rank.', max: 5, effect: { killHeal: 7 } },
+          { id: 'h_b6', name: 'The Beast Within', desc: 'A slain beast claws its way back once per 30s.', max: 1, effect: { petRebirth: 1 } },
+        ],
+      },
+      {
+        name: 'Survival', color: '#8fe3ff', nodes: [
+          { id: 'h_s1', name: 'Toughened Hide', desc: '+18 max health per rank.', max: 8, effect: { maxHp: 18 } },
+          { id: 'h_s2', name: 'Deterrence', desc: '+3% dodge per rank.', max: 6, effect: { dodge: 0.03 } },
+          { id: 'h_s3', name: 'Wyvern Venom', desc: 'Damage over time deals 14% more per rank.', max: 6, effect: { dotDamage: 0.14 } },
+          { id: 'h_s4', name: 'Survivalist', desc: 'Regenerate 1.5 hp/s per rank out of combat.', max: 5, effect: { regen: 1.5 } },
+          { id: 'h_s5', name: 'Fleet Footed', desc: '+4% move speed per rank.', max: 5, effect: { moveSpeed: 0.04 } },
+          { id: 'h_s6', name: 'Master of Beasts', desc: 'Survive a lethal hit once per wave, and +10% move speed.', max: 1, effect: { cheatDeath: 1, moveSpeed: 0.10 } },
+        ],
+      },
+      // Mastery. Every node here names one skill and does nothing at all unless
+      // that skill is one of your four.
+      {
+        name: 'Mastery', color: '#ffd24a', nodes: [
+          { id: 'h_y1', name: 'Improved Arcane Shot', skill: 'arcaneshot', desc: 'Arcane Shot hits 18% harder and costs 12% less, per rank.', max: 6, effect: { skillDamage: 0.18, skillCost: 0.12 } },
+          { id: 'h_y2', name: 'Barrage', skill: 'multishot', desc: 'Multi-Shot hits 22% harder and its cooldown drops 9%, per rank.', max: 5, effect: { skillDamage: 0.22, skillCooldown: 0.09 } },
+          { id: 'h_y3', name: 'Lingering Venom', skill: 'serpentsting', desc: "Serpent's Sting poisons 26% harder and 1s longer, per rank.", max: 5, effect: { skillDamage: 0.26, skillDuration: 1 } },
+          { id: 'h_y4', name: 'Endless Volley', skill: 'volley', desc: 'Volley lasts 1.2s longer and covers 12% more ground, per rank.', max: 4, effect: { skillDuration: 1.2, skillRadius: 0.12 } },
+          { id: 'h_y5', name: 'Bigger Bombs', skill: 'explosiveshot', desc: 'Explosive Shot lands 15% wider and hits 24% harder, per rank.', max: 4, effect: { skillRadius: 0.15, skillDamage: 0.24 } },
+          { id: 'h_y6', name: 'Executioner', skill: 'killshot', desc: 'Kill Shot starts at rank 3 and hits 40% harder.', max: 1, effect: { startRank: 3, skillDamage: 0.40 } },
         ],
       },
     ],

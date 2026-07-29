@@ -1,4 +1,6 @@
-// The Armoury: five equipment slots bought with Souls in the main menu.
+import { PRICE_MULTIPLIER } from './permanent.js';
+
+// The Armoury: nine equipment slots bought with diamonds in the main menu.
 // Unlike the Forge, armour has no ceiling — every tier costs more and gives a
 // little more, so late-game Souls always have somewhere to go.
 
@@ -85,7 +87,7 @@ export const ARMOR_BY_ID = Object.fromEntries(ARMOR_SLOTS.map((s) => [s.id, s]))
 export const ARMOR_MAX_TIER = 100;
 
 export function armorCost(def, tier) {
-  return Math.round(def.baseCost * Math.pow(def.growth, tier));
+  return Math.round(def.baseCost * Math.pow(def.growth, tier) * PRICE_MULTIPLIER);
 }
 
 /** Flavour name for a tier, e.g. tier 7 boots -> "Chain Boots II". */

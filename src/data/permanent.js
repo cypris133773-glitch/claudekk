@@ -44,8 +44,17 @@ export const PERMANENT = [
 
 export const PERMANENT_BY_ID = Object.fromEntries(PERMANENT.map((p) => [p.id, p]));
 
+/**
+ * Global price multiplier on everything bought with diamonds. Kept here, as
+ * one number both shops import, so a price change is a single edit that cannot
+ * miss a shop — and so a test can assert it is actually applied rather than
+ * declared. Raising it makes every diamond a run earns worth more, which is
+ * what stretches the grind rather than shortening the game.
+ */
+export const PRICE_MULTIPLIER = 1.5;
+
 export function upgradeCost(def, currentLevel) {
-  return Math.round(def.baseCost * Math.pow(def.growth, currentLevel));
+  return Math.round(def.baseCost * Math.pow(def.growth, currentLevel) * PRICE_MULTIPLIER);
 }
 
 /** Flatten purchased permanent levels into a modifier bag. */

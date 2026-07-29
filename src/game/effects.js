@@ -28,6 +28,10 @@ export class Projectile {
     this.burn = opts.burn || 0;
     this.lifesteal = opts.lifesteal || 0;
     this.pierce = opts.pierce || 0;
+    // Execute-style shots. Kept on the projectile rather than resolved at cast
+    // time because the target's health is only known when the arrow lands.
+    this.executeThreshold = opts.executeThreshold || 0;
+    this.executeMult = opts.executeMult || 1;
     this.onHit = opts.onHit || null;
     this.spin = rand(6, -6);
     this.dead = false;
@@ -73,7 +77,12 @@ export class Projectile {
   impact(game, hit) {
     if (hit) {
       this.hitList.add(hit);
-      const dealt = game.dealDamage(this.owner, hit, this.damage, {
+      let dmg = this.damage;
+      if (this.executeThreshold && hit.maxHp && hit.hp / hit.maxHp <= this.executeThreshold) {
+        dmg *= this.executeMult;
+        game.burst(hit.x, hit.centerY, hit.z, 14, '#ff9a7a');
+      }
+      const dealt = game.dealDamage(this.owner, hit, dmg, {
         knockback: 3, kx: this.vx, kz: this.vz, source: this.owner,
       });
       if (this.dot) hit.applyDot(this.dot.dps, this.dot.duration, this.dot.type || 'poison', this.owner);

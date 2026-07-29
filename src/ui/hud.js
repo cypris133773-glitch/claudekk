@@ -106,6 +106,7 @@ export class Hud {
     if (!p) return;
 
     this.drawFloaters();
+    this.drawAimLock(p);
     this.drawEnemyHealth();
     this.drawCrosshair();
     this.drawVitals(p);
@@ -413,6 +414,72 @@ export class Hud {
   }
 
   /** Health bars above nearby enemies. */
+  /**
+   * A hard black outline around whatever auto-aim is holding.
+   *
+   * The assist used to be completely invisible: it quietly turned the view and
+   * the player had no way to tell which enemy it had decided on, so a shot
+   * that went somewhere unexpected read as the controls misbehaving. Black,
+   * because every enemy, particle and arena palette in the game is lighter
+   * than it — a coloured ring vanishes against the wrong theme, this does not.
+   */
+  drawAimLock(p) {
+    const m = p.aimLock;
+    if (!m || m.dead) return;
+    const r = this.game.r;
+    // Corners of the enemy's box, so the outline is the size of the thing it
+    // is around rather than a fixed circle that swallows small mobs and sits
+    // inside big ones.
+    const hw = m.width * 0.5;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const dx of [-hw, hw]) {
+      for (const dz of [-hw, hw]) {
+        for (const dy of [0, m.height]) {
+          const s = r.project(m.x + dx, m.y + dy, m.z + dz);
+          if (!s) return;                        // behind the camera; draw nothing
+          if (s.x < minX) minX = s.x;
+          if (s.y < minY) minY = s.y;
+          if (s.x > maxX) maxX = s.x;
+          if (s.y > maxY) maxY = s.y;
+        }
+      }
+    }
+    const pad = 4;
+    const x = minX - pad, y = minY - pad;
+    const w = maxX - minX + pad * 2, h = maxY - minY + pad * 2;
+    if (!(w > 0) || !(h > 0) || w > this.w * 2 || h > this.h * 2) return;
+
+    const c = this.ctx;
+    // Two passes: a thick black silhouette that reads against anything, and a
+    // thin bright inner line so the shape stays legible on a dark arena floor.
+    c.save();
+    c.lineJoin = 'round';
+    c.strokeStyle = 'rgba(0,0,0,0.92)';
+    c.lineWidth = 5;
+    this.roundRect(x, y, w, h, 6);
+    c.stroke();
+    c.strokeStyle = 'rgba(255,255,255,0.55)';
+    c.lineWidth = 1.5;
+    this.roundRect(x, y, w, h, 6);
+    c.stroke();
+
+    // Corner ticks, which is what makes it read as a reticle rather than as a
+    // box someone drew around an enemy.
+    const t = Math.min(12, Math.min(w, h) * 0.30);
+    c.strokeStyle = 'rgba(0,0,0,0.92)';
+    c.lineWidth = 4;
+    c.beginPath();
+    for (const [cx, cy, sx, sy] of [
+      [x, y, 1, 1], [x + w, y, -1, 1], [x, y + h, 1, -1], [x + w, y + h, -1, -1],
+    ]) {
+      c.moveTo(cx + sx * t, cy);
+      c.lineTo(cx, cy);
+      c.lineTo(cx, cy + sy * t);
+    }
+    c.stroke();
+    c.restore();
+  }
+
   drawEnemyHealth() {
     const c = this.ctx;
     const r = this.game.r;

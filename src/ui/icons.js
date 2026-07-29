@@ -44,6 +44,12 @@ const BY_ID = {
   shuriken: 'nature', crimsontempest: 'physical', smokebomb: 'nature', shadowdance: 'shadow',
   felrush: 'nature', glaivethrow: 'nature', soulcleave: 'shadow', sigilofflame: 'fire',
   eyebeam: 'nature', metamorphosis: 'shadow',
+  crusaderstrike: 'holy', consecration: 'holy', divineshield: 'holy', judgement: 'holy',
+  hammerofwrath: 'holy', layonhands: 'holy', avengershield: 'holy', blessing: 'holy',
+  divinestorm: 'holy', avengingwrath: 'holy',
+  arcaneshot: 'nature', multishot: 'physical', summonbeast: 'nature',
+  explosiveshot: 'fire', disengage: 'nature', serpentsting: 'nature',
+  volley: 'nature', aspect: 'nature', freezingtrap: 'frost', killshot: 'physical',
 };
 
 const BY_KIND = {

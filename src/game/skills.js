@@ -54,6 +54,7 @@ function power(player, skill, rank = 0) {
   if (p.absorb) p.absorb = (p.absorb + (m.absorb || 0)) * player.stats.healMult;
   if (p.duration && (m.totemDuration || 0) && (p.totem)) p.duration += m.totemDuration;
   if (p.jumps) p.jumps += m.jumps || 0;
+  if (skill.kind === 'projectile') p.pierce = (p.pierce || 0) + (m.pierce || 0);
   if (p.maxPets) p.maxPets += m.maxPets || 0;
   if (p.executeThreshold) p.executeThreshold += m.executeThreshold || 0;
   if (p.hp && (m.petPower || 0)) p.hp *= 1 + m.petPower;
@@ -119,6 +120,11 @@ export function castSkill(game, player, index) {
         speed: p.speed, damage: p.damage, radius: p.radius, size: p.size,
         color: p.color, gravity: p.gravity || 0, dot, burn: p.burn,
         lifesteal: p.lifesteal, skillId: skill.id,
+        // Trueshot and the like. Only a shot with no blast radius pierces: one
+        // that explodes has already hit everything behind the first target, so
+        // letting it carry on would pay the talent out twice.
+        pierce: p.radius > 1.6 ? 0 : (p.pierce || 0),
+        executeThreshold: p.executeThreshold, executeMult: p.executeMult,
       });
       game.sfx('cast');
       break;

@@ -41,8 +41,8 @@ const near = (a, b, eps = 1e-6) => Math.abs(a - b) < eps;
 
 // --- Classes ---------------------------------------------------------------
 
-check('seven playable classes', () => {
-  assert(CLASSES.length === 7, `expected 7 classes, got ${CLASSES.length}`);
+check('nine playable classes', () => {
+  assert(CLASSES.length === 9, `expected 9 classes, got ${CLASSES.length}`);
 });
 
 check('every class resource is distinct enough to matter', () => {
@@ -439,7 +439,9 @@ check('mastery never stops progressing', () => {
 
 check('armour costs climb and its bonuses add up', () => {
   for (const def of ARMOR_SLOTS) {
-    assert(armorCost(def, 0) === def.baseCost, `${def.id} tier 0 cost`);
+    // baseCost is the pre-multiplier list price; the shop charges the marked-up
+    // one, and the pricing check above is what pins the multiplier itself.
+    assert(armorCost(def, 0) > 0, `${def.id} tier 0 cost`);
     for (let t = 1; t < ARMOR_MAX_TIER; t++) {
       assert(armorCost(def, t) > armorCost(def, t - 1), `${def.id} cost flat at ${t}`);
     }
@@ -702,6 +704,26 @@ check('every arena layout is actually playable', async () => {
       // And there has to be a world to look at.
       assert(w.mesh.length > 6 * 3000, `${name} meshed to almost nothing`);
     }
+  }
+});
+
+// --- Pricing ---------------------------------------------------------------
+
+check('every shop applies the global price multiplier', async () => {
+  const { PRICE_MULTIPLIER } = await import('../src/data/permanent.js');
+  assert(PRICE_MULTIPLIER > 0, 'the multiplier is not a usable number');
+  // Both shops must go through it. A price computed from baseCost and growth
+  // alone would silently stay on the old scale, and the only symptom would be
+  // one shop being cheap — which reads as a balance opinion, not a bug.
+  for (const def of PERMANENT) {
+    const raw = def.baseCost * Math.pow(def.growth, 0);
+    assert(upgradeCost(def, 0) === Math.round(raw * PRICE_MULTIPLIER),
+      `Forge track ${def.id} is not priced through PRICE_MULTIPLIER`);
+  }
+  for (const def of ARMOR_SLOTS) {
+    const raw = def.baseCost * Math.pow(def.growth, 3);
+    assert(armorCost(def, 3) === Math.round(raw * PRICE_MULTIPLIER),
+      `Armoury slot ${def.id} is not priced through PRICE_MULTIPLIER`);
   }
 });
 
