@@ -252,6 +252,21 @@ export class Audio {
           this.tone({ freq: 262 * Math.pow(1.5, i), type: 'triangle', dur: 0.5, gain: 0.16, delay: 0.5 + d }));
         break;
       case 'dodge': this.noise({ dur: 0.13, gain: 0.11, freq: 2600, q: 2.2, sweep: -1500 }); break;
+      // --- Enemies ---------------------------------------------------------
+      // A hit on an enemy already plays the weapon; these are the *creature*,
+      // so a fight has something alive in it rather than only impacts.
+      case 'mobhurt':
+        this.tone({ freq: 240, type: 'sawtooth', dur: 0.11, gain: 0.11, sweep: -120 });
+        this.noise({ dur: 0.07, gain: 0.07, freq: 900, q: 1.2 });
+        break;
+      case 'mobdie':
+        this.tone({ freq: 300, type: 'square', dur: 0.26, gain: 0.13, sweep: -220 });
+        this.noise({ dur: 0.20, gain: 0.10, freq: 500, q: 0.7, sweep: -320 });
+        break;
+      case 'mobswing': this.noise({ dur: 0.10, gain: 0.10, freq: 1200, sweep: -700 }); break;
+      case 'growl':
+        this.tone({ freq: 110, type: 'sawtooth', dur: 0.34, gain: 0.07, sweep: -34 });
+        break;
       // A potion hitting the floor: a short glassy tick, quiet enough to sit
       // under a busy fight but distinct enough to turn your head.
       case 'drop':
@@ -292,45 +307,121 @@ export class Audio {
     }
   }
 
-  // -- Music: a slow generative minor-key loop, deliberately unobtrusive. --
+  // -------------------------------------------------------------------------
+  // Music
+  // -------------------------------------------------------------------------
+  //
+  // A three-channel chiptune, written the way a 16-bit tracker would: a pulse
+  // lead, a triangle bass and a noise kit, stepping through sixteenth notes.
+  // It replaced one sine note every 900ms, which was atmosphere rather than
+  // music and gave a fight nothing to move to.
+  //
+  // Everything is generated. There is no audio file anywhere in this project
+  // and there is not going to be one, so "more music" means more patterns and
+  // more voices rather than more megabytes.
+
+  /** Semitone offsets, natural minor. The whole soundtrack lives in one key. */
+  static get SCALE() { return [0, 2, 3, 5, 7, 8, 10, 12]; }
+
+  /**
+   * Four lead patterns, sixteen steps each, as scale degrees. `null` is a rest,
+   * and the rests are the point — a line that plays on every step is a drone.
+   *
+   * They are ordered by how much they push: 0 is the menu and the first waves,
+   * 3 is a boss. `setMusicIntensity` picks between them, so the music tracks
+   * the fight without anything having to cue it explicitly.
+   */
+  static get LEAD() {
+    return [
+      [0, null, 2, null, 4, null, 2, null, 5, null, 4, null, 2, null, 0, null],
+      [0, 2, 4, 2, 5, 4, 2, 0, 7, 5, 4, 2, 4, 2, 0, null],
+      [7, 5, 7, 9, 7, 5, 4, 5, 7, 5, 4, 2, 0, 2, 4, 5],
+      [7, 7, 5, 7, 9, 9, 7, 9, 11, 9, 7, 5, 7, 4, 2, 0],
+    ];
+  }
+
+  /** Bass: root, fifth, sixth, fifth — four bars of one chord each. */
+  static get BASS() { return [0, 0, 4, 4, 5, 5, 4, 4]; }
 
   startMusic() {
     if (!this.ctx || this.musicTimer) return;
-    const scale = [0, 3, 5, 7, 10, 12, 15];
-    const root = 110;
-    let step = 0;
+    this.musicStep = 0;
+    this.musicLevel = this.musicLevel || 0;
     const tick = () => {
       if (!this.ctx) return;
-      // A closed context would otherwise throw from this timer twice a second
-      // for the rest of the session. One failure ends the music for good.
-      try { this.musicNote(scale, root, step++); } catch { this.stopMusic(); }
+      // A closed context would otherwise throw from this timer eight times a
+      // second for the rest of the session. One failure ends the music.
+      try { this.musicTick(this.musicStep++); } catch { this.stopMusic(); }
     };
     tick();
-    this.musicTimer = setInterval(tick, 900);
+    this.musicTimer = setInterval(tick, 125);          // 16ths at 120bpm
   }
 
-  musicNote(scale, root, step) {
+  musicTick(step) {
     const t = this.ctx.currentTime;
-    const beat = step % 8;
-    const note = root * Math.pow(2, scale[(step * 3) % scale.length] / 12);
+    const s = step % 16;
+    const bar = Math.floor(step / 16) % 8;
+    const lvl = this.musicLevel || 0;
+    const pattern = Audio.LEAD[Math.min(3, Math.floor(lvl * 3.999))];
+    const root = 110 * Math.pow(2, Audio.SCALE[Audio.BASS[bar] % Audio.SCALE.length] / 12);
+
+    // Bass on the half beat, an octave down. It carries the chord, so it plays
+    // at every intensity — silence here reads as the music having stopped.
+    if (s % 4 === 0) this.chipNote(root / 2, 'triangle', 0.42, 0.30, t);
+
+    // Lead.
+    const deg = pattern[s];
+    if (deg !== null && deg !== undefined) {
+      const f = root * Math.pow(2, Audio.SCALE[deg % Audio.SCALE.length] / 12)
+        * (deg >= 8 ? 2 : 1);
+      this.chipNote(f, 'square', 0.16, 0.16 + lvl * 0.06, t);
+      // An octave doubling from halfway up. It is the cheapest way to make the
+      // same line sound bigger, which is what a boss wave wants.
+      if (lvl > 0.5) this.chipNote(f * 2, 'square', 0.12, 0.05, t + 0.01);
+    }
+
+    // Kit. Kick on 1 and 9, snare on 5 and 13, hats on the offbeat once the
+    // fight is going.
+    if (s === 0 || s === 8) {
+      this.chipNote(64, 'sine', 0.16, 0.34, t, -40);
+    }
+    if (s === 4 || s === 12) {
+      this.noise({ dur: 0.12, gain: 0.10 + lvl * 0.05, freq: 1600, q: 0.8, sweep: -600 });
+    }
+    if (lvl > 0.25 && s % 2 === 1) {
+      this.noise({ dur: 0.03, gain: 0.035, freq: 6000, q: 1.4 });
+    }
+  }
+
+  /** One tracker note: a bare oscillator with a hard attack and a short tail. */
+  chipNote(freq, type, dur, gain, at, sweep = 0) {
     const osc = this.ctx.createOscillator();
     const g = this.ctx.createGain();
-    osc.type = beat === 0 ? 'triangle' : 'sine';
-    osc.frequency.value = beat % 4 === 0 ? note / 2 : note;
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(beat === 0 ? 0.5 : 0.28, t + 0.05);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 1.5);
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, at);
+    if (sweep) osc.frequency.linearRampToValueAtTime(Math.max(20, freq + sweep), at + dur);
+    // Square attack, exponential decay: the envelope is most of what makes a
+    // waveform sound like a chip rather than like a synthesiser.
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.linearRampToValueAtTime(gain, at + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
     osc.connect(g); g.connect(this.musicGain);
-    osc.start(t); osc.stop(t + 1.6);
+    osc.start(at); osc.stop(at + dur + 0.02);
   }
 
   stopMusic() {
     if (this.musicTimer) { clearInterval(this.musicTimer); this.musicTimer = null; }
   }
 
+  /**
+   * How hard the music pushes, 0 to 1. It picks the lead pattern and adds the
+   * octave doubling and the hats, so a boss wave sounds like one without any
+   * second track having to be written.
+   */
   setMusicIntensity(level) {
+    this.musicLevel = Math.max(0, Math.min(1, level || 0));
     if (this.musicGain) {
-      this.musicGain.gain.value = this.settings.musicVolume * (0.18 + level * 0.16);
+      this.musicGain.gain.value = this.settings.musicVolume * (0.16 + this.musicLevel * 0.12);
     }
   }
 }

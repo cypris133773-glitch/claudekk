@@ -1035,9 +1035,14 @@ const RAID_INTERIORS = [
   (w, { P, FLOOR_Y, cx, cz, seed }) => {
     for (let i = 0; i < 22; i++) {
       const a = (i / 22) * Math.PI * 2 + hash2(i, 3, seed);
-      let r = 24;
+      // From 19 inward, not 24. The rooms document wanted the cracks to reach
+      // the outer lap and make it cost something — but the Walk being an
+      // unbroken hazard-free circuit is what every mechanic's escape
+      // arithmetic is measured against, and one bearing of lava across it is
+      // one bearing where slam has no answer. Hazard belongs in the Mid.
+      let r = 19;
       let drift = 0;
-      while (r > 13) {
+      while (r > 11) {
         drift += (hash2(i, r, seed) - 0.5) * 0.22;
         const x = Math.round(cx + Math.cos(a + drift) * r);
         const z = Math.round(cz + Math.sin(a + drift) * r);

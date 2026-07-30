@@ -211,24 +211,39 @@ export class Player extends Entity {
    * close, so a deliberate lead shot is still the player's.
    */
   applyAimAssist(dt, game) {
-    this.aimLock = null;
-    if (!this.aimAssist) return;
+    if (!this.aimAssist) { this.aimLock = null; return; }
     const range = this.isMelee ? 9 : 34;
-    // Tight cone: roughly 20 degrees. Anything wider and the assist starts
-    // acquiring targets rather than tracking the one you chose.
-    const target = game.aimTarget(this, range, 0.94);
+
+    // Stickiness first. Re-picking the best target every frame is what makes a
+    // crowd feel broken: two enemies a degree apart trade the lock back and
+    // forth at 60Hz and the view shivers between them. The one already held
+    // keeps it on a wider cone than it took to acquire, so a fight has to
+    // actually change before the aim does.
+    const held = this.aimLock;
+    let target = null;
+    if (held && !held.dead) {
+      const dx = held.x - this.x, dy = held.centerY - this.eyeY, dz = held.z - this.z;
+      const d = Math.hypot(dx, dy, dz);
+      const dir = forwardVec(this.yaw, this.pitch);
+      const dot = d > 0.001 ? (dx * dir[0] + dy * dir[1] + dz * dir[2]) / d : 0;
+      if (d <= range * 1.15 && dot >= 0.88) target = held;
+    }
+    if (!target) target = game.aimTarget(this, range, 0.94);
     // Published whether or not the view is actually being nudged this frame,
     // because the HUD outlines it: the assist was invisible before, so it was
     // impossible to tell a miss caused by a bad angle from one caused by the
     // assist having locked something else.
     this.aimLock = target || null;
     if (!target) return;
-    // Hands off while the player is actively turning. Without this the assist
-    // cancels the drag — you sweep the view and it snaps back, which reads as
-    // broken controls rather than as help. The lock still stands, so the
-    // outline does not flicker off every time you move your thumb.
+
+    // How hard the player is turning, decayed. Used as a *fade* rather than a
+    // switch: the old code cut the assist dead above a threshold and restored
+    // it in full below, so every thumb movement ended in a small lurch as the
+    // correction came back all at once.
     this.lookInput = (this.lookInput || 0) * Math.max(0, 1 - dt * 6);
-    if (this.lookInput > 0.0016) return;
+    const manual = clamp(1 - (this.lookInput || 0) / 0.012, 0, 1);
+    if (manual <= 0.001) return;
+
     const dx = target.x - this.x;
     const dz = target.z - this.z;
     const dy = target.centerY - this.eyeY;
@@ -237,25 +252,34 @@ export class Player extends Entity {
     const wantPitch = Math.atan2(dy, flat);
 
     // Shortest way round, so a target behind you does not spin the view.
-    let dyaw = ((wantYaw - this.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    const dyaw = ((wantYaw - this.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
     const dpitch = wantPitch - this.pitch;
     const off = Math.hypot(dyaw, dpitch);
-    // Already on target: leave it completely alone.
-    if (off < 0.035) return;
-    // Strength falls off with how far the aim is from the target, so it helps
-    // with tracking and never drags the view somewhere you did not point it.
-    // Tuned up from a 9/s rate: the first pass was so gentle that in a moving
-    // fight it never caught up with anything.
-    // Hard ceiling on how fast the assist may turn the view: about 40 degrees
-    // a second. Past that it stops being a correction and starts being a
-    // camera taking over.
-    const MAX_RATE = 0.7;
-    const pull = Math.min(1, dt * 14);
-    const maxStep = MAX_RATE * dt;
-    const stepYaw = clamp(dyaw * pull, -maxStep, maxStep);
-    const stepPitch = clamp(dpitch * pull, -maxStep, maxStep);
-    this.yaw += stepYaw;
-    this.pitch = clamp(this.pitch + stepPitch, -1.45, 1.45);
+
+    // The dead zone is a ramp, not a cliff. Stopping dead at a fixed error and
+    // starting again the moment it is exceeded is a correction that switches on
+    // and off several times a second, which is exactly what reads as stutter.
+    const near = clamp((off - 0.012) / 0.05, 0, 1);
+    if (near <= 0) return;
+
+    // Exponential smoothing done properly: 1 - e^(-k dt) is the same curve at
+    // any frame rate, where dt * k is not — the old form pulled harder on a
+    // slow frame than on a fast one, so the assist behaved differently in a
+    // busy fight than in an empty room, which is the worst place for it to
+    // change.
+    const pull = 1 - Math.exp(-9 * dt) * 1;
+    // Rate ceiling, eased in over the last third rather than clamped flat. A
+    // hard clamp makes the view slide at a constant speed and then change
+    // curve the instant it drops under the limit, and that change of curve is
+    // visible.
+    const MAX_RATE = 0.85;
+    const wantYawStep = dyaw * pull * near * manual;
+    const wantPitchStep = dpitch * pull * near * manual;
+    const want = Math.hypot(wantYawStep, wantPitchStep);
+    const cap = MAX_RATE * dt;
+    const scale = want > cap ? cap / want : 1;
+    this.yaw += wantYawStep * scale;
+    this.pitch = clamp(this.pitch + wantPitchStep * scale, -1.45, 1.45);
   }
 
   update(dt, game, input) {

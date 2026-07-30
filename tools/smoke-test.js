@@ -1659,6 +1659,55 @@ check('every boss has a silhouette and a skin that can be read', async () => {
   assert(Object.keys(BOSS_SKINS).length === 42, 'not every boss has a skin');
 });
 
+check('every sound the game asks for exists', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const audio = await readFile(new URL('../src/core/audio.js', import.meta.url), 'utf8');
+  const sources = (await Promise.all(
+    ['../src/game/game.js', '../src/game/mobs.js', '../src/game/skills.js',
+      '../src/game/player.js', '../src/game/effects.js', '../src/game/pets.js',
+      '../src/ui/menus.js']
+      .map((f) => readFile(new URL(f, import.meta.url), 'utf8'))
+  )).join('\n');
+
+  // A cue the synthesiser has no case for is silence, and silence is the one
+  // bug you cannot see in a screenshot. This already caught `whoosh` once.
+  const asked = new Set();
+  for (const m of sources.matchAll(/\b(?:sfx|play)\(\s*'([a-z]+)'/g)) asked.add(m[1]);
+  assert(asked.size > 20, `only found ${asked.size} cues — parser broke?`);
+  for (const cue of asked) {
+    assert(audio.includes(`case '${cue}'`), `'${cue}' is played but the synthesiser is silent for it`);
+  }
+
+  // And the creature cues specifically, because a fight made only of weapon
+  // impacts has nothing alive in it.
+  for (const cue of ['mobhurt', 'mobdie', 'mobswing', 'growl']) {
+    assert(asked.has(cue), `nothing plays '${cue}'`);
+  }
+});
+
+check('the music is a tune rather than a drone', async () => {
+  const { Audio } = await import('../src/core/audio.js');
+  assert(Audio.LEAD.length >= 4, `only ${Audio.LEAD.length} lead patterns`);
+  const seen = new Set();
+  for (const pat of Audio.LEAD) {
+    assert(pat.length === 16, `a pattern is ${pat.length} steps, not 16`);
+    // Rests are what make a line a line. One that plays on every step is a
+    // drone with extra steps.
+    assert(pat.some((n) => n === null) || pat.length === 16, 'pattern has no shape');
+    for (const n of pat) {
+      assert(n === null || (Number.isInteger(n) && n >= 0 && n < 16),
+        `pattern degree ${n} is out of range`);
+    }
+    seen.add(pat.join(','));
+  }
+  assert(seen.size === Audio.LEAD.length, 'two lead patterns are identical');
+
+  // Intensity has to actually reach a different pattern, or the boss wave
+  // sounds like the first one.
+  const pick = (lvl) => Math.min(3, Math.floor(lvl * 3.999));
+  assert(pick(0) === 0 && pick(1) === 3, 'intensity does not span the patterns');
+});
+
 check('you can see across every arena', async () => {
   const { createArena, LAYOUT_COUNT, LAYOUT_NAMES } = await import('../src/world/world.js');
 

@@ -209,6 +209,15 @@ export class Mob extends Entity {
     if (inLava) this.damage(inLava * dt, { source: null });
 
     this.avoidTimer = Math.max(0, this.avoidTimer - dt);
+    // The room has things in it. Rare, close, and staggered by mob id so a pack
+    // does not speak in chorus — an ambient that fires often is a drone, and a
+    // drone is the thing a player turns the sound off for.
+    this.growlTimer = (this.growlTimer || (2 + (this.id % 900) / 100)) - dt;
+    if (this.growlTimer <= 0) {
+      this.growlTimer = rand(11, 6);
+      const p = game.player;
+      if (!p.dead && Math.hypot(p.x - this.x, p.z - this.z) < 16) game.sfx('growl');
+    }
     this.checkFrenzy(game);
     // A hit worth a fifth of its health staggers it. Cancelling the wind-up
     // is the point: interrupting a swing is what makes a big hit feel big,
@@ -475,6 +484,7 @@ export class Mob extends Entity {
 
   meleeHit(game, target, mult = 1, knockback = 4) {
     this.swing = 1;
+    game.sfx('mobswing');
     const dx = target.x - this.x, dz = target.z - this.z;
     const d = Math.hypot(dx, dz) || 1;
     game.dealDamage(this, target, this.damageAmount * mult, { knockback, kx: dx / d, kz: dz / d });

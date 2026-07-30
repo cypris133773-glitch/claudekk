@@ -774,6 +774,10 @@ export class Game {
           Math.round(dealt).toString(), crit ? '#ffd24a' : '#ffffff', crit));
       }
       this.audio.play(crit ? 'crit' : 'hit');
+      // The weapon and the creature are two different sounds. Before this a
+      // fight was all impacts and nothing in it was alive — the same clack
+      // whether you hit a husk or a wall.
+      if (target !== this.player && !target.dead) this.audio.play('mobhurt');
       if (crit) {
         this.screenShake = Math.max(this.screenShake, 0.22);
         this.hitstop = Math.max(this.hitstop, 0.045);
@@ -886,6 +890,7 @@ export class Game {
     }
 
     this.affixesOnKill(mob);
+    this.onMobKilled(mob);
     this.rollPotionDrop(mob);
     if (mob.def.boss) this.tally.bossKills++;
     else if (mob.elite) this.tally.eliteKills++;
@@ -1017,6 +1022,12 @@ export class Game {
    * more generous on purpose: those are the kills you spend cooldowns on, and
    * a set-piece that pays nothing teaches you to walk around it.
    */
+  /** A kill, heard. Bosses have their own banner and cue; this is everything else. */
+  onMobKilled(mob) {
+    if (!mob.def || mob.def.boss) return;
+    this.audio.play('mobdie');
+  }
+
   rollPotionDrop(mob) {
     if (!mob.def) return;
     // A Spiteful shade is spawned by a kill, so paying out for killing it
