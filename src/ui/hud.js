@@ -5,6 +5,7 @@ import { skillCooldown, skillCost } from '../game/skills.js';
 import { clamp } from '../core/math.js';
 import { drawSkillIcon } from './icons.js';
 import { levelProgress } from '../data/levels.js';
+import { humanoidBoxes } from '../game/entity.js';
 
 const FONT = "700 %spx 'Segoe UI', system-ui, -apple-system, sans-serif";
 
@@ -538,70 +539,98 @@ export class Hud {
 
   /** Health bars above nearby enemies. */
   /**
-   * A hard black outline around whatever auto-aim is holding.
+   * An outline around whatever auto-aim is holding, following the shape of the
+   * thing rather than a box drawn around it.
    *
    * The assist used to be completely invisible: it quietly turned the view and
-   * the player had no way to tell which enemy it had decided on, so a shot
-   * that went somewhere unexpected read as the controls misbehaving. Black,
-   * because every enemy, particle and arena palette in the game is lighter
-   * than it — a coloured ring vanishes against the wrong theme, this does not.
+   * the player had no way to tell which enemy it had decided on, so a shot that
+   * went somewhere unexpected read as the controls misbehaving. The first fix
+   * was a rounded rectangle around the projected bounding box, which said the
+   * right thing and looked like a screenshot tool.
+   *
+   * This projects the six boxes the model is actually built from and outlines
+   * their union: fill the silhouette, then erase it inset by the line width,
+   * which leaves exactly the rim. The HUD is a transparent overlay, so erasing
+   * takes the red away and puts nothing back.
+   *
+   * Red, with a dark halo under it. Red alone disappears in Firelands and
+   * Molten Core, which are the two rooms most likely to have something worth
+   * locking onto in them.
    */
   drawAimLock(p) {
     const m = p.aimLock;
     if (!m || m.dead) return;
     const r = this.game.r;
-    // Corners of the enemy's box, so the outline is the size of the thing it
-    // is around rather than a fixed circle that swallows small mobs and sits
-    // inside big ones.
-    const hw = m.width * 0.5;
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const dx of [-hw, hw]) {
-      for (const dz of [-hw, hw]) {
-        for (const dy of [0, m.height]) {
-          const s = r.project(m.x + dx, m.y + dy, m.z + dz);
-          if (!s) return;                        // behind the camera; draw nothing
-          if (s.x < minX) minX = s.x;
-          if (s.y < minY) minY = s.y;
-          if (s.x > maxX) maxX = s.x;
-          if (s.y > maxY) maxY = s.y;
+    const c = this.ctx;
+
+    // One screen-space rectangle per part. A part behind the camera drops out
+    // rather than folding the projection inside out.
+    const rects = [];
+    for (const b of humanoidBoxes(m, (m.def && m.def.skin && m.def.skin.scale) || 1)) {
+      const hw = b.w * 0.5, hh = b.h * 0.5, hd = b.d * 0.5;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      let ok = true;
+      for (const dx of [-hw, hw]) {
+        for (const dy of [-hh, hh]) {
+          for (const dz of [-hd, hd]) {
+            const sp = r.project(b.x + dx, b.y + dy, b.z + dz);
+            if (!sp) { ok = false; break; }
+            if (sp.x < minX) minX = sp.x;
+            if (sp.y < minY) minY = sp.y;
+            if (sp.x > maxX) maxX = sp.x;
+            if (sp.y > maxY) maxY = sp.y;
+          }
         }
       }
+      if (!ok) continue;
+      const w = maxX - minX, h = maxY - minY;
+      if (!(w > 0) || !(h > 0) || w > this.w * 2 || h > this.h * 2) continue;
+      rects.push([minX, minY, w, h]);
     }
-    const pad = 4;
-    const x = minX - pad, y = minY - pad;
-    const w = maxX - minX + pad * 2, h = maxY - minY + pad * 2;
-    if (!(w > 0) || !(h > 0) || w > this.w * 2 || h > this.h * 2) return;
+    if (rects.length < 2) return;
 
-    const c = this.ctx;
-    // Two passes: a thick black silhouette that reads against anything, and a
-    // thin bright inner line so the shape stays legible on a dark arena floor.
+    // Thickness scales with how big the target is on screen, so a distant husk
+    // gets a hairline and a raid boss filling the frame gets a real edge.
+    const span = Math.max(...rects.map((q) => q[3]));
+    const lw = Math.max(1.6, Math.min(5, span * 0.045));
+
+    const addAll = (inset) => {
+      c.beginPath();
+      for (const [x, y, w, h] of rects) {
+        // A negative inset grows the rect. Positive is clamped so a thin limb
+        // cannot invert into a rectangle with negative width.
+        const ix = inset < 0 ? inset : Math.min(inset, w * 0.45);
+        const iy = inset < 0 ? inset : Math.min(inset, h * 0.45);
+        c.rect(x + ix, y + iy, w - ix * 2, h - iy * 2);
+      }
+    };
+
+    // The rim is drawn *outside* the silhouette rather than inside it: fill the
+    // parts grown by the line width, then erase them at their true size. That
+    // is what removes the seams where head meets torso and torso meets leg —
+    // with an inside rim, two abutting parts each keep a band at the joint and
+    // the figure ends up drawn with lines across its neck and hips.
     c.save();
-    c.lineJoin = 'round';
-    c.strokeStyle = 'rgba(0,0,0,0.92)';
-    c.lineWidth = 5;
-    this.roundRect(x, y, w, h, 6);
-    c.stroke();
-    c.strokeStyle = 'rgba(255,255,255,0.55)';
-    c.lineWidth = 1.5;
-    this.roundRect(x, y, w, h, 6);
-    c.stroke();
+    // A dark halo under it, one step wider again, so the outline survives on a
+    // floor of its own hue. Firelands is orange and Molten Core is lit by lava;
+    // red on its own disappears in both.
+    c.fillStyle = 'rgba(0,0,0,0.5)';
+    addAll(-lw * 2);
+    c.fill();
+    c.globalCompositeOperation = 'destination-out';
+    addAll(-lw);
+    c.fill();
 
-    // Corner ticks, which is what makes it read as a reticle rather than as a
-    // box someone drew around an enemy.
-    const t = Math.min(12, Math.min(w, h) * 0.30);
-    c.strokeStyle = 'rgba(0,0,0,0.92)';
-    c.lineWidth = 4;
-    c.beginPath();
-    for (const [cx, cy, sx, sy] of [
-      [x, y, 1, 1], [x + w, y, -1, 1], [x, y + h, 1, -1], [x + w, y + h, -1, -1],
-    ]) {
-      c.moveTo(cx + sx * t, cy);
-      c.lineTo(cx, cy);
-      c.lineTo(cx, cy + sy * t);
-    }
-    c.stroke();
+    c.globalCompositeOperation = 'source-over';
+    c.fillStyle = 'rgba(255,58,44,0.95)';
+    addAll(-lw);
+    c.fill();
+    c.globalCompositeOperation = 'destination-out';
+    addAll(0);
+    c.fill();
     c.restore();
   }
+
 
   drawEnemyHealth() {
     const c = this.ctx;

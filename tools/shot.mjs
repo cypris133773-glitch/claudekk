@@ -123,6 +123,23 @@ if (process.env.SHOT_RAID) {
     B.game.startRaid(B.CLASSES[0], B.RAID_BY_ID[id], 0);
   }, process.env.SHOT_RAID);
   await page.waitForTimeout(900);
+  // Walk the aim lock onto the boss so the outline is in the shot.
+  await frame.evaluate(() => {
+    const B = window.CRAFTARENA;
+    const b = B.game.raidBoss, p = B.game.player;
+    // Stand off and look straight at it, so the outline is what the shot is of.
+    const dx = b.x - p.x, dz = b.z - p.z;
+    const d = Math.hypot(dx, dz) || 1;
+    // Inside the melee assist's 9-block range, or it never locks on.
+    p.x = b.x - dx / d * 6.5; p.z = b.z - dz / d * 6.5;
+    p.y = B.game.world.groundAt(p.x, p.z, p.y + 6) + 1;
+    p.yaw = Math.atan2(-dx / d, -dz / d);
+    p.pitch = 0.1;
+    // Let the assist acquire it for itself — aimLock is recomputed every frame,
+    // so anything set here is gone before the next one.
+    p.aimAssist = true;
+  });
+  await page.waitForTimeout(200);
   const file = path.join(OUT, `room-${process.env.SHOT_RAID}-${width}x${height}.png`);
   await page.screenshot({ path: file });
   console.log(file);

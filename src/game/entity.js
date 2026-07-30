@@ -163,6 +163,46 @@ export class Entity {
  * Draw a Minecraft-style humanoid.
  * `skin` = { head, body, arm, leg, headTile, faceTile, emissive, scale }
  */
+/**
+ * The boxes a humanoid is built from, in world space, for anything that needs
+ * its *shape* rather than its bounding box — the aim-lock outline is the only
+ * caller today.
+ *
+ * Deliberately static: no walk swing, no arm swing. The outline is a targeting
+ * aid drawn a couple of pixels wide, and a limb that is four degrees out of
+ * phase with the model is invisible at that width. Animating it would mean
+ * duplicating drawHumanoid's whole animation state in the HUD, which is a
+ * second copy of the thing most likely to drift.
+ *
+ * The proportions are the same fractions drawHumanoid uses, and they are here
+ * rather than there because this is the only place both need them.
+ */
+export function humanoidBoxes(e, scale = 1) {
+  const s = scale;
+  const unit = e.height / 1.8 * s;
+  const headSize = 0.5 * unit;
+  const bodyH = 0.75 * unit, bodyW = 0.55 * unit, bodyD = 0.28 * unit;
+  const limbH = 0.72 * unit, limbW = 0.24 * unit;
+  const legTop = e.y + limbH;
+  const rx = Math.cos(e.yaw), rz = -Math.sin(e.yaw);
+  const fx = -Math.sin(e.yaw), fz = -Math.cos(e.yaw);
+  const at = (lx, ly, lz) => [e.x + rx * lx + fx * lz, ly, e.z + rz * lx + fz * lz];
+  const box = (lx, cy, lz, w, h, d) => {
+    const p = at(lx, cy, lz);
+    return { x: p[0], y: p[1], z: p[2], w, h, d };
+  };
+  const out = [
+    box(0, legTop + bodyH / 2, 0, bodyW, bodyH, bodyD),
+    box(0, legTop + bodyH + headSize / 2, 0, headSize, headSize, headSize),
+  ];
+  for (const side of [-1, 1]) {
+    out.push(box(side * limbW * 0.55, legTop - limbH / 2, 0, limbW, limbH, limbW));
+    out.push(box(side * (bodyW / 2 + limbW / 2), legTop + bodyH - limbH / 2, 0,
+      limbW, limbH, limbW));
+  }
+  return out;
+}
+
 export function drawHumanoid(r, e, skin) {
   const s = skin.scale || 1;
   const unit = e.height / 1.8 * s;           // 1.8-block reference height
