@@ -201,28 +201,87 @@ check('permanent costs grow and never go backwards', () => {
 check('permanentMods sums levels correctly', () => {
   // Derived from the definitions rather than hard-coded, so a rebalance of
   // the Forge does not fail a test that is really about the summing.
-  const hp = PERMANENT.find((d) => d.id === 'p_hp');
-  const dmg = PERMANENT.find((d) => d.id === 'p_dmg');
-  const mods = permanentMods({ p_hp: 3, p_dmg: 2 });
-  assert(near(mods.maxHp, hp.effect.maxHp * 3), `maxHp ${mods.maxHp}`);
-  assert(near(mods.allDamage, dmg.effect.allDamage * 2), `allDamage ${mods.allDamage}`);
+  // Two arbitrary tracks, read from whatever they currently grant, so a
+  // rebalance cannot fail a test that is really about the summing.
+  const [a, b] = PERMANENT;
+  const [ka, va] = Object.entries(a.effect)[0];
+  const [kb, vb] = Object.entries(b.effect)[0];
+  const mods = permanentMods({ [a.id]: 3, [b.id]: 2 });
+  const want = ka === kb ? va * 3 + vb * 2 : va * 3;
+  assert(near(mods[ka], want), `${ka} came out ${mods[ka]}, expected ${want}`);
+  if (ka !== kb) assert(near(mods[kb], vb * 2), `${kb} came out ${mods[kb]}`);
+  assert(Object.keys(permanentMods({})).length === 0, 'an empty Forge grants something');
 });
 
-check('the Forge is an endless grind, not a checklist', () => {
-  const endless = PERMANENT.filter((d) => d.max >= 40);
-  assert(endless.length >= 15, `only ${endless.length} tracks run deep`);
-  // Maxing everything must be far out of reach of any single run.
-  let total = 0;
+check('the Forge is short, finite, and not a power curve', async () => {
+  const { RETIRED_TRACKS } = await import('../src/data/permanent.js');
+
+  // Finite on purpose. It used to run to level 100 on twenty-odd tracks and
+  // grant +200% damage and +600 health — the largest power source in the game,
+  // account-wide, identical on every class. Talents are the build now and gear
+  // is the grind; the Forge lifts the floor and then gets out of the way.
   for (const d of PERMANENT) {
-    for (let lv = 0; lv < d.max; lv++) total += upgradeCost(d, lv);
+    assert(d.max <= 10, `${d.id} runs to ${d.max}: the Forge is meant to finish`);
   }
-  assert(total > 5e6, `maxing the Forge only costs ${Math.round(total)} souls`);
-  // And the late levels must cost meaningfully more than the early ones, or
-  // "endless" is just a longer checklist.
-  for (const d of endless) {
-    assert(upgradeCost(d, d.max - 1) > upgradeCost(d, 0) * 20,
-      `${d.id} barely gets more expensive`);
-  }
+  let total = 0;
+  for (const d of PERMANENT) for (let lv = 0; lv < d.max; lv++) total += upgradeCost(d, lv);
+  assert(total < 2e6, `buying the whole Forge costs ${Math.round(total)} gold; it should be early-game`);
+  assert(total > 1e5, `the whole Forge costs ${Math.round(total)} gold, which is no decision at all`);
+
+  // The hard ceiling. Whatever the tracks are, a fully bought Forge must stay
+  // well under what a full gear set gives, or it is back to being the thing
+  // that decides fights.
+  const maxed = Object.fromEntries(PERMANENT.map((d) => [d.id, d.max]));
+  const m = permanentMods(maxed);
+  assert((m.allDamage || 0) <= 0.25, `a maxed Forge grants +${((m.allDamage || 0) * 100).toFixed(0)}% damage`);
+  assert((m.maxHpPct || 0) <= 0.35, `a maxed Forge grants +${((m.maxHpPct || 0) * 100).toFixed(0)}% health`);
+  assert(!m.maxHp, 'the Forge grants flat health again, which is unfair across nine classes');
+
+  // Retired tracks must be genuinely gone, or the refund path silently pays
+  // out for something still purchasable.
+  const live = new Set(PERMANENT.map((d) => d.id));
+  for (const id of RETIRED_TRACKS) assert(!live.has(id), `${id} is retired and still on sale`);
+});
+
+check('a save loses no gold when the Forge shrinks', async () => {
+  const { Profile } = await import('../src/core/save.js');
+  const { PERMANENT_BY_ID, RETIRED_TRACKS } = await import('../src/data/permanent.js');
+
+  // An account deep in the old Forge: levels in a track that no longer exists,
+  // and a level far above the new cap on one that does. Both would silently
+  // vanish, and from the player's side that is indistinguishable from the
+  // update having eaten their account.
+  const retired = RETIRED_TRACKS[0];
+  const live = PERMANENT.find((d) => d.max >= 10);
+  const profile = Object.create(Profile.prototype);
+  profile.data = {
+    souls: 0,
+    permanent: { [retired]: 40 },              // the old account-wide bag
+    classes: { warrior: { forge: { [live.id]: 60 } } },   // and a per-class one
+  };
+
+  assert(profile.refundForge(), 'the refund did nothing');
+  assert(profile.data.permanent[retired] === undefined, 'a retired track survived');
+  // The account-wide bag is emptied outright: the shop is per class now, and
+  // there is no honest way to decide which of nine classes an account-wide
+  // purchase should belong to.
+  assert(Object.keys(profile.data.permanent).length === 0, 'the account-wide bag survived');
+  assert(profile.data.classes.warrior.forge[live.id] === live.max,
+    `the surviving track sits at ${profile.data.classes.warrior.forge[live.id]}`);
+
+  // Paid back at exactly what it cost — the levels taken away are [keep, had).
+  let want = 0;
+  for (let lv = 0; lv < 40; lv++) want += upgradeCost(PERMANENT_BY_ID[retired] || { baseCost: 60, growth: 1.085 }, lv);
+  for (let lv = live.max; lv < 60; lv++) want += upgradeCost(live, lv);
+  assert(profile.data.souls === Math.round(want),
+    `refunded ${profile.data.souls}, should be ${Math.round(want)}`);
+
+  // And it must run once. A refund that pays out on every boot is a money
+  // printer, which is the worst possible way for this to be wrong.
+  assert(!profile.refundForge(), 'the refund ran a second time');
+  const after = profile.data.souls;
+  profile.refundForge();
+  assert(profile.data.souls === after, 'a later boot paid out again');
 });
 
 check('talent points increase with best wave', () => {
@@ -508,12 +567,22 @@ check('armour costs climb and its bonuses add up', () => {
   assert(Object.keys(armorMods({})).length === 0, 'empty armour grants nothing');
 });
 
-check('every armour and Forge effect is a modifier the player reads', () => {
-  const known = new Set(PERMANENT.flatMap((d) => Object.keys(d.effect)));
-  for (const def of ARMOR_SLOTS) {
-    for (const k of Object.keys(def.effect)) {
-      assert(known.has(k) || ['dodge'].includes(k), `armour key ${k} is not a known modifier`);
-    }
+check('every armour and Forge effect is read by game code', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const sources = (await Promise.all(
+    ['../src/game/player.js', '../src/game/game.js', '../src/game/skills.js',
+      '../src/game/effects.js', '../src/game/mobs.js', '../src/game/pets.js']
+      .map((f) => readFile(new URL(f, import.meta.url), 'utf8'))
+  )).join('\n');
+  // Checked against the code rather than against each other: the two shops used
+  // to validate one another, so a key both of them declared and nobody read
+  // passed happily. This is the check that would have caught it.
+  const keys = new Set([
+    ...PERMANENT.flatMap((d) => Object.keys(d.effect)),
+    ...ARMOR_SLOTS.flatMap((d) => Object.keys(d.effect)),
+  ]);
+  for (const k of keys) {
+    assert(sources.includes(`.${k}`), `'${k}' is sold but never read by the game`);
   }
 });
 

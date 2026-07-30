@@ -524,8 +524,15 @@ async function runViewport(browser, port, vp) {
     // does not, the game has no attack at all on a phone.
     {
       const [tx, ty] = pickFree(0.72, 0.45);
+      // Let the swing from the look-drag above finish first. Holding the view
+      // now attacks, so the drag test leaves the attack on cooldown — measuring
+      // straight after it caught the tail of that swing rather than this tap.
+      await sleep(900);
       await frame.evaluate(() => window.__PLAYTEST.reset());
-      await touch.tap(tx, ty, 120, 3);
+      // 200ms rather than 120: still inside the 260ms tap window, but twice as
+      // many sampled frames. At 120 the swing was only ever caught in one or
+      // two frames and the check flickered under software rendering.
+      await touch.tap(tx, ty, 200, 3);
       await sleep(400);
       const r = await frame.evaluate(() => window.__PLAYTEST.read());
       rep.add('attack: tap the view', r.attackFires > 0 || r.maxSwing > 0,

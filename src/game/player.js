@@ -104,7 +104,10 @@ export class Player extends Entity {
     const buffDamage = this.buffs.reduce((s, x) => s + (x.damageBonus || 0), 0);
     const buffHaste = this.buffs.reduce((s, x) => s + (x.attackSpeedBonus || 0), 0);
 
-    this.maxHp = Math.round(b.hp + (m.maxHp || 0));
+    // Percentage before flat, and a percentage at all because one Forge table
+    // has to be fair to nine classes: a flat +200 is a third of a Paladin's
+    // health and nearly double a Hunter's.
+    this.maxHp = Math.round((b.hp + (m.maxHp || 0)) * (1 + (m.maxHpPct || 0)));
     this.resourceMax = this.resourceDef.max + (m.resourceMax || 0);
     this.resourceRegen = this.resourceDef.regen + (m.resourceRegen || 0);
     this.armor = clamp(b.armor + (m.armor || 0), 0, 0.75);

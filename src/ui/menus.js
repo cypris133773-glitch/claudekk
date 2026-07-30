@@ -705,13 +705,29 @@ export class Menus {
 
   buildForge() {
     const wrap = el('div', 'screen');
+    const cls = CLASSES.find((c) => c.id === this.selectedClass) || CLASSES[0];
+    // The Forge is per class, so the screen needs a class picker like the
+    // talent tree has — and for the same reason: without it there is no way to
+    // tell whose upgrades you are looking at.
+    const picker = el('div', 'class-picker');
+    for (const c of CLASSES) {
+      const b = el('button', 'pill' + (c.id === cls.id ? ' active' : ''), c.name);
+      b.style.setProperty('--accent', c.color);
+      this.click(b, () => { this.selectedClass = c.id; this.refresh(); });
+      picker.appendChild(b);
+    }
     wrap.appendChild(this.backBar('title'));
-    const p = this.panel('The Forge',
-      'Permanent upgrades bought with gold. They apply to every class, forever.');
+    wrap.appendChild(picker);
+
+    const forge = this.profile.forgeLevels(cls.id);
+    const spent = PERMANENT.reduce((n, d) => n + (forge[d.id] || 0), 0);
+    const total = PERMANENT.reduce((n, d) => n + d.max, 0);
+    const p = this.panel(`${cls.name} — The Forge`,
+      `${spent} of ${total} levels · bought with gold, kept by this class alone`);
 
     const grid = el('div', 'forge-grid');
     p.appendChild(this.paged('forge', PERMANENT, byHeight(3, 4, 10), grid, (def) => {
-      const level = this.profile.data.permanent[def.id] || 0;
+      const level = forge[def.id] || 0;
       const maxed = level >= def.max;
       const cost = upgradeCost(def, level);
       const afford = this.profile.souls >= cost;
@@ -727,12 +743,12 @@ export class Menus {
       const buy = el('button', 'buy-btn', maxed ? 'MAX' : `🪙 ${cost}`);
       buy.disabled = maxed || !afford;
       this.click(buy, () => {
-        const lv = this.profile.data.permanent[def.id] || 0;
+        const lv = forge[def.id] || 0;
         if (lv >= def.max) return;
         const c = upgradeCost(def, lv);
         if (this.profile.souls < c) { this.ctx.audio.play('deny'); return; }
         this.profile.souls -= c;
-        this.profile.data.permanent[def.id] = lv + 1;
+        forge[def.id] = lv + 1;
         this.profile.save();
         this.ctx.audio.play('buy');
         this.refresh();
@@ -1268,7 +1284,7 @@ export class Menus {
     // The cheapest Forge track they cannot yet afford — or can.
     let bestForge = null;
     for (const def of PERMANENT) {
-      const lv = this.profile.data.permanent[def.id] || 0;
+      const lv = this.profile.forgeLevels(this.selectedClass)[def.id] || 0;
       if (lv >= def.max) continue;
       const cost = upgradeCost(def, lv);
       if (!bestForge || cost < bestForge.cost) bestForge = { def, cost, lv };

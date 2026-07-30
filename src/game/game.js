@@ -100,7 +100,8 @@ export class Game {
     const cd = this.profile.classData(classDef.id);
     // Permanent power comes from three account-wide sources that all flatten
     // into the same bag: the Forge, the Armoury and this class's mastery rank.
-    const perm = permanentMods(this.profile.data.permanent);
+    // Per class: a fresh class starts with the Forge it has bought itself.
+    const perm = permanentMods(this.profile.forgeLevels(classDef.id));
     for (const [k, v] of Object.entries(armorMods(this.profile.data.armor))) {
       perm[k] = (perm[k] || 0) + v;
     }
@@ -313,6 +314,7 @@ export class Game {
    */
   awardXp(amount) {
     if (!(amount > 0)) return;
+    amount *= 1 + (this.permMods.xpGain || 0);
     this.xpEarned += amount;
     this.xpPending += amount;
     // Restarted on every award, so a continuous fight shows nothing until
@@ -805,9 +807,10 @@ export class Game {
     // A Spiteful shade is spawned by a kill, so paying out for killing it
     // would turn one affix into an unbounded potion fountain.
     if (mob.isShade) return;
+    const luck = 1 + (this.permMods.potionChance || 0);
     let drops = 0;
     if (mob.def.boss) drops = BOSS_DROPS;
-    else if (Math.random() < (mob.elite ? ELITE_DROP_CHANCE : DROP_CHANCE)) drops = 1;
+    else if (Math.random() < (mob.elite ? ELITE_DROP_CHANCE : DROP_CHANCE) * luck) drops = 1;
     for (let i = 0; i < drops; i++) {
       const def = rollPotion();
       this.potions.push(new Potion(
@@ -821,15 +824,18 @@ export class Game {
   collectPotion(potion) {
     const def = potion.def;
     const p = this.player;
-    if (def.heal) this.healEntity(p, p, p.maxHp * def.heal);
+    // Potency lifts what a potion does, not how often one shows up — those are
+    // separate tracks so a player can chase either without buying the other.
+    const pot = 1 + (this.permMods.potionPower || 0);
+    if (def.heal) this.healEntity(p, p, p.maxHp * def.heal * pot);
     if (def.duration > 0) {
       // Keyed by the potion id, so a second Draught of Fury refreshes the
       // timer instead of stacking into something the balance never saw.
       p.addBuff('potion_' + def.id, {
         duration: def.duration,
-        damageBonus: def.damageBonus || 0,
-        moveSpeed: def.moveSpeed || 0,
-        attackSpeedBonus: def.attackSpeedBonus || 0,
+        damageBonus: (def.damageBonus || 0) * pot,
+        moveSpeed: (def.moveSpeed || 0) * pot,
+        attackSpeedBonus: (def.attackSpeedBonus || 0) * pot,
         icon: '🧪',
         color: def.color,
         name: def.name,

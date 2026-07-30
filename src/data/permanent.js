@@ -13,33 +13,48 @@
  * built into the character rather than into the shop.
  */
 export const PERMANENT = [
-  { id: 'p_hp', name: 'Vitality', icon: '❤', desc: '+6 max health per level.', max: 100, baseCost: 45, growth: 1.075, effect: { maxHp: 6 } },
-  { id: 'p_dmg', name: 'Might', icon: '⚔', desc: '+2% all damage per level.', max: 100, baseCost: 60, growth: 1.085, effect: { allDamage: 0.02 } },
-  { id: 'p_armor', name: 'Warding', icon: '🛡', desc: '+1% armor per level.', max: 100, baseCost: 55, growth: 1.08, effect: { armor: 0.01 } },
-  { id: 'p_crit', name: 'Precision', icon: '🎯', desc: '+0.8% crit chance per level.', max: 100, baseCost: 60, growth: 1.08, effect: { critChance: 0.008 } },
-  { id: 'p_cdr', name: 'Attunement', icon: '⏱', desc: '-1.2% cooldowns per level.', max: 100, baseCost: 70, growth: 1.085, effect: { cooldownReduction: 0.012 } },
-  { id: 'p_res', name: 'Reservoir', icon: '🫙', desc: '+4 max resource per level.', max: 100, baseCost: 42, growth: 1.075, effect: { resourceMax: 4 } },
-  { id: 'p_regen', name: 'Flow', icon: '💧', desc: '+0.8 resource regen per level.', max: 100, baseCost: 65, growth: 1.08, effect: { resourceRegen: 0.8 } },
-  { id: 'p_speed', name: 'Swiftness', icon: '👟', desc: '+0.8% move speed per level.', max: 100, baseCost: 58, growth: 1.08, effect: { moveSpeed: 0.008 } },
-  { id: 'p_souls', name: 'Prospector', icon: '🪙', desc: '+4% gold earned per level.', max: 100, baseCost: 80, growth: 1.09, effect: { soulGain: 0.04 } },
-  { id: 'p_luck', name: 'Fortune', icon: '🍀', desc: '+1% chance of a bonus skill rank per level.', max: 100, baseCost: 90, growth: 1.09, effect: { luck: 0.01 } },
-  { id: 'p_thorns', name: 'Bramble', icon: '🌵', desc: 'Reflect 1.6% of damage taken per level.', max: 100, baseCost: 72, growth: 1.085, effect: { thorns: 0.016 } },
-  { id: 'p_boss', name: 'Titanbane', icon: '🗿', desc: '+2.4% damage to bosses per level.', max: 100, baseCost: 85, growth: 1.088, effect: { bossDamage: 0.024 } },
-  { id: 'p_vamp', name: 'Bloodbound', icon: '🩸', desc: 'Heal 1.2 health per kill, per level.', max: 100, baseCost: 78, growth: 1.085, effect: { killHeal: 1.2 } },
-  { id: 'p_cost', name: 'Efficiency', icon: '⚗', desc: 'Skills cost 1.5% less per level.', max: 40, baseCost: 95, growth: 1.10, effect: { costReduction: 0.015 } },
-  { id: 'p_melee', name: 'Butcher', icon: '🪓', desc: '+2% melee damage per level.', max: 100, baseCost: 62, growth: 1.085, effect: { meleeDamage: 0.02 } },
-  { id: 'p_spell', name: 'Channeler', icon: '🔮', desc: '+2% spell damage per level.', max: 100, baseCost: 62, growth: 1.085, effect: { spellDamage: 0.02 } },
-  { id: 'p_haste', name: 'Alacrity', icon: '⚡', desc: '+1% attack speed per level.', max: 100, baseCost: 68, growth: 1.085, effect: { attackSpeed: 0.01 } },
-  { id: 'p_area', name: 'Wide Arc', icon: '🌀', desc: 'Area effects reach 1% further per level.', max: 60, baseCost: 75, growth: 1.09, effect: { aoeRadius: 0.01 } },
-  { id: 'p_critdmg', name: 'Brutality', icon: '💥', desc: '+2% crit damage per level.', max: 100, baseCost: 70, growth: 1.086, effect: { critMult: 0.02 } },
-  { id: 'p_mitig', name: 'Ironhide', icon: '🪨', desc: 'Take 0.6% less damage per level.', max: 80, baseCost: 88, growth: 1.09, effect: { damageReduction: 0.006 } },
-  { id: 'p_leech', name: 'Sanguine', icon: '🧛', desc: '+0.5% lifesteal per level.', max: 80, baseCost: 92, growth: 1.09, effect: { lifesteal: 0.005 } },
-  { id: 'p_dot', name: 'Festering', icon: '☠', desc: 'Damage over time ticks 2% harder per level.', max: 80, baseCost: 66, growth: 1.085, effect: { dotDamage: 0.02 } },
-  // Unique effects stay rare: these change how a run plays rather than how
-  // hard it hits, and a hundred levels of them would be meaningless.
-  { id: 'p_start', name: 'Head Start', icon: '🎁', desc: 'Begin each run with 1 free upgrade per level.', max: 5, baseCost: 250, growth: 2.0, effect: { startingUpgrades: 1 } },
-  { id: 'p_reroll', name: 'Second Thoughts', icon: '🔄', desc: '+1 upgrade reroll per wave.', max: 5, baseCost: 180, growth: 1.8, effect: { rerolls: 1 } },
-  { id: 'p_revive', name: 'Phoenix Ember', icon: '🔥', desc: 'Revive once per run at 50% health.', max: 1, baseCost: 600, growth: 1, effect: { cheatDeathRun: 0.5 } },
+  // --- Foundation ----------------------------------------------------------
+  // Eight small, cheap tracks that finish inside the first few hours. They
+  // exist to lift the floor for a new account, not to be a power curve: a
+  // fully bought foundation is about +10% damage and +20% health, against the
+  // +70%/+65% a full gear set gives and everything a talent tree adds on top.
+  //
+  // They used to run to level 100 and grant +200% damage, +240% boss damage
+  // and +600 health. That was the largest power source in the game, it was
+  // account-wide, and it applied to every class equally — which is what made a
+  // maxed account play every class the same and made the wave curve
+  // meaningless. Ten levels is the whole track now.
+  { id: 'p_hp', name: 'Vitality', icon: '❤', desc: '+2% max health per level.', max: 10, baseCost: 300, growth: 1.34, effect: { maxHpPct: 0.02 } },
+  { id: 'p_dmg', name: 'Might', icon: '⚔', desc: '+1% all damage per level.', max: 10, baseCost: 340, growth: 1.35, effect: { allDamage: 0.01 } },
+  { id: 'p_armor', name: 'Warding', icon: '🛡', desc: '+1% armor per level.', max: 10, baseCost: 300, growth: 1.34, effect: { armor: 0.01 } },
+  { id: 'p_crit', name: 'Precision', icon: '🎯', desc: '+0.5% crit chance per level.', max: 10, baseCost: 320, growth: 1.34, effect: { critChance: 0.005 } },
+  { id: 'p_cdr', name: 'Attunement', icon: '⏱', desc: '-1% cooldowns per level.', max: 10, baseCost: 360, growth: 1.35, effect: { cooldownReduction: 0.01 } },
+  { id: 'p_res', name: 'Reservoir', icon: '🫙', desc: '+5 max resource per level.', max: 10, baseCost: 280, growth: 1.33, effect: { resourceMax: 5 } },
+  { id: 'p_regen', name: 'Flow', icon: '💧', desc: '+0.6 resource regen per level.', max: 10, baseCost: 320, growth: 1.34, effect: { resourceRegen: 0.6 } },
+  { id: 'p_speed', name: 'Swiftness', icon: '👟', desc: '+1% move speed per level.', max: 10, baseCost: 300, growth: 1.34, effect: { moveSpeed: 0.01 } },
+
+  // --- How a run works -----------------------------------------------------
+  // The reason to keep earning. None of these makes a hit land harder; they
+  // change what a run *is* — how it opens, what it drops, what it pays. That
+  // is the job the Forge is actually good at, and the one nothing else in the
+  // game is doing.
+  { id: 'p_gold', name: 'Prospector', icon: '🪙', desc: '+3% gold earned per level.', max: 10, baseCost: 900, growth: 1.40, effect: { soulGain: 0.03 } },
+  { id: 'p_xp', name: 'Scholar', icon: '📘', desc: '+3% experience earned per level.', max: 10, baseCost: 1100, growth: 1.42, effect: { xpGain: 0.03 } },
+  { id: 'p_alch', name: 'Alchemist', icon: '⚗', desc: 'Enemies drop potions 15% more often per level.', max: 5, baseCost: 1400, growth: 1.65, effect: { potionChance: 0.15 } },
+  { id: 'p_potency', name: 'Potency', icon: '🧪', desc: 'Potions are 10% stronger per level.', max: 5, baseCost: 1300, growth: 1.62, effect: { potionPower: 0.10 } },
+  { id: 'p_start', name: 'Head Start', icon: '🎁', desc: 'Begin each run with 1 free skill rank per level.', max: 3, baseCost: 2600, growth: 2.2, effect: { startingUpgrades: 1 } },
+  { id: 'p_reroll', name: 'Second Thoughts', icon: '🔄', desc: '+1 upgrade reroll per wave.', max: 3, baseCost: 2200, growth: 2.0, effect: { rerolls: 1 } },
+  { id: 'p_luck', name: 'Fortune', icon: '🍀', desc: '+3% chance a wave pays a bonus skill rank, per level.', max: 5, baseCost: 1800, growth: 1.7, effect: { luck: 0.03 } },
+  { id: 'p_revive', name: 'Phoenix Ember', icon: '🔥', desc: 'Revive once per run at 50% health.', max: 1, baseCost: 9000, growth: 1, effect: { cheatDeathRun: 0.5 } },
+];
+
+/**
+ * Tracks that no longer exist, or whose cap came down. A save holding levels in
+ * either is refunded rather than silently losing them — see Profile.refundForge.
+ */
+export const RETIRED_TRACKS = [
+  'p_souls', 'p_thorns', 'p_boss', 'p_vamp', 'p_cost', 'p_melee', 'p_spell',
+  'p_haste', 'p_area', 'p_critdmg', 'p_mitig', 'p_leech', 'p_dot',
 ];
 
 export const PERMANENT_BY_ID = Object.fromEntries(PERMANENT.map((p) => [p.id, p]));

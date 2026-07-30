@@ -44,7 +44,13 @@ function stubProfile(forgeLevel = 0, armorTier = 0) {
   }
   const permanent = {};
   if (forgeLevel > 0) {
+    // The Forge is per class now, so the simulated account stocks every
+    // class's bag to the requested level rather than one shared one.
     for (const def of PERMANENT) permanent[def.id] = Math.min(def.max, forgeLevel);
+    for (const c of CLASSES) {
+      classes[c.id].forge = {};
+      for (const def of PERMANENT) classes[c.id].forge[def.id] = Math.min(def.max, forgeLevel);
+    }
   }
   const armor = {};
   if (armorTier > 0) for (const s of ARMOR_SLOTS) armor[s.id] = armorTier;
@@ -52,6 +58,9 @@ function stubProfile(forgeLevel = 0, armorTier = 0) {
     data: { permanent, armor, classes, souls: 0, stats: {} },
     settings: { showDamage: false, difficulty: DIFFICULTY },
     classData: (id) => classes[id],
+    // The Forge moved into the per-class bag; the harness keeps one bag per
+    // class so a fixture can hand a single class a stocked Forge.
+    forgeLevels: (id) => (classes[id].forge || (classes[id].forge = {})),
     // The bot always fights with the default kit; unlockable skills are a
     // player choice, and simulating them would measure the harness's taste.
     loadout: (cls) => resolveLoadout(cls, classes[cls.id].loadout, SIM_LEVEL),

@@ -4,6 +4,7 @@
 import { CLASSES, defaultLoadout, resolveLoadout } from '../data/classes.js';
 import {
   talentPointsForBestWave, masteryRank, masteryProgress, masteryFromRun,
+  PERMANENT, PERMANENT_BY_ID, RETIRED_TRACKS, upgradeCost,
 } from '../data/permanent.js';
 import {
   levelFromXp, levelProgress, talentPointsForLevel, xpForRun, xpToReach, MAX_LEVEL,
@@ -55,6 +56,11 @@ function emptyProfile() {
     classes[c.id] = {
       talents: {}, bestWave: 0, kills: 0, runs: 0, unlocked: true,
       loadout: defaultLoadout(c, 1), mastery: 0, xp: 0,
+      // The Forge is per class, like talents and gear. Account-wide, it was
+      // the one system that made a fresh class start strong — you inherited
+      // every point of it the moment you picked one, which is exactly what
+      // made a maxed account play every class the same.
+      forge: {},
     };
   }
   return {
@@ -120,6 +126,7 @@ export class Profile {
         quests: normaliseQuestState(parsed.quests),
       };
       if (this.migrateToLevels()) migrated = true;
+      if (this.refundForge()) migrated = true;
       // Write it straight back under the new key, so the migration happens
       // once rather than on every boot for the rest of the account's life.
       if (migrated) this.save();
@@ -148,6 +155,57 @@ export class Profile {
       if (owed <= 0) continue;
       cd.xp = xpToReach(Math.min(MAX_LEVEL, owed + 1));
       changed = true;
+    }
+    return changed;
+  }
+
+  /**
+   * The Forge lost thirteen tracks and every remaining one had its cap cut from
+   * 100 to 10. A save holding levels in either would simply lose them, and the
+   * player would have no way to tell that from the update having eaten their
+   * account — so every gold piece spent on anything that no longer exists is
+   * paid back, at exactly what it cost.
+   *
+   * Refunding rather than remapping is the honest option: there is no
+   * equivalent of "level 74 Titanbane" in a shop that no longer sells boss
+   * damage, and inventing one would be a guess dressed up as a conversion.
+   */
+  forgeLevels(classId) {
+    const cd = this.data.classes[classId];
+    if (!cd.forge) cd.forge = {};
+    return cd.forge;
+  }
+
+  refundForge() {
+    let refund = 0;
+    let changed = false;
+    // The old account-wide bag. Everything in it is refunded outright: it is
+    // not just that tracks were retired, it is that the shop moved to being
+    // per class, and there is no honest way to decide which of nine classes
+    // an account-wide purchase should now belong to.
+    for (const [id, level] of Object.entries(this.data.permanent || {})) {
+      const priced = PERMANENT_BY_ID[id] || { baseCost: 60, growth: 1.085 };
+      for (let lv = 0; lv < level; lv++) refund += upgradeCost(priced, lv);
+      delete this.data.permanent[id];
+      changed = true;
+    }
+    // And per-class bags, for anything retired or now above the cap.
+    for (const cd of Object.values(this.data.classes)) {
+      for (const [id, level] of Object.entries(cd.forge || {})) {
+        const def = PERMANENT_BY_ID[id];
+        const keep = def ? Math.min(level, def.max) : 0;
+        if (keep === level) continue;
+        // upgradeCost(def, n) is the price of going from n to n+1, so the
+        // levels being taken away are [keep, level).
+        const priced = def || { baseCost: 60, growth: 1.085 };
+        for (let lv = keep; lv < level; lv++) refund += upgradeCost(priced, lv);
+        if (keep > 0) cd.forge[id] = keep; else delete cd.forge[id];
+        changed = true;
+      }
+    }
+    if (refund > 0) {
+      this.data.souls += Math.round(refund);
+      this.pendingRefund = Math.round(refund);
     }
     return changed;
   }

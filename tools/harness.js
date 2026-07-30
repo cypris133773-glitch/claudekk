@@ -40,6 +40,9 @@ export function makeHarness(opts = {}) {
     },
     settings: { showDamage: false, difficulty: opts.difficulty || 1 },
     classData: (id) => classes[id],
+    // The Forge moved into the per-class bag; the harness keeps one bag per
+    // class so a fixture can hand a single class a stocked Forge.
+    forgeLevels: (id) => (classes[id].forge || (classes[id].forge = {})),
     // Level 60 by default: a harness that only ever saw a level-1 pool would
     // test two skills out of thirteen.
     loadout: (cls) => resolveLoadout(cls, classes[cls.id].loadout, opts.level || 60),
