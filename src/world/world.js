@@ -297,21 +297,9 @@ export class World {
       }
     }
 
-    // --- The Mid: eight masses at r=15, on the diagonals and between them.
-    // Four are tall enough to break line of sight, because the ranged bosses
-    // have 30 blocks of range — longer than the room is wide, so distance
-    // never breaks it and only geometry can.
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
-      const mx = Math.round(cx + Math.cos(a) * 15);
-      const mz = Math.round(cz + Math.sin(a) * 15);
-      const tall = i % 2 === 0;
-      const h = tall ? 6 : 3;
-      const w = tall ? 2 : 3;
-      this.fill(mx - w, FLOOR_Y, mz - w, mx + w, FLOOR_Y + h - 1, mz + w, P.wall);
-      this.fill(mx - w + 1, FLOOR_Y + h, mz - w + 1, mx + w - 1, FLOOR_Y + h, mz + w - 1, P.trim);
-      if (tall) this.set(mx, FLOOR_Y + h + 1, mz, P.deco);
-    }
+    // --- The Mid: whatever this raid is. The one band that differs, and the
+    // only place a room gets to be a place rather than a shape.
+    RAID_INTERIORS[raid.tier % RAID_INTERIORS.length](this, { P, FLOOR_Y, cx, cz, seed });
 
     // --- Two perches, diagonally opposite, tops at +4. Terraced from one side
     // so a boss can climb them: an unreachable perch is a place to stand and
@@ -867,7 +855,7 @@ const RAID_PALETTES = [
   // reserved for poison, so decoration cannot be green anywhere in this room.
   { floor: B.MOSSY, accent: B.DARKSTONE, wall: B.COBBLE, trim: B.GOLD, deco: B.LEAVES, hazard: null },
   // Molten Core: grey stone, and the light comes from the lake underneath it.
-  { floor: B.STONE, accent: B.COBBLE, wall: B.DARKSTONE, trim: B.METAL, deco: B.OBSIDIAN, hazard: B.LAVA },
+  { floor: B.STONE, accent: B.COBBLE, wall: B.DARKSTONE, trim: B.METAL, deco: B.OBSIDIAN, hazard: null },
   // Karazhan: a broken ballroom. Wood and dark stone, lit by candles.
   { floor: B.PLANK, accent: B.DARKSTONE, wall: B.BRICK, trim: B.LOG, deco: B.GLOW, hazard: null },
   // Ulduar: the machine hall, and the only right-angled room in the set.
@@ -875,10 +863,211 @@ const RAID_PALETTES = [
   // Black Temple: black stone and one green fire. The darkest room in the game.
   { floor: B.DARKSTONE, accent: B.OBSIDIAN, wall: B.OBSIDIAN, trim: B.RUNE, deco: B.GLOW, hazard: null },
   // Firelands: black rock under a burning sky, standing in the fire itself.
-  { floor: B.OBSIDIAN, accent: B.DARKSTONE, wall: B.OBSIDIAN, trim: B.LAVA, deco: B.GLOW, hazard: B.LAVA },
-  // Icecrown: pale stone and ice. The only room whose walls are brighter than
-  // its floor, which is what makes it read as built rather than carved.
-  { floor: B.STONE, accent: B.CRYSTAL, wall: B.BRICK, trim: B.CRYSTAL, deco: B.CRYSTAL, hazard: null },
+  // `trim` is the dais rim and it is walked on, so it can never be a hazard
+  // however well it would suit the room. `hazard` is null because this room's
+  // interior lays its own cracks and two hazard passes tile the floor.
+  { floor: B.BASALT, accent: B.OBSIDIAN, wall: B.BASALT, trim: B.OBSIDIAN, deco: B.GLOW, hazard: null },
+  // Icecrown: dark ice underfoot, pale ice overhead. The only room whose walls
+  // are brighter than its floor, which is what makes it read as built rather
+  // than carved — and the dark floor is what keeps everything the player casts
+  // sitting on top of it rather than in it.
+  { floor: B.BLACKICE, accent: B.ICE, wall: B.ICE, trim: B.ICE, deco: B.CRYSTAL, hazard: null },
+];
+
+
+/**
+ * The Mid band, one function per raid.
+ *
+ * Each may put anything it likes between r=10 and r=19. What it may not do is
+ * touch the Dais, the Walk or the four cardinal gates — those are the contract
+ * every mechanic's escape arithmetic was measured against, and the room check
+ * in the smoke tests holds all three on all seven.
+ *
+ * A mass 6 blocks or taller breaks line of sight, and every room needs at least
+ * four of them: the ranged bosses have 30 blocks of range, which is longer than
+ * the room is wide, so distance can never break it and only geometry can.
+ */
+const RAID_INTERIORS = [
+  // Zul'Gurub — eight fallen idols. Five stand and three lie where they fell,
+  // and the toppled ones are the cover you actually use: a three-high mass a
+  // boss walks around rather than over.
+  (w, { P, FLOOR_Y, cx, cz }) => {
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+      const ix = Math.round(cx + Math.cos(a) * 15);
+      const iz = Math.round(cz + Math.sin(a) * 15);
+      if (i % 3 === 2) {
+        // Toppled: long, low, and lying across the bearing it fell along.
+        const along = Math.abs(Math.cos(a)) > Math.abs(Math.sin(a));
+        const hx = along ? 3 : 1, hz = along ? 1 : 3;
+        w.fill(ix - hx, FLOOR_Y, iz - hz, ix + hx, FLOOR_Y + 2, iz + hz, P.wall);
+        w.set(ix, FLOOR_Y + 3, iz, P.trim);
+      } else {
+        w.fill(ix - 1, FLOOR_Y, iz - 1, ix + 1, FLOOR_Y + 6, iz + 1, P.wall);
+        w.set(ix, FLOOR_Y + 7, iz, P.trim);
+      }
+    }
+  },
+
+  // Molten Core — a lake of fire outside the Walk, and eight rock columns.
+  // The lava is beyond r=23, so you never have to cross it: you can only be
+  // knocked into it. That is the entire hazard design of this room.
+  (w, { P, FLOOR_Y, cx, cz }) => {
+    for (let z = -30; z <= 30; z++) {
+      for (let x = -30; x <= 30; x++) {
+        if (Math.hypot(x, z) < 23.5) continue;
+        if (w.blockAt(cx + x, FLOOR_Y - 1, cz + z) === AIR) continue;
+        w.set(cx + x, FLOOR_Y - 1, cz + z, B.LAVA);
+      }
+    }
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const px = Math.round(cx + Math.cos(a) * 16);
+      const pz = Math.round(cz + Math.sin(a) * 16);
+      w.fill(px - 1, FLOOR_Y, pz - 1, px + 1, FLOOR_Y + 5, pz + 1, P.wall);
+      w.fill(px - 1, FLOOR_Y + 6, pz - 1, px + 1, FLOOR_Y + 6, pz + 1, P.trim);
+    }
+  },
+
+  // Karazhan — a ballroom, and a hall is defined by its rhythm. Sixteen
+  // columns on a ring with lintels between them, and a chequered floor so a
+  // shockwave marching outward has something to march across.
+  (w, { P, FLOOR_Y, cx, cz }) => {
+    for (let z = -26; z <= 26; z++) {
+      for (let x = -26; x <= 26; x++) {
+        const d = Math.hypot(x, z);
+        if (d < 10 || d > 26) continue;
+        if (w.blockAt(cx + x, FLOOR_Y - 1, cz + z) === AIR) continue;
+        // Both squares are dark. A true black-and-white chequer would be a
+        // bright floor, and the floor may never compete with a telegraph.
+        if ((((cx + x) >> 3) + ((cz + z) >> 3)) & 1) {
+          w.set(cx + x, FLOOR_Y - 1, cz + z, P.accent);
+        }
+      }
+    }
+    let prev = null;
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
+      const px = Math.round(cx + Math.cos(a) * 17);
+      const pz = Math.round(cz + Math.sin(a) * 17);
+      w.fill(px, FLOOR_Y, pz, px + 1, FLOOR_Y + 13, pz + 1, P.accent);
+      // A candle on each crown: sixteen lights at the top of the frame, well
+      // above anything the player casts.
+      w.set(px, FLOOR_Y + 14, pz, B.GLOW);
+      // Lintels turn a forest of posts into architecture.
+      if (prev) {
+        const steps = 6;
+        for (let t = 1; t < steps; t++) {
+          const bx = Math.round(prev[0] + (px - prev[0]) * (t / steps));
+          const bz = Math.round(prev[1] + (pz - prev[1]) * (t / steps));
+          w.fill(bx, FLOOR_Y + 12, bz, bx + 1, FLOOR_Y + 13, bz + 1, P.accent);
+        }
+      }
+      prev = [px, pz];
+    }
+  },
+
+  // Ulduar — the machine hall, and the only right-angled room in the set.
+  // Straight orange lines of molten metal on cold grey plate is the most
+  // readable hazard in the game and it costs nothing new.
+  (w, { P, FLOOR_Y, cx, cz }) => {
+    for (const [ox, oz] of [[-13, -13], [13, -13], [-13, 13], [13, 13]]) {
+      const mx = cx + ox, mz = cz + oz;
+      w.fill(mx - 3, FLOOR_Y, mz - 3, mx + 3, FLOOR_Y + 7, mz + 3, P.wall);
+      w.fill(mx - 2, FLOOR_Y + 8, mz - 2, mx + 2, FLOOR_Y + 8, mz + 2, P.accent);
+      w.set(mx, FLOOR_Y + 9, mz, P.deco);
+    }
+    // A rectangle of trenches at r=17, broken by five-wide crossings on the
+    // cardinals so the Walk and the Dais are never cut off from one another.
+    for (let t = -17; t <= 17; t++) {
+      if (Math.abs(t) <= 2) continue;
+      for (const d of [-17, 17]) {
+        for (const [x, z] of [[t, d], [d, t]]) {
+          if (w.blockAt(cx + x, FLOOR_Y - 1, cz + z) === AIR) continue;
+          w.set(cx + x, FLOOR_Y - 1, cz + z, B.LAVA);
+        }
+      }
+    }
+  },
+
+  // Black Temple — an inverted ziggurat. The floor steps down toward the
+  // middle, so you fight at the bottom of a bowl and the boss is below your
+  // eyeline as you walk in. Every step is exactly one block, which makes this
+  // the most boss-pathable room in the game by construction: no ramp, no
+  // stair, no ledge anything can be stranded on.
+  (w, { P, FLOOR_Y, cx, cz }) => {
+    for (let z = -22; z <= 22; z++) {
+      for (let x = -22; x <= 22; x++) {
+        const d = Math.max(Math.abs(x), Math.abs(z));
+        if (d < 10 || d > 20) continue;
+        if (w.blockAt(cx + x, FLOOR_Y - 1, cz + z) === AIR) continue;
+        const step = Math.min(4, Math.floor((20 - d) / 2.5));
+        if (step <= 0) continue;
+        for (let h = 0; h < step; h++) w.set(cx + x, FLOOR_Y + h, cz + z, AIR);
+        w.set(cx + x, FLOOR_Y - 1, cz + z, (step & 1) ? P.accent : P.floor);
+      }
+    }
+    // Four braziers on the diagonals: the room's one green fire, and its only
+    // line-of-sight breakers, because a bowl has nothing else standing in it.
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+      const px = Math.round(cx + Math.cos(a) * 14);
+      const pz = Math.round(cz + Math.sin(a) * 14);
+      w.fill(px - 1, FLOOR_Y, pz - 1, px + 1, FLOOR_Y + 5, pz + 1, P.wall);
+      w.set(px, FLOOR_Y + 6, pz, P.deco);
+    }
+  },
+
+  // Firelands — cracks in black rock. A one-wide crack is a hazard for the
+  // player, whose hitbox is 0.6 across, and not for a boss 1.0 to 1.7 wide
+  // that bridges it. That asymmetry is the room's mechanic: the outer lap is
+  // the fast way round and it costs you.
+  (w, { P, FLOOR_Y, cx, cz, seed }) => {
+    for (let i = 0; i < 22; i++) {
+      const a = (i / 22) * Math.PI * 2 + hash2(i, 3, seed);
+      let r = 24;
+      let drift = 0;
+      while (r > 13) {
+        drift += (hash2(i, r, seed) - 0.5) * 0.22;
+        const x = Math.round(cx + Math.cos(a + drift) * r);
+        const z = Math.round(cz + Math.sin(a + drift) * r);
+        if (w.blockAt(x, FLOOR_Y - 1, z) !== AIR) w.set(x, FLOOR_Y - 1, z, B.LAVA);
+        r -= 0.7;
+      }
+    }
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + 0.5;
+      const px = Math.round(cx + Math.cos(a) * 15);
+      const pz = Math.round(cz + Math.sin(a) * 15);
+      w.fill(px - 1, FLOOR_Y, pz - 1, px + 1, FLOOR_Y + 6, pz + 1, P.wall);
+      w.set(px, FLOOR_Y + 7, pz, P.trim);
+    }
+  },
+
+  // Icecrown — the frost castle. Eight buttresses stepping off the wall and
+  // eight ribs springing from their tops, open between them so you see sky
+  // through the vault. A closed dome would cost four times as much and would
+  // shut the room in.
+  (w, { P, FLOOR_Y, cx, cz }) => {
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+      for (let stage = 0; stage < 5; stage++) {
+        const r = 23 - stage;
+        const h = 5 + stage * 3;
+        const px = Math.round(cx + Math.cos(a) * r);
+        const pz = Math.round(cz + Math.sin(a) * r);
+        w.fill(px, FLOOR_Y, pz, px + 1, FLOOR_Y + h, pz + 1, P.wall);
+      }
+      // The rib, springing inward from the buttress top toward the middle.
+      for (let t = 0; t < 10; t++) {
+        const r = 19 - t * 1.7;
+        const y = FLOOR_Y + 15 + Math.round(t * 0.5);
+        const px = Math.round(cx + Math.cos(a) * r);
+        const pz = Math.round(cz + Math.sin(a) * r);
+        w.fill(px, y, pz, px + 1, y, pz + 1, P.trim);
+      }
+    }
+  },
 ];
 
 export const LAYOUT_COUNT = 6;

@@ -376,11 +376,21 @@ export class Hud {
       this.font(16);
       c.textAlign = 'left';
       c.fillStyle = '#ffffff';
-      const head = d.state === 'intermission'
-        ? `WAVE ${g.wave + 1} IN ${Math.ceil(d.intermission)}`
-        : `WAVE ${g.wave}`;
+      // A raid has no waves and nothing left to count. The line that carries
+      // the run's state has to carry the raid's instead: which raid, and how
+      // far into its six you are.
+      const head = g.mode === 'raid'
+        ? g.raid.name.toUpperCase()
+        : (d.state === 'intermission'
+          ? `WAVE ${g.wave + 1} IN ${Math.ceil(d.intermission)}`
+          : `WAVE ${g.wave}`);
       c.fillText(head, x, y);
-      if (d.state !== 'intermission') {
+      if (g.mode === 'raid') {
+        const headW = c.measureText(head).width;
+        this.font(13);
+        c.fillStyle = 'rgba(255,255,255,0.72)';
+        c.fillText(`· boss ${g.raidBossIndex + 1} of ${g.raid.bosses.length}`, x + headW + 8, y + 3);
+      } else if (d.state !== 'intermission') {
         const headW = c.measureText(head).width;
         this.font(13);
         c.fillStyle = 'rgba(255,255,255,0.72)';
@@ -391,7 +401,12 @@ export class Hud {
       c.textAlign = 'center';
       this.font(this.w < 520 ? 22 : 26);
       c.fillStyle = '#ffffff';
-      if (d.state === 'intermission') {
+      if (g.mode === 'raid') {
+        c.fillText(g.raid.name.toUpperCase(), this.w / 2, 12);
+        this.font(14);
+        c.fillStyle = 'rgba(255,255,255,0.75)';
+        c.fillText(`Boss ${g.raidBossIndex + 1} of ${g.raid.bosses.length}`, this.w / 2, 42);
+      } else if (d.state === 'intermission') {
         c.fillText(`Wave ${g.wave + 1} in ${Math.ceil(d.intermission)}`, this.w / 2, 14);
       } else {
         c.fillText(`WAVE ${g.wave}`, this.w / 2, 12);

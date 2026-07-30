@@ -24,6 +24,12 @@ export const BLOCKS = [
   { name: 'crystal', tiles: [T.CRYSTAL, T.CRYSTAL, T.CRYSTAL], solid: true, opaque: false, emissive: 0.8 },
   { name: 'darkstone', tiles: [T.DARKSTONE, T.DARKSTONE, T.DARKSTONE], solid: true, opaque: true },
   { name: 'gold', tiles: [T.GOLD, T.GOLD, T.GOLD], solid: true, opaque: true },
+  // Raid materials. Blocks are never tinted — a wall is exactly what its tile
+  // looks like — so a room whose fiction is ice needs a block that is ice
+  // rather than a brick wall in an icy light.
+  { name: 'basalt', tiles: [T.BASALT, T.BASALT, T.BASALT], solid: true, opaque: true, emissive: 0.12 },
+  { name: 'ice', tiles: [T.ICE, T.ICE, T.ICE], solid: true, opaque: true },
+  { name: 'blackice', tiles: [T.BLACKICE, T.BLACKICE, T.BLACKICE], solid: true, opaque: true },
 ];
 
 export const B = {};

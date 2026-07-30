@@ -113,6 +113,23 @@ if (process.env.SHOT_TAB !== undefined) {
 await frame.evaluate(prime);
 
 fs.mkdirSync(OUT, { recursive: true });
+// SHOT_RAID=<raid id> photographs the room itself rather than a menu: start the
+// raid, close the menus, and let a few frames run so the fog and the boss are
+// where they will be when a player walks in.
+if (process.env.SHOT_RAID) {
+  await frame.evaluate((id) => {
+    const B = window.CRAFTARENA;
+    B.menus.show(null);
+    B.game.startRaid(B.CLASSES[0], B.RAID_BY_ID[id], 0);
+  }, process.env.SHOT_RAID);
+  await page.waitForTimeout(900);
+  const file = path.join(OUT, `room-${process.env.SHOT_RAID}-${width}x${height}.png`);
+  await page.screenshot({ path: file });
+  console.log(file);
+  await browser.close();
+  server.close();
+  process.exit(0);
+}
 for (const name of screens) {
   await frame.evaluate((n) => window.CRAFTARENA.menus.show(n), name);
   // Let the entry fade settle so the shot is of the resting state.

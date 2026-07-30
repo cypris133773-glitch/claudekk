@@ -181,7 +181,9 @@ export class Game {
     const freebies = perm.startingUpgrades || 0;
     for (let i = 0; i < freebies; i++) this.player.rankUp(i % this.player.skills.length);
 
-    this.notify(LAYOUT_NAMES[this.layout] + ' Arena', 3);
+    // A raid announces its own name and its boss; the arena's layout name would
+    // be a third banner naming a place the player is not in.
+    if (!opts.raid) this.notify(LAYOUT_NAMES[this.layout] + ' Arena', 3);
     this.beginIntermission(2.0);
     this.audio.startMusic();
   }

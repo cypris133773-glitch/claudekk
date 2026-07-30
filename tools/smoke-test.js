@@ -1661,6 +1661,20 @@ check('every raid room keeps the promises the mechanics rely on', async () => {
     }
     assert(junk === 0, `${raid.id}: ${junk} obstructions on the dais`);
 
+    // And nothing on it hurts. The dais is the boss's ground and the player is
+    // on it for most of the fight; a rim of lava is a room that damages you for
+    // fighting in the place it built for fighting.
+    let burning = 0;
+    for (let z = -9; z <= 9; z++) {
+      for (let x = -9; x <= 9; x++) {
+        if (Math.hypot(x, z) > 9) continue;
+        const y = w.groundAt(cx + x, cz + z, 14);
+        const under = BLOCKS[w.blockAt(cx + x, y, cz + z)];
+        if (under && under.damage) burning++;
+      }
+    }
+    assert(burning === 0, `${raid.id}: ${burning} damaging tiles on the dais`);
+
     // The Threshold: a fixed mark, facing up the room, not inside geometry.
     const p = g.player;
     assert(!w.isSolid(p.x, p.y + 0.1, p.z) && !w.isSolid(p.x, p.y + 1.2, p.z),
@@ -1670,6 +1684,19 @@ check('every raid room keeps the promises the mechanics rely on', async () => {
 
     // Somewhere for summons to land that is not a lap behind the fight.
     assert(w.spawnPoints.length >= 8, `${raid.id}: only ${w.spawnPoints.length} spawn points`);
+
+    // Line of sight has to be breakable by geometry, because it cannot be
+    // broken by distance: the ranged bosses have 30 blocks of range and the
+    // room is 52 across. Without cover, kiting a Warden-stance boss is the
+    // whole fight.
+    let cover = 0;
+    for (let i = 0; i < 64; i++) {
+      const a = (i / 64) * Math.PI * 2;
+      for (let r = 10; r <= 20; r++) {
+        if (w.isSolid(cx + Math.cos(a) * r, w.floorY + 4.5, cz + Math.sin(a) * r)) { cover++; break; }
+      }
+    }
+    assert(cover >= 8, `${raid.id}: only ${cover} of 64 bearings have cover above head height`);
   }
 });
 
