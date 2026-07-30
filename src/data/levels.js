@@ -13,9 +13,7 @@
 //
 // The second is the curve itself, and it is deliberately Classic-shaped: the
 // first levels are an evening, the last ones are a project. Level 2 arrives in
-// two runs, level 5 in ten, and level 60 in roughly five hundred — about 100
-// hours. A level cap reached in a week is a level cap that stops mattering in
-// a week; a hundred hours is a season.
+// two runs, level 5 in ten, and level 60 in roughly 235 — about 48 hours.
 
 /** XP for one ordinary kill. Flat, and flat on purpose — see above. */
 export const XP_PER_KILL = 2;
@@ -38,14 +36,14 @@ export const MAX_LEVEL = 60;
 // way for a small change, because it compounds fifty-nine times. Measured
 // against the real spawn budgets and a career that deepens as you level:
 //
-//   1.065 -> ~80 hours    1.070 -> ~97    1.075 -> ~117    1.088 -> ~197
+//   1.045 -> ~40 hours    1.050 -> ~47    1.060 -> ~67    1.071 -> ~100
 //
 // BASE and HEAD are what hold the opening anchors — level 2 in two runs,
 // level 5 in ten — so retuning the length means touching GROWTH and nothing
 // else.
 const BASE = 1100;
 const HEAD = 0.16;
-const GROWTH = 1.071;
+const GROWTH = 1.050;
 
 /**
  * XP needed to go from `level` to `level + 1`. Returns Infinity at the cap, so
