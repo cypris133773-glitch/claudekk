@@ -1863,3 +1863,24 @@ body.show-popout-btn #popout-btn { display: block; }
   .slot-name { font-size: 8.5px; }
   .skill-detail { min-height: 40px; padding: 6px 8px; margin-top: 6px; }
 }
+
+/* A skill the class has not learned yet. Shown rather than hidden: hiding them
+   makes a class look like it has two abilities, where greying them with the
+   level they arrive at turns the same screen into a reason to keep levelling. */
+.skill-slot.locked { opacity: 0.5; cursor: default; }
+.skill-slot.locked canvas { filter: grayscale(0.85) brightness(0.7); }
+.skill-slot.locked .slot-name { color: rgba(255, 255, 255, 0.35); }
+.slot-lock {
+  position: absolute;
+  top: -5px; right: -5px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: #14161d;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  color: var(--dim);
+  font-size: 9.5px;
+  font-weight: 900;
+  line-height: 15px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+.skill-detail i.locked-note { color: #ff9a7a; }

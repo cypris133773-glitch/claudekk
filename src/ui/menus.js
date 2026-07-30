@@ -6,7 +6,7 @@
 // are paged, dense ones are tabbed, and fitScreen() is the safety net that
 // scales a screen down rather than letting it run off the bottom.
 
-import { CLASSES, LOADOUT_SIZE } from '../data/classes.js';
+import { CLASSES, LOADOUT_SIZE, unlockOrder, unlockLevelOf } from '../data/classes.js';
 import {
   PERMANENT, upgradeCost, talentPointsForBestWave, masteryProgress,
 } from '../data/permanent.js';
@@ -396,21 +396,38 @@ export class Menus {
     const detail = el('div', 'skill-detail');
     const describe = (sk) => {
       const pts = invested[sk.id] || 0;
+      const need = unlockLevelOf(cls, sk.id);
+      const locked = need > this.profile.level(cls.id);
       detail.innerHTML = `<b>${sk.name}</b><span>${sk.desc}</span>`
-        + `<i>${sk.cost} ${cls.resource.name} · ${sk.cooldown}s`
-        + `${pts ? ` · ${pts} Mastery point${pts > 1 ? 's' : ''} invested` : ''}</i>`;
+        + (locked
+          ? `<i class="locked-note">🔒 Unlocks at level ${need} — you are level ${this.profile.level(cls.id)}</i>`
+          : `<i>${sk.cost} ${cls.resource.name} · ${sk.cooldown}s`
+            + `${pts ? ` · ${pts} Mastery point${pts > 1 ? 's' : ''} invested` : ''}</i>`);
     };
 
-    for (const sk of cls.skills) {
-      const on = equipped.includes(sk.id);
-      const btn = el('button', 'skill-slot' + (on ? ' on' : ''));
-      btn.appendChild(skillIconElement(sk, 46, { ready: true }));
+    // Every skill in the pool is shown, including the ones not learned yet.
+    // Hiding them would make a class look like it has two abilities; showing
+    // them greyed with the level they arrive at turns the same screen into the
+    // reason to keep levelling.
+    const level = this.profile.level(cls.id);
+    for (const sk of unlockOrder(cls)) {
+      const need = unlockLevelOf(cls, sk.id);
+      const locked = need > level;
+      const on = !locked && equipped.includes(sk.id);
+      const btn = el('button', 'skill-slot' + (on ? ' on' : '') + (locked ? ' locked' : ''));
+      btn.appendChild(skillIconElement(sk, 46, { ready: !locked }));
       btn.appendChild(el('span', 'slot-name', sk.name));
-      if (invested[sk.id]) btn.appendChild(el('span', 'slot-mastery', String(invested[sk.id])));
-      btn.title = `${sk.name} — ${sk.desc}`;
+      if (locked) btn.appendChild(el('span', 'slot-lock', `Lv ${need}`));
+      else if (invested[sk.id]) btn.appendChild(el('span', 'slot-mastery', String(invested[sk.id])));
+      btn.title = locked
+        ? `${sk.name} — unlocks at level ${need}`
+        : `${sk.name} — ${sk.desc}`;
       btn.addEventListener('pointerenter', () => describe(sk));
       this.click(btn, () => {
         describe(sk);
+        // A locked skill still answers when tapped — that is the whole point of
+        // showing it — but it cannot be slotted.
+        if (locked) { this.ctx.audio.play('deny'); return; }
         const next = equipped.includes(sk.id)
           ? equipped.filter((id) => id !== sk.id)
           // Replacing the oldest slot keeps a swap to one tap; dropping a

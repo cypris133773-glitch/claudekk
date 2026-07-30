@@ -467,9 +467,15 @@ export class Player extends Entity {
     const lefty = false;
 
     // Anchor point: forward of the eye, to the right, and below the crosshair.
-    const reach = 0.62 + ease * 0.14;
-    const side = (lefty ? -1 : 1) * (0.30 + bobX) - ease * 0.06;
-    const drop = -0.34 + bobY + ease * 0.10;
+    //
+    // Pulled closer and dropped further than it used to sit. The weapon is
+    // about to become the visible half of the gear system — a tier you can read
+    // from your own hands — and at the old distance it was a sliver in the
+    // corner. Closer to the eye is the only lever that makes it big without
+    // making it clip through walls.
+    const reach = 0.50 + ease * 0.12;
+    const side = (lefty ? -1 : 1) * (0.26 + bobX) - ease * 0.05;
+    const drop = -0.30 + bobY + ease * 0.09;
     const px = camera.x + fwd[0] * reach + rx * side;
     const py = camera.y + fwd[1] * reach + drop;
     const pz = camera.z + fwd[2] * reach + rz * side;
@@ -483,13 +489,16 @@ export class Player extends Entity {
     const yaw = camera.yaw + 0.42;
     const pitch = camera.pitch - 0.62 - ease * 1.05;
 
+    // One factor over every shape, so the proportions that were tuned by eye
+    // stay exactly as they were and only the size changes.
+    const S = 1.6;
     if (w.type === 'staff') {
-      const len = 0.42;
-      r.drawBox(px, py, pz, 0.035, 0.035, len, { tile: T.LOG_SIDE, color: [0.42, 0.32, 0.22], yaw, pitch });
+      const len = 0.42 * S;
+      r.drawBox(px, py, pz, 0.035 * S, 0.035 * S, len, { tile: T.LOG_SIDE, color: [0.42, 0.32, 0.22], yaw, pitch });
       // Glowing head at the far end of the shaft.
-      const tipF = 0.20;
-      r.drawBox(px + fwd[0] * tipF, py + fwd[1] * tipF + 0.06, pz + fwd[2] * tipF,
-        0.075, 0.075, 0.075, { tile, color, emissive: 1, yaw, pitch });
+      const tipF = 0.20 * S;
+      r.drawBox(px + fwd[0] * tipF, py + fwd[1] * tipF + 0.06 * S, pz + fwd[2] * tipF,
+        0.075 * S, 0.075 * S, 0.075 * S, { tile, color, emissive: 1, yaw, pitch });
     } else if (w.type === 'bow') {
       // A bow held vertically: two limbs angled off a grip, with a bright
       // string between the tips. Reads as ranged at a glance, which a sword
@@ -499,14 +508,14 @@ export class Player extends Entity {
       const uy = Math.cos(bp);
       const uz = Math.cos(yaw) * Math.sin(bp);
       const along = (t) => [px - ux * t, py - uy * t, pz - uz * t];
-      r.drawBox(px, py, pz, 0.030, 0.13, 0.030, { tile, color, yaw, pitch: bp });
+      r.drawBox(px, py, pz, 0.030 * S, 0.13 * S, 0.030 * S, { tile, color, yaw, pitch: bp });
       for (const s of [-1, 1]) {
-        const a = along(s * 0.13);
-        r.drawBox(a[0], a[1], a[2], 0.026, 0.13, 0.026,
+        const a = along(s * 0.13 * S);
+        r.drawBox(a[0], a[1], a[2], 0.026 * S, 0.13 * S, 0.026 * S,
           { tile, color, yaw, pitch: bp + s * 0.42 });
       }
       // The string, drawn as one thin emissive span so the draw reads.
-      r.drawBox(px + fwd[0] * 0.02, py, pz + fwd[2] * 0.02, 0.010, 0.40, 0.010,
+      r.drawBox(px + fwd[0] * 0.02, py, pz + fwd[2] * 0.02, 0.010 * S, 0.40 * S, 0.010 * S,
         { tile: T.BLANK, color: [0.85, 0.9, 0.8], emissive: 0.5, yaw, pitch: bp });
     } else if (w.type === 'hammer') {
       // A warhammer: short haft, heavy blocky head. Weight is the whole read.
@@ -515,27 +524,27 @@ export class Player extends Entity {
       const uy = Math.cos(bp);
       const uz = Math.cos(yaw) * Math.sin(bp);
       const along = (t) => [px - ux * t, py - uy * t, pz - uz * t];
-      const head = along(-0.06);
-      r.drawBox(head[0], head[1], head[2], 0.11, 0.10, 0.09, { tile, color, yaw, pitch: bp });
-      r.drawBox(px, py, pz, 0.032, 0.30, 0.032,
+      const head = along(-0.06 * S);
+      r.drawBox(head[0], head[1], head[2], 0.11 * S, 0.10 * S, 0.09 * S, { tile, color, yaw, pitch: bp });
+      r.drawBox(px, py, pz, 0.032 * S, 0.30 * S, 0.032 * S,
         { tile: T.LOG_SIDE, color: [0.40, 0.29, 0.19], yaw, pitch: bp });
-      const cap = along(0.19);
-      r.drawBox(cap[0], cap[1], cap[2], 0.048, 0.030, 0.044,
+      const cap = along(0.19 * S);
+      r.drawBox(cap[0], cap[1], cap[2], 0.048 * S, 0.030 * S, 0.044 * S,
         { tile, color, emissive: 0.35, yaw, pitch: bp });
     } else {
-      const len = w.type === 'dagger' ? 0.22 : 0.32;
+      const len = (w.type === 'dagger' ? 0.22 : 0.32) * S;
       const bp = pitch + 1.35;
       // The blade's own "up" axis, so guard and grip stay glued to it.
       const ux = Math.sin(yaw) * Math.sin(bp);
       const uy = Math.cos(bp);
       const uz = Math.cos(yaw) * Math.sin(bp);
       const along = (t) => [px - ux * t, py - uy * t, pz - uz * t];
-      r.drawBox(px, py, pz, 0.026, len, 0.05, { tile, color, yaw, pitch: bp });
+      r.drawBox(px, py, pz, 0.026 * S, len, 0.05 * S, { tile, color, yaw, pitch: bp });
       const g = along(len * 0.52);
-      r.drawBox(g[0], g[1], g[2], 0.095, 0.026, 0.042,
+      r.drawBox(g[0], g[1], g[2], 0.095 * S, 0.026 * S, 0.042 * S,
         { tile: T.METAL, color: [0.55, 0.5, 0.45], yaw, pitch: bp });
       const h = along(len * 0.74);
-      r.drawBox(h[0], h[1], h[2], 0.030, 0.10, 0.034,
+      r.drawBox(h[0], h[1], h[2], 0.030 * S, 0.10 * S, 0.034 * S,
         { tile: T.LOG_SIDE, color: [0.42, 0.30, 0.20], yaw, pitch: bp });
     }
   }
