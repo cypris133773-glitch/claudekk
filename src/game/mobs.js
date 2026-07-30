@@ -3,6 +3,25 @@
 import { Entity, TEAM, drawHumanoid } from './entity.js';
 import { T } from '../render/atlas.js';
 import { clamp, rand, pick } from '../core/math.js';
+import { MECHANICS, PHASES, phaseFor, raidScaling, bossStance } from '../data/raids.js';
+
+/**
+ * The three telegraph languages, as colours. Keyed to the *action*, never to
+ * the boss — a player learns three colours once instead of relearning a palette
+ * every raid.
+ *
+ *   burst   it goes off where it is drawn, and then it is gone
+ *   linger  it stays on the floor after it lands
+ *   aimed   it is following you
+ *
+ * All three are chosen against the player's own palette: nothing the player
+ * casts is amber-on-orange, ice-outline, or this violet.
+ */
+export const TELL_COLOR = {
+  burst: '#ff9a3c',
+  linger: '#7ec8ff',
+  aimed: '#c06cff',
+};
 
 const hex = (h) => [
   parseInt(h.slice(1, 3), 16) / 255,
@@ -104,8 +123,13 @@ export const MOB_TYPES = {
 export const BOSS_IDS = ['colossus', 'warden', 'broodmother'];
 
 export class Mob extends Entity {
-  constructor(typeId, wave, x, y, z, scaling) {
-    const t = MOB_TYPES[typeId];
+  /**
+   * `defOverride` is for enemies whose definition is built rather than looked
+   * up — raid bosses, whose forty-two entries differ only in a colour and a
+   * multiplier and would never spawn from a wave anyway.
+   */
+  constructor(typeId, wave, x, y, z, scaling, defOverride = null) {
+    const t = defOverride || MOB_TYPES[typeId];
     super({ x, y, z, width: t.width, height: t.height, hp: Math.round(t.hp * scaling.hp), team: TEAM.ENEMY });
     this.typeId = typeId;
     this.def = t;
@@ -234,6 +258,7 @@ export class Mob extends Entity {
       case 'boss': this.aiBoss(dt, game, target, dist, nx, nz, speed); break;
       case 'boss_warden': this.aiWarden(dt, game, target, dist, nx, nz, speed); break;
       case 'boss_brood': this.aiBrood(dt, game, target, dist, nx, nz, speed); break;
+      case 'boss_raid': this.aiRaid(dt, game, target, dist, nx, nz, speed); break;
       default: this.aiMelee(dt, game, target, dist, nx, nz, speed);
     }
 
@@ -792,6 +817,356 @@ export class Mob extends Entity {
     this.aiMelee(dt, game, target, dist, nx, nz, speed);
   }
 
+  // -------------------------------------------------------------------------
+  // Raid bosses
+  // -------------------------------------------------------------------------
+  //
+  // Forty-two bosses run through this one branch. What differs between them is
+  // data — a mechanic, a stance, a power multiplier and the raid's own trial —
+  // and nothing else, because forty-two hand-written AIs is forty-two places
+  // for a fight to be subtly unfair and no way to tell which one.
+  //
+  // The guard rails live here rather than inside the eight mechanics, so a
+  // rule like "no burst resolves while the player is slowed" is enforced once
+  // and cannot be forgotten by the ninth mechanic somebody adds later.
+
+  /** Which phase the health bar puts us in, and the transition when it moves. */
+  updateRaidPhase(dt, game) {
+    const want = phaseFor(this.hp / this.maxHp);
+    if (want <= this.phase) return;
+    this.phase = want;
+    // A phase transition is a breath, not an ambush. Clearing zones and pausing
+    // the caster is what stops a transition from landing on top of a live bomb,
+    // which is a death the player could not have prevented by playing better.
+    for (const z of game.zones) if (z.team === TEAM.ENEMY) z.dead = true;
+    this.castTimer = Math.max(this.castTimer, 2.5);
+    game.notify(`${this.def.name.toUpperCase()} — PHASE ${want + 1}`, 2.4);
+    game.sfx('roar');
+    game.screenShake = Math.max(game.screenShake, 0.42);
+    game.burst(this.x, this.centerY, this.z, 30, this.raidColor || '#ff5a3c');
+  }
+
+  /**
+   * Whether a mechanic may resolve right now.
+   *
+   * The slow test is the load-bearing one. Every escape in the set is quoted
+   * against the slowest class at full speed; at 65% of it the arithmetic stops
+   * working and the mechanic becomes unavoidable damage wearing a telegraph.
+   */
+  raidCastAllowed(game, mech) {
+    const p = game.player;
+    if (mech.tell === 'linger') return true;      // zones are the one thing a slow may not veto
+    if (p.root > 0 || p.freeze > 0) return false;
+    return !(p.slow > 0.2);
+  }
+
+  aiRaid(dt, game, target, dist, nx, nz, speed) {
+    this.updateRaidPhase(dt, game);
+    this.checkEnrage(game);
+
+    // The charge state is committed movement and owns the frame outright: a
+    // charge that re-aims mid-flight cannot be dodged, and one that also casts
+    // is two mechanics resolving on one telegraph.
+    if (this.state === 'charge') {
+      this.chargeTime -= dt;
+      this.vx = this.chargeVX;
+      this.vz = this.chargeVZ;
+      if (dist < 2.8 && this.attackTimer <= 0) {
+        this.attackTimer = 0.6;
+        this.meleeHit(game, target, MECHANICS.charge.dmg, 10);
+      }
+      if (this.chargeTime <= 0 || this.hitWallX || this.hitWallZ) this.state = 'chase';
+      return;
+    }
+
+    // Breath freezes its facing at ignition and the boss becomes a turret. The
+    // immobility is not a side effect, it is the player's damage window.
+    if (this.channel > 0) {
+      this.channel -= dt;
+      this.vx *= 0.15; this.vz *= 0.15;
+      this.channelTick -= dt;
+      if (this.channelTick <= 0 && !this.dead) {
+        this.channelTick = 0.3;
+        this.breathVolley(game);
+      }
+      return;
+    }
+
+    const phase = PHASES[this.phase];
+    this.castTimer -= dt;
+
+    // Adds buy the player room: while its pack is up the boss casts less, so
+    // clearing the pack is also the play that stops the telegraphs.
+    const crowded = game.mobs.length > 4;
+
+    if (this.castTimer <= 0 && !this.casting) {
+      const id = this.pickRaidMechanic(game);
+      const mech = MECHANICS[id];
+      if (!this.raidCastAllowed(game, mech)) {
+        // Postponed, not skipped, and only for a moment. A mechanic that waits
+        // out a permanent slow never fires at all.
+        this.castStall = (this.castStall || 0) + dt;
+        this.castTimer = 0.35;
+        if (this.castStall > 1.5) { this.castStall = 0; this.castRaid(id, game, target); }
+      } else {
+        this.castStall = 0;
+        this.castRaid(id, game, target);
+      }
+      this.castTimer = Math.max(this.castTimer,
+        (this.cadence || mech.cd) * phase.rate * (crowded ? 1.3 : 1));
+    }
+
+    if (this.casting > 0) {
+      // Planted while a telegraph is up, so the picture on the floor is where
+      // the blast lands. A boss that walks out of its own telegraph is a lie.
+      this.casting -= dt;
+      this.vx *= 0.4; this.vz *= 0.4;
+      return;
+    }
+
+    if (this.raidStance === 'ranged') this.aiWardenStep(dt, game, target, dist, nx, nz, speed);
+    else this.aiMelee(dt, game, target, dist, nx, nz, speed);
+  }
+
+  /** Kiting movement without the Warden's own zoning and blinking. */
+  aiWardenStep(dt, game, target, dist, nx, nz, speed) {
+    const ideal = 13;
+    if (dist > ideal + 4) this.moveToward(nx, nz, speed);
+    else if (dist < ideal - 4) this.moveToward(-nx, -nz, speed);
+    else this.strafe(nx, nz, speed * 0.8, this.id % 2 ? 1 : -1);
+    if (this.attackTimer <= 0 && dist < this.def.range) {
+      this.attackTimer = 2.6;
+      this.swing = 1;
+      game.fireProjectile({
+        owner: this, team: TEAM.ENEMY,
+        x: this.x, y: this.eyeY, z: this.z,
+        dir: [nx, 0.06, nz], damage: this.damageAmount * 0.6,
+        speed: 26, gravity: 2, color: this.raidColor || '#ff8a3c', size: 0.3,
+      });
+      game.sfx('shoot');
+    }
+  }
+
+  /**
+   * Which mechanic fires next.
+   *
+   * The boss's own signature is the spine of the fight; the raid's trial joins
+   * from phase 2 and is what makes six fights feel like one place. The
+   * composition rules are the exceptions, and they are exceptions because a
+   * pair that cannot both be survived is worse than either alone.
+   */
+  pickRaidMechanic(game) {
+    const own = this.mechanic;
+    const trial = this.raidTrial;
+    let pool = [own];
+    if (this.phase >= 1 && trial && trial !== own) pool.push(trial);
+    // Rot plus a surround has the tightest escape requirement in the game and
+    // is the pair that kills. The adds are already the threat; the rot is a
+    // second one landing on the same beat.
+    if (game.mobs.length > 4) pool = pool.filter((m) => m !== 'shadow');
+    // A boss with no signature fights on pressure alone — autos, the trial, and
+    // an escalation that starts earlier. The puzzle was the five bosses before.
+    if (own === 'enrage' && pool.length > 1) pool = pool.filter((m) => m !== 'enrage');
+    return pool[(Math.random() * pool.length) | 0];
+  }
+
+  castRaid(id, game, target) {
+    const mech = MECHANICS[id];
+    const reps = 1 + Math.min(this.phase, PHASES[this.phase].reps) * (this.reps || 1);
+    this.casting = mech.cast;
+    game.sfx('cast');
+    game.sfx(mech.cue);
+    game.impactFlash(TELL_COLOR[mech.tell], 0.18);
+    switch (id) {
+      case 'slam': return this.mechSlam(game, mech);
+      case 'breath': return this.mechBreath(game, mech, target);
+      case 'adds': return this.mechAdds(game, mech);
+      case 'charge': return this.mechCharge(game, mech, target);
+      case 'bombs': return this.mechBombs(game, mech, target, reps);
+      case 'frost': return this.mechFrost(game, mech, target);
+      case 'shadow': return this.mechShadow(game, mech, target);
+      default: return this.mechNova(game, mech);
+    }
+  }
+
+  /** Rings marching outward. Run straight away from the boss. */
+  mechSlam(game, mech) {
+    const rings = [[mech.radius, mech.dmg], [8, 2.2], [11, 1.8]];
+    rings.forEach(([radius, k], i) => {
+      game.delay(i * 0.55, () => {
+        if (this.dead) return;
+        game.telegraph(this.x, this.y, this.z, radius, i === 0 ? mech.cast : 0.5, () => {
+          if (this.dead) return;
+          game.explode(this.x, this.y + 0.4, this.z, radius, this.damageAmount * k, {
+            team: TEAM.ENEMY, source: this, color: TELL_COLOR.burst, knockback: 8,
+          });
+          game.sfx('stomp');
+        }, TELL_COLOR.burst);
+      });
+    });
+  }
+
+  /**
+   * A stream of flying rock rather than a ground cone. The engine has no cone
+   * test for the enemy side, and a stream reads better anyway: it collides with
+   * the world, and you can see it from beside it as well as in front of it.
+   */
+  mechBreath(game, mech, target) {
+    const dx = target.x - this.x, dz = target.z - this.z;
+    const d = Math.hypot(dx, dz) || 1;
+    game.delay(mech.cast, () => {
+      if (this.dead) return;
+      // Aim is sampled once, here, and frozen. A cone that keeps tracking is
+      // the single most common way this mechanic is built undodgeable.
+      this.breathX = dx / d;
+      this.breathZ = dz / d;
+      this.channel = 1.5;
+      this.channelTick = 0;
+      game.sfx('roar');
+    });
+  }
+
+  breathVolley(game) {
+    const mech = MECHANICS.breath;
+    for (let i = 0; i < 6; i++) {
+      const spread = (i - 2.5) * 0.16;
+      const dx = this.breathX * Math.cos(spread) - this.breathZ * Math.sin(spread);
+      const dz = this.breathX * Math.sin(spread) + this.breathZ * Math.cos(spread);
+      game.fireProjectile({
+        owner: this, team: TEAM.ENEMY,
+        x: this.x, y: this.eyeY, z: this.z,
+        dir: [dx, 0.05, dz], damage: this.damageAmount * mech.dmg,
+        speed: 30, gravity: 1.5, color: this.raidColor || '#ff8a3c', size: 0.32,
+      });
+    }
+  }
+
+  /**
+   * A pack, hard-capped. Unbounded adds is the classic way a solo fight becomes
+   * unwinnable, so a summon that would breach the cap is dropped outright — and
+   * the boss idles instead, which makes killing adds buy uptime as well as air.
+   */
+  mechAdds(game, mech) {
+    const tier = this.raidTier || 0;
+    const roster = tier <= 1 ? ['husk', 'crawler']
+      : tier <= 3 ? ['stalker', 'skele']
+        : ['hexer', 'wraith'];
+    const count = this.power > 1.3 ? 4 : 3;
+    game.delay(mech.cast, () => {
+      if (this.dead) return;
+      for (let i = 0; i < count; i++) {
+        if (game.mobs.length >= 8) break;
+        const a = (i / count) * Math.PI * 2 + this.age;
+        const typeId = roster[i % roster.length];
+        const m = game.spawnMob(typeId,
+          this.x + Math.cos(a) * mech.radius, this.y + 1, this.z + Math.sin(a) * mech.radius);
+        // Adds are attrition, not a second boss: a few seconds of attention
+        // each, and they never summon anything themselves.
+        if (m) { m.maxHp = Math.round(this.maxHp * 0.06); m.hp = m.maxHp; m.isAdd = true; }
+      }
+      game.burst(this.x, this.y + 0.6, this.z, 14, TELL_COLOR.aimed);
+    });
+  }
+
+  /** A line drawn as two rings. Two blocks sideways after the commit. */
+  mechCharge(game, mech, target) {
+    const dx = target.x - this.x, dz = target.z - this.z;
+    const d = Math.hypot(dx, dz) || 1;
+    const cx = dx / d, cz = dz / d;
+    const ty = game.world.groundAt(target.x, target.z, target.y + 3);
+    game.telegraph(target.x, ty, target.z, mech.radius, mech.cast, () => {}, TELL_COLOR.aimed);
+    game.telegraph(this.x, this.y, this.z, mech.radius, mech.cast, () => {
+      if (this.dead) return;
+      this.state = 'charge';
+      this.chargeTime = 1.1;
+      this.chargeVX = cx * this.speed * 4.2;
+      this.chargeVZ = cz * this.speed * 4.2;
+      game.sfx('charge');
+    }, TELL_COLOR.aimed);
+  }
+
+  /**
+   * Marks the floor under you and does not follow. Walking out is the whole
+   * mechanic, so the later bombs are spaced apart — a bomb in a compromise
+   * position is a bomb nobody can read, and it is better dropped than moved.
+   */
+  mechBombs(game, mech, target, reps) {
+    const placed = [];
+    for (let i = 0; i < reps; i++) {
+      game.delay(i * 0.6, () => {
+        if (this.dead) return;
+        const px = target.x, pz = target.z;
+        for (const p of placed) {
+          if (Math.hypot(px - p[0], pz - p[1]) < 6) return;
+        }
+        placed.push([px, pz]);
+        const py = game.world.groundAt(px, pz, target.y + 3);
+        game.sfx('fuse');
+        game.telegraph(px, py, pz, mech.radius, mech.cast, () => {
+          if (this.dead) return;
+          game.explode(px, py + 0.4, pz, mech.radius, this.damageAmount * mech.dmg, {
+            team: TEAM.ENEMY, source: this, color: TELL_COLOR.aimed, knockback: 6,
+          });
+        }, TELL_COLOR.aimed);
+      });
+    }
+  }
+
+  /**
+   * Takes floor away rather than health. It is the cheapest mechanic per second
+   * in the set on purpose: it is the only one that puts something at a third
+   * place, neither on the boss nor on you, so it must never be the thing that
+   * kills you — only the thing that makes the next mechanic harder.
+   */
+  mechFrost(game, mech, target) {
+    const live = game.zones.filter((z) => z.team === TEAM.ENEMY && !z.dead);
+    while (live.length >= 4) live.shift().dead = true;
+    for (let i = 0; i < 2; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = 3 + Math.random() * 4;
+      const px = target.x + Math.cos(a) * r;
+      const pz = target.z + Math.sin(a) * r;
+      const py = game.world.groundAt(px, pz, target.y + 3);
+      game.telegraph(px, py, pz, mech.radius, mech.cast, () => {
+        if (this.dead) return;
+        // Measured from where the player is *now*, not where they were when
+        // the telegraph went up: a pool that lands on your feet is unavoidable
+        // damage, and three seconds is long enough to have walked into it.
+        if (Math.hypot(px - game.player.x, pz - game.player.z) < 3) return;
+        game.spawnZone(px, py, pz, {
+          radius: mech.radius, dps: this.damageAmount * mech.dmg, duration: 8,
+          team: TEAM.ENEMY, source: this, color: TELL_COLOR.linger, slow: 0.35,
+        });
+        game.sfx('shatter');
+      }, TELL_COLOR.linger);
+    }
+  }
+
+  /**
+   * The evacuation beat, and the mirror of slam: slam pushes you off the boss,
+   * this pushes you off yourself. Together they are what stop a player finding
+   * one safe tile and standing on it for the whole fight.
+   */
+  mechShadow(game, mech, target) {
+    const py = game.world.groundAt(target.x, target.z, target.y + 3);
+    const cx = target.x, cz = target.z;
+    game.telegraph(cx, py, cz, mech.radius, mech.cast, () => {
+      if (this.dead) return;
+      game.explode(cx, py + 0.4, cz, mech.radius, this.damageAmount * mech.dmg, {
+        team: TEAM.ENEMY, source: this, color: TELL_COLOR.aimed, knockback: 0,
+      });
+      const p = game.player;
+      if (Math.hypot(p.x - cx, p.z - cz) < mech.radius) {
+        p.applyDot(this.damageAmount * 0.30, 6, 'shadow', this);
+        game.notify('AFFLICTED', 1.4);
+      }
+    }, TELL_COLOR.aimed);
+  }
+
+  mechNova(game, mech) {
+    this.enrageNova(game, game.player);
+  }
+
   draw(r) {
     const s = this.def.skin;
     const fusing = this.state === 'fuse';
@@ -806,6 +1181,66 @@ export class Mob extends Entity {
       scale: this.elite ? 1.12 : 1,
     });
   }
+}
+
+/**
+ * Build a raid boss.
+ *
+ * Its `def` is manufactured rather than looked up: forty-two entries in
+ * MOB_TYPES that differ only in a colour and a multiplier would be forty-two
+ * places to make a typo, and none of them would ever spawn from a wave. The
+ * stat block comes from `raidScaling`, the silhouette from the boss's power,
+ * and the skin is derived from the one colour each boss already carries.
+ *
+ * `power` reads as size as well as damage, so the sixth boss of a raid is
+ * visibly the sixth boss before it has done anything. Capped at 5.2 blocks:
+ * past about six the head leaves the screen in melee and the fight stops being
+ * readable at exactly the range it is fought.
+ */
+export function createRaidBoss(raid, boss, x, y, z) {
+  const stats = raidScaling(raid.tier, boss.power);
+  const base = hex(boss.color);
+  const dark = base.map((c) => c * 0.45);
+  const stance = bossStance(boss);
+  const def = {
+    name: boss.name, weight: 0, minWave: 1, cost: 0, boss: true,
+    hp: stats.hp, damage: stats.damage, souls: 0,
+    speed: stance === 'ranged' ? 3.2 : 2.9,
+    range: stance === 'ranged' ? 30 : 3.8,
+    attackSpeed: 0.6,
+    height: Math.min(5.2, 3.0 + boss.power * 0.9),
+    width: Math.min(1.7, 1.0 + boss.power * 0.28),
+    behavior: 'boss_raid', knockResist: 1,
+    tagline: MECHANICS[boss.mechanic].blurb,
+    skin: {
+      head: base, body: dark, arm: base, leg: dark,
+      face: T.FACE_BOSS, hat: base.map((c) => Math.min(1, c * 1.3)),
+      emissive: 0.18,
+    },
+  };
+  // Scaling of 1 everywhere: raidScaling has already done the whole job, and
+  // running it through the wave curve as well would scale it twice.
+  const m = new Mob(boss.id, 1, x, y, z, { hp: 1, damage: 1, speed: 1, souls: 1 }, def);
+  m.level = raid.level;
+  // Raid state, all of it read by aiRaid.
+  m.mechanic = boss.mechanic;
+  m.raidTrial = raid.trial;
+  m.raidTier = raid.tier;
+  m.raidColor = boss.color;
+  m.raidStance = stance;
+  m.power = boss.power;
+  m.cadence = boss.cadence;
+  m.reps = boss.reps;
+  m.phase = 0;
+  m.casting = 0;
+  m.channel = 0;
+  m.channelTick = 0;
+  m.castStall = 0;
+  // The first cast waits: dropping a telegraph on a player who has been in the
+  // room for half a second teaches them nothing except that the fight started
+  // before they did.
+  m.castTimer = 3.5;
+  return m;
 }
 
 /** Choose a mob type for the current wave, respecting unlock gates. */

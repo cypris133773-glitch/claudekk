@@ -3,7 +3,7 @@
 import { createArena, LAYOUT_COUNT, LAYOUT_NAMES } from '../world/world.js';
 import { BLOCKS } from '../world/blocks.js';
 import { Player, buildMods } from './player.js';
-import { Mob, MOB_TYPES } from './mobs.js';
+import { Mob, MOB_TYPES, createRaidBoss } from './mobs.js';
 import { Fiend } from './pets.js';
 import { Projectile, Particle, Gib, Telegraph, Shockwave, Zone, Potion, FloatText, hexToRgb } from './effects.js';
 import { TEAM } from './entity.js';
@@ -13,11 +13,24 @@ import { difficultyFor } from '../data/difficulty.js';
 import { affixesForWave, affixSoulBonus } from '../data/affixes.js';
 import { rollPotion, DROP_CHANCE, ELITE_DROP_CHANCE, BOSS_DROPS, POTION_LIFETIME } from '../data/potions.js';
 import { xpForRun, xpForWave, XP_PER_KILL, XP_ELITE_MULT, XP_BOSS_MULT } from '../data/levels.js';
-import { gearMods, ownedTier, weaponAppearance } from '../data/armor.js';
+import { gearMods, ownedTier, weaponAppearance, gearCost, GEAR_BY_ID } from '../data/armor.js';
+import { MECHANICS, coreSlotFor, bossGold } from '../data/raids.js';
 import { forwardVec, clamp, rand, dist2 } from '../core/math.js';
 import { T } from '../render/atlas.js';
 
 const INTERMISSION = 4.0;
+
+// Raids reuse the arena generator until they get rooms of their own. Layout 0
+// is the open one, which is what every raid mechanic in the set assumes: slam
+// and shadow both need a 16-block clear radius around the boss, and a layout
+// full of cover turns "run out of the circle" into "run into a pillar".
+const RAID_LAYOUT = 0;
+// The closest of the renderer's four palettes to each raid, so a molten raid is
+// at least lit like one. The bespoke rooms in docs/raids/rooms.md replace this.
+const RAID_THEME = {
+  zulgurub: 0, moltencore: 2, karazhan: 3, ulduar: 3,
+  blacktemple: 2, firelands: 2, icecrown: 3,
+};
 
 export class Game {
   constructor(renderer, audio, profile) {
@@ -81,6 +94,15 @@ export class Game {
     this.xpPending = 0;
     this.xpFlush = 0;
     this.xpPops = [];
+    // Which mode the loop is in. 'arena' is the endless run; 'raid' is one
+    // boss in one room with no director and no affixes.
+    this.mode = 'arena';
+    this.raid = null;
+    this.raidBoss = null;
+    this.raidBossIndex = 0;
+    this.raidCleared = false;
+    this.raidPotion = 0;
+    this.coreDrop = null;
   }
 
   /** True while the named wave affix is in force. */
@@ -121,7 +143,7 @@ export class Game {
     // a wave being re-read, so it is a pure function of (seed, wave) and the
     // seed is rolled exactly once, here.
     this.affixSeed = opts.seed !== undefined ? opts.seed : (Math.random() * 0x7fffffff) | 0;
-    this.theme = (Math.random() * 4) | 0;
+    this.theme = opts.theme !== undefined ? opts.theme : (Math.random() * 4) | 0;
     this.layout = opts.layout !== undefined
       ? opts.layout % LAYOUT_COUNT
       : (Math.random() * LAYOUT_COUNT) | 0;
@@ -159,6 +181,99 @@ export class Game {
     this.notify(LAYOUT_NAMES[this.layout] + ' Arena', 3);
     this.beginIntermission(2.0);
     this.audio.startMusic();
+  }
+
+  // -------------------------------------------------------------------------
+  // Raids
+  // -------------------------------------------------------------------------
+
+  /**
+   * One boss, one room, no waves.
+   *
+   * A raid reuses everything a run already sets up — mods, gear, loadout,
+   * arena — and then replaces the wave director with a single spawn. It is a
+   * different *mode*, not a different game, and keeping it on the same
+   * foundations is what makes it affordable: the Forge, the Armoury, talents,
+   * potions and every skill work here because nothing about them was special
+   * cased.
+   *
+   * The whole run is one attempt at one boss. Killing it takes the Core and
+   * offers the next; dying takes nothing at all, which is the rule the entire
+   * progression rests on.
+   */
+  startRaid(classDef, raid, bossIndex) {
+    const boss = raid.bosses[bossIndex];
+    if (!boss) return false;
+    this.startRun(classDef, { layout: RAID_LAYOUT, theme: RAID_THEME[raid.id] });
+    this.mode = 'raid';
+    this.raid = raid;
+    this.raidBossIndex = bossIndex;
+    this.raidCleared = false;
+    // No wave director, no rank-up cards, no affixes: a raid boss is already
+    // carrying three mechanics and a phase model, and a wave affix on top of
+    // that is a rule nobody has room left to read.
+    this.director.state = 'raid';
+    this.affixes = [];
+    this.wave = raid.tier + 1;
+    const pt = this.world.pickSpawn(this.player.x, this.player.z, 18);
+    this.raidBoss = createRaidBoss(raid, boss, pt.x, pt.y + 0.4, pt.z);
+    this.mobs.push(this.raidBoss);
+    this.notify(`${raid.name.toUpperCase()}`, 3.0);
+    this.notify(boss.name, 3.0);
+    this.notify(MECHANICS[boss.mechanic].blurb, 3.4);
+    this.audio.setMusicIntensity(0.85);
+    return true;
+  }
+
+  /**
+   * Raid upkeep, run once a frame instead of the wave director.
+   *
+   * The potion drip is the whole sustain model. Four of the nine classes have
+   * no heal in their opening loadout and there is no healer, so without this a
+   * raid would be winnable only by classes that brought one. It is positional
+   * on purpose — you have to leave the boss to take it, which is exactly the
+   * trade a solo fight should be asking about.
+   */
+  updateRaid(dt) {
+    if (!this.raidBoss) return;
+    this.raidPotion = (this.raidPotion || 0) - dt;
+    if (this.raidPotion <= 0) {
+      this.raidPotion = 25;
+      const pt = this.world.pickSpawn(this.player.x, this.player.z, 12);
+      const def = rollPotion();
+      this.potions.push(new Potion(pt.x, pt.y + 0.6, pt.z, def, POTION_LIFETIME));
+    }
+    if (!this.raidBoss.dead) return;
+    // The kill. This is the only path that consumes a boss — a wipe leaves
+    // `killed` untouched, which is what makes an attempt free.
+    this.raidBoss = null;
+    this.raidCleared = true;
+    // Adds die with their summoner. Leaving a pack standing over the corpse
+    // turns the reward screen into a fight the player has already won.
+    for (const m of this.mobs) if (m.isAdd && !m.dead) { m.dead = true; this.burst(m.x, m.centerY, m.z, 8, '#c06cff'); }
+    this.awardCore();
+  }
+
+  /**
+   * Take the Core and pay the gold. Idempotent by construction: the profile
+   * records the boss id, and a boss already recorded pays nothing again.
+   */
+  awardCore() {
+    const raid = this.raid;
+    const boss = raid.bosses[this.raidBossIndex];
+    const state = this.profile.raidState(this.cls.id);
+    if (state.killed[boss.id]) return;
+    state.killed[boss.id] = true;
+    const slot = coreSlotFor(this.raidBossIndex);
+    const gold = bossGold(raid, this.raidBossIndex, gearCost(raid.tier));
+    this.soulsEarned += gold;
+    this.profile.save();
+    this.audio.play('bossdown');
+    this.impactFlash('#ffd24a', 0.9);
+    this.screenShake = Math.max(this.screenShake, 0.6);
+    this.notify(`T${raid.tier} ${GEAR_BY_ID[slot].name.toUpperCase()} CORE`, 3.2);
+    this.notify(`+${Math.round(gold)} 🪙`, 2.4);
+    this.coreDrop = { tier: raid.tier, slot, gold: Math.round(gold) };
   }
 
   beginIntermission(duration = INTERMISSION) {
@@ -1114,6 +1229,7 @@ export class Game {
   }
 
   updateWaves(dt) {
+    if (this.mode === 'raid') return this.updateRaid(dt);
     const d = this.director;
     if (d.state === 'intermission') {
       d.intermission -= dt;

@@ -52,6 +52,7 @@ export function makeHarness(opts = {}) {
     // class so a fixture can hand a single class a stocked Forge.
     forgeLevels: (id) => (classes[id].forge || (classes[id].forge = {})),
     gear: (id) => classes[id].gear,
+    raidState: (id) => (classes[id].raid || (classes[id].raid = { killed: {} })),
     level: () => level,
     // Level 60 by default: a harness that only ever saw a level-1 pool would
     // test two skills out of thirteen.

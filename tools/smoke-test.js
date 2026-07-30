@@ -1465,6 +1465,79 @@ check('every mechanic is fully specified and its cue exists', async () => {
 
 });
 
+check('every one of the 42 bosses fights without throwing', async () => {
+  const { Game } = await import('../src/game/game.js');
+  const { RAIDS } = await import('../src/data/raids.js');
+  const { makeHarness } = await import('./harness.js');
+
+  for (const raid of RAIDS) {
+    for (let bi = 0; bi < raid.bosses.length; bi++) {
+      const boss = raid.bosses[bi];
+      const cls = CLASSES[(raid.tier * 6 + bi) % CLASSES.length];
+      const h = makeHarness({ gear: Math.max(0, raid.tier - 1) });
+      const game = new Game(h.renderer, h.audio, h.profile);
+      assert(game.startRaid(cls, raid, bi), `${boss.id} would not start`);
+      assert(game.mode === 'raid' && game.raidBoss, `${boss.id} did not spawn`);
+      assert(game.raidBoss.maxHp > 0 && game.raidBoss.damageAmount > 0,
+        `${boss.id} has no stat block`);
+
+      const input = h.input();
+      // Long enough to cross every phase threshold: the boss is drained
+      // directly rather than fought, because what is under test is that each
+      // mechanic and each transition runs, not that a bot can win.
+      for (let step = 0; step < 60 * 30; step++) {
+        input.moveX = Math.sin(step * 0.011);
+        input.moveY = Math.cos(step * 0.008);
+        input.attack = true;
+        // Drained through the real damage path, so the kill, the Core and the
+        // corpse handling are the ones the game actually runs. Assigning hp
+        // directly leaves `dead` unset and tests nothing past the last frame.
+        if (game.raidBoss) {
+          game.dealDamage(game.player, game.raidBoss, game.raidBoss.maxHp / (60 * 26),
+            { silent: true });
+        }
+        game.player.hp = game.player.maxHp;      // the fight, not the outcome
+        game.update(1 / 60, input);
+        if (game.raidCleared) break;
+      }
+      assert(game.raidCleared, `${boss.id} never died even when drained`);
+      assert(h.profile.raidState(cls.id).killed[boss.id], `${boss.id} was not recorded`);
+    }
+  }
+});
+
+check('a wipe costs nothing and a kill is recorded once', async () => {
+  const { Game } = await import('../src/game/game.js');
+  const { RAIDS, isBossDead } = await import('../src/data/raids.js');
+  const { makeHarness } = await import('./harness.js');
+  const raid = RAIDS[0], boss = raid.bosses[0];
+
+  // A wipe. This is the rule the whole progression rests on: without it a
+  // player who out-levels their gear can lock themselves out permanently, and
+  // a system that can deadlock is a bug with a difficulty setting.
+  const h = makeHarness({ gear: 0 });
+  const g = new Game(h.renderer, h.audio, h.profile);
+  g.startRaid(CLASSES[0], raid, 0);
+  g.player.hp = 0;
+  g.player.dead = true;
+  g.endRun();
+  assert(!isBossDead(h.profile.raidState(CLASSES[0].id), boss.id),
+    'a wipe consumed the boss');
+
+  // A kill, twice. awardCore has to be idempotent or a boss that dies on the
+  // same frame its corpse is processed pays its gold twice.
+  const h2 = makeHarness({ gear: 0 });
+  const g2 = new Game(h2.renderer, h2.audio, h2.profile);
+  g2.startRaid(CLASSES[0], raid, 0);
+  const before = g2.soulsEarned;
+  g2.awardCore();
+  const paid = g2.soulsEarned - before;
+  assert(paid > 0, 'killing a boss paid no gold');
+  g2.awardCore();
+  assert(g2.soulsEarned - before === paid, 'a boss paid its gold twice');
+  assert(isBossDead(h2.profile.raidState(CLASSES[0].id), boss.id), 'a kill was not recorded');
+});
+
 check('a raid needs level, the previous clear, and the previous set', async () => {
   const { RAIDS, raidAccess, emptyRaidState, CORE_ORDER } = await import('../src/data/raids.js');
   const t0 = RAIDS[0], t1 = RAIDS[1];

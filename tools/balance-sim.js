@@ -15,6 +15,7 @@ import { Game } from '../src/game/game.js';
 import { CLASSES, CLASS_BY_ID, defaultLoadout, resolveLoadout } from '../src/data/classes.js';
 import { GEAR_SLOT_IDS, MAX_TIER } from '../src/data/armor.js';
 import { PERMANENT, talentPointsForBestWave } from '../src/data/permanent.js';
+import { RAIDS } from '../src/data/raids.js';
 import { forwardVec } from '../src/core/math.js';
 import { LAYOUT_NAMES } from '../src/world/world.js';
 
@@ -69,6 +70,7 @@ function stubProfile(forgeLevel = 0, gearTier = -1) {
     // class so a fixture can hand a single class a stocked Forge.
     forgeLevels: (id) => (classes[id].forge || (classes[id].forge = {})),
     gear: (id) => (classes[id].gear || (classes[id].gear = {})),
+    raidState: (id) => (classes[id].raid || (classes[id].raid = { killed: {} })),
     level: () => SIM_LEVEL,
     // The bot always fights with the default kit; unlockable skills are a
     // player choice, and simulating them would measure the harness's taste.
@@ -228,6 +230,65 @@ if (layoutIdx >= 0) {
   layout = Number(args[layoutIdx + 1]) || 0;
   args.splice(layoutIdx, 2);
 }
+// --- Raid mode ---------------------------------------------------------------
+//
+// A different question from the arena's. The arena asks "how deep does a class
+// get"; a raid asks "does a tier-appropriate character beat this boss, and how
+// close was it". Time-to-kill is the number that matters: under 45 s the boss
+// never reaches phase 3 and its mechanics never teach, over 120 s a phone fight
+// becomes an endurance test with a thumb.
+let raidTier = -1;
+const raidIdx = args.indexOf('--raid');
+if (raidIdx >= 0) {
+  raidTier = Number.isFinite(Number(args[raidIdx + 1])) ? Number(args[raidIdx + 1]) : 0;
+  args.splice(raidIdx, 2);
+}
+
+function simulateRaid(classId, raid, bossIndex) {
+  const cls = CLASS_BY_ID[classId];
+  // What the gate actually asks for: the full previous tier's set. Simulating
+  // a raid against a naked character measures nothing the game will ever run.
+  const profile = stubProfile(0, Math.max(0, raid.tier - 1));
+  autoSpendTalents(profile, cls, talentPointsForBestWave(20 + raid.tier * 6));
+  const game = new Game(stubRenderer, stubAudio, profile);
+  game.startRaid(cls, raid, bossIndex);
+
+  let steps = 0;
+  const cap = 180 * 60;
+  let lowest = 1;
+  while (game.running && steps < cap) {
+    game.update(FIXED, botInput(game));
+    if (game.raidBoss) lowest = Math.min(lowest, game.raidBoss.hp / game.raidBoss.maxHp);
+    if (game.raidCleared) break;
+    steps++;
+  }
+  return {
+    cleared: game.raidCleared,
+    seconds: steps / 60,
+    bossLeft: game.raidCleared ? 0 : lowest,
+    timedOut: steps >= cap,
+  };
+}
+
+if (raidTier >= 0) {
+  const raid = RAIDS.find((r) => r.tier === raidTier);
+  if (!raid) { console.error(`no raid at tier ${raidTier}`); process.exit(1); }
+  const targets = args.find((a) => CLASS_BY_ID[a]) ? [args.find((a) => CLASS_BY_ID[a])] : CLASSES.map((c) => c.id);
+  console.log(`\n${raid.name} — tier ${raid.tier}, entered in a full T${Math.max(0, raid.tier - 1)} set\n`);
+  console.log('boss                        ' + targets.map((t) => t.slice(0, 5).padStart(6)).join(''));
+  console.log('-'.repeat(28 + targets.length * 6));
+  for (let bi = 0; bi < raid.bosses.length; bi++) {
+    const cells = targets.map((id) => {
+      const r = simulateRaid(id, raid, bi);
+      return (r.cleared ? r.seconds.toFixed(0) + 's' : Math.round(r.bossLeft * 100) + '%').padStart(6);
+    });
+    console.log(raid.bosses[bi].name.slice(0, 26).padEnd(28) + cells.join(''));
+  }
+  console.log('-'.repeat(28 + targets.length * 6));
+  console.log('seconds = killed and how long it took; % = wiped, boss health left\n');
+  process.exit(0);
+}
+
 const only = args.find((a) => CLASS_BY_ID[a]);
 const runs = Number(args.find((a) => /^\d+$/.test(a))) || 5;
 const targets = only ? [only] : CLASSES.map((c) => c.id);
