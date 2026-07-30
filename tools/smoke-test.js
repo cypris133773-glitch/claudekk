@@ -38,6 +38,11 @@ function check(name, fn) {
 
 const assert = (cond, msg) => { if (!cond) throw new Error(msg); };
 const near = (a, b, eps = 1e-6) => Math.abs(a - b) < eps;
+/** Raid mechanics are a closed set; anything else is a typo in the data. */
+let MECHANICS_OK = () => true;
+import('../src/data/raids.js').then(({ MECHANICS }) => {
+  MECHANICS_OK = (m) => Object.prototype.hasOwnProperty.call(MECHANICS, m);
+});
 /** A class's two starting skills. */
 const unlockedSkillsAtOne = (c) => unlockedSkills(c, 1);
 
@@ -1169,6 +1174,126 @@ check('a finished run reports every metric a quest can measure', async () => {
     assert(name in bag, `a finished run never reports '${name}', so its quests are impossible`);
     assert(Number.isFinite(bag[name]), `run reported a non-number for '${name}'`);
   }
+});
+
+// --- Raids -----------------------------------------------------------------
+// The gate logic is the part that can strand a player, so it is the part with
+// the most tests. A progression system that can deadlock is not a challenge.
+
+check('seven raids, six bosses each, every Core accounted for', async () => {
+  const { RAIDS, CORE_ORDER, coreSlotFor, coreId, earnedCores, emptyRaidState } =
+    await import('../src/data/raids.js');
+  const { MAX_LEVEL } = await import('../src/data/levels.js');
+
+  assert(RAIDS.length === 7, `${RAIDS.length} raids`);
+  const ids = new Set(), tiers = new Set(), bossIds = new Set();
+  let prevLevel = 0;
+  for (const r of RAIDS) {
+    assert(!ids.has(r.id), `duplicate raid id ${r.id}`);
+    ids.add(r.id);
+    assert(!tiers.has(r.tier), `two raids claim tier ${r.tier}`);
+    tiers.add(r.tier);
+    assert(r.bosses.length === CORE_ORDER.length,
+      `${r.id} has ${r.bosses.length} bosses for ${CORE_ORDER.length} slots`);
+    assert(r.level >= prevLevel, `${r.id} opens before the raid below it`);
+    assert(r.level <= MAX_LEVEL, `${r.id} needs level ${r.level}, past the cap`);
+    prevLevel = r.level;
+    assert(r.theme && r.theme.sky && r.theme.accent, `${r.id} has no theme`);
+    let prevPower = 0;
+    for (const b of r.bosses) {
+      assert(!bossIds.has(b.id), `duplicate boss id ${b.id}`);
+      bossIds.add(b.id);
+      assert(b.power > prevPower, `${b.id} is no harder than the boss before it`);
+      prevPower = b.power;
+      assert(MECHANICS_OK(b.mechanic), `${b.id} has unknown mechanic ${b.mechanic}`);
+    }
+  }
+  assert(bossIds.size === 42, `${bossIds.size} bosses, expected 42`);
+
+  // Clearing everything must yield exactly one Core per slot per tier, and no
+  // more — a duplicate would let one boss unlock two pieces.
+  const all = emptyRaidState();
+  for (const r of RAIDS) for (const b of r.bosses) all.killed[b.id] = true;
+  const cores = earnedCores(all);
+  assert(cores.size === RAIDS.length * CORE_ORDER.length,
+    `clearing everything yielded ${cores.size} cores, expected ${RAIDS.length * CORE_ORDER.length}`);
+  for (const r of RAIDS) {
+    r.bosses.forEach((b, i) => {
+      assert(cores.has(coreId(r.tier, coreSlotFor(i))), `no core for ${r.id} boss ${i}`);
+    });
+  }
+});
+
+check('a raid needs level, the previous clear, and the previous set', async () => {
+  const { RAIDS, raidAccess, emptyRaidState, CORE_ORDER } = await import('../src/data/raids.js');
+  const t0 = RAIDS[0], t1 = RAIDS[1];
+  const st = emptyRaidState();
+  const fullT0 = Object.fromEntries(CORE_ORDER.map((s) => [s, 0]));
+
+  // The first raid asks for nothing but level 1.
+  assert(raidAccess(t0, { level: 1, raidState: st, gear: {} }).ok, 'the first raid is gated');
+
+  // Level alone is not enough.
+  assert(!raidAccess(t1, { level: 5, raidState: st, gear: fullT0 }).ok, 'level gate is open too early');
+  assert(!raidAccess(t1, { level: 60, raidState: st, gear: fullT0 }).ok,
+    'an uncleared previous raid did not block entry');
+
+  // Cleared but not geared: still shut. This is the gate that stops a player
+  // levelling straight up the raids and arriving at the top in starting gear.
+  for (const b of t0.bosses) st.killed[b.id] = true;
+  const bad = { ...fullT0 };
+  delete bad.helm;
+  assert(!raidAccess(t1, { level: 60, raidState: st, gear: bad }).ok,
+    'a missing set piece did not block entry');
+  assert(raidAccess(t1, { level: 60, raidState: st, gear: fullT0 }).ok,
+    'all three gates open and entry was still refused');
+
+  // Every refusal has to say why. A greyed-out button leaves a player guessing
+  // which of three conditions they failed.
+  const refused = raidAccess(t1, { level: 5, raidState: emptyRaidState(), gear: {} });
+  assert(refused.reason && refused.reason.length > 10, 'a refusal gave no reason');
+});
+
+check('a boss is consumed by dying, not by fighting', async () => {
+  const { RAIDS, nextBoss, isBossDead, emptyRaidState, isRaidCleared, bossesDown } =
+    await import('../src/data/raids.js');
+  const raid = RAIDS[0];
+  const st = emptyRaidState();
+
+  // Reading the next boss any number of times must not consume it — the wipe
+  // path does exactly this, and if it advanced, a wipe would skip a boss.
+  const first = nextBoss(st, raid);
+  for (let i = 0; i < 50; i++) {
+    assert(nextBoss(st, raid).id === first.id, 'looking at a boss consumed it');
+  }
+  assert(!isBossDead(st, first.id), 'a boss died without being killed');
+
+  // Only recording the kill advances it, and in order.
+  for (let i = 0; i < raid.bosses.length; i++) {
+    const b = nextBoss(st, raid);
+    assert(b.index === i, `boss order jumped to ${b.index} at step ${i}`);
+    st.killed[b.id] = true;
+    assert(bossesDown(st, raid) === i + 1, 'the kill was not counted');
+  }
+  assert(nextBoss(st, raid) === null, 'a cleared raid still offers a boss');
+  assert(isRaidCleared(st, raid), 'six kills did not clear the raid');
+});
+
+check('a raid record from an older or damaged save is repaired', async () => {
+  const { normaliseRaidState, RAIDS } = await import('../src/data/raids.js');
+  for (const bad of [undefined, null, {}, { killed: null }, { killed: 'nope' },
+    { killed: { notaboss: true } }, { killed: { venoxis: true, alsofake: 1 } }]) {
+    const st = normaliseRaidState(bad);
+    assert(st && st.killed && typeof st.killed === 'object', 'repair produced no record');
+    // A boss id that does not exist must not survive: it would count toward a
+    // clear that never happened.
+    const valid = new Set(RAIDS.flatMap((r) => r.bosses.map((b) => b.id)));
+    for (const id of Object.keys(st.killed)) {
+      assert(valid.has(id), `repair kept an unknown boss id ${id}`);
+    }
+  }
+  assert(normaliseRaidState({ killed: { venoxis: true } }).killed.venoxis,
+    'repair dropped a real kill');
 });
 
 // --- Potions ---------------------------------------------------------------
