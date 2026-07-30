@@ -1402,6 +1402,13 @@ check('seven raids, six bosses each, every Core accounted for', async () => {
   }
   assert(bossIds.size === 42, `${bossIds.size} bosses, expected 42`);
 
+  // Every raid's trial must be a real mechanic. The trial is the one thing all
+  // six bosses of a raid share, so a typo here silently removes the second
+  // phase from a whole raid rather than from one fight.
+  for (const r of RAIDS) {
+    assert(MECHANICS_OK(r.trial), `${r.id} has unknown trial ${r.trial}`);
+  }
+
   // Clearing everything must yield exactly one Core per slot per tier, and no
   // more — a duplicate would let one boss unlock two pieces.
   const all = emptyRaidState();
@@ -1414,6 +1421,48 @@ check('seven raids, six bosses each, every Core accounted for', async () => {
       assert(cores.has(coreId(r.tier, coreSlotFor(i))), `no core for ${r.id} boss ${i}`);
     });
   }
+});
+
+check('every mechanic is fully specified and its cue exists', async () => {
+  const { MECHANICS, RAIDS, bossStance, raidScaling, phaseFor, PHASES } =
+    await import('../src/data/raids.js');
+  const { readFile } = await import('node:fs/promises');
+  const audio = await readFile(new URL('../src/core/audio.js', import.meta.url), 'utf8');
+
+  for (const [id, m] of Object.entries(MECHANICS)) {
+    assert(['burst', 'linger', 'aimed'].includes(m.tell), `${id} speaks no telegraph language`);
+    assert(m.cast > 0 && m.cast <= 3, `${id} casts in ${m.cast}s`);
+    assert(m.cd > 0, `${id} has no cadence`);
+    assert(m.radius > 0, `${id} has no radius`);
+    assert(m.dmg >= 0, `${id} has a negative damage multiplier`);
+    // A cue the synthesiser has no case for is silence, and a mechanic whose
+    // only warning is silent is a mechanic with no warning.
+    assert(audio.includes(`case '${m.cue}'`), `${id}'s cue '${m.cue}' is not a real sound`);
+  }
+
+  // Stance decides which of two AI branches runs. Both must be reachable, or
+  // one of them is dead code pretending to be a design choice.
+  const stances = new Set();
+  for (const r of RAIDS) for (const b of r.bosses) stances.add(bossStance(b));
+  assert(stances.size === 2, `only ${[...stances].join()} bosses exist`);
+
+  // Health climbs with tier and with power; damage climbs more slowly than
+  // health, which is the whole argument in raidScaling's comment.
+  const first = raidScaling(0, 1.0);
+  const last = raidScaling(0, 1.6);
+  assert(last.hp / first.hp > 1.5, 'power barely moves boss health');
+  assert(last.damage / first.damage < 1.6, 'power scales damage as hard as health');
+  assert(raidScaling(6, 1.0).hp > raidScaling(0, 1.0).hp * 4, 'tier barely moves boss health');
+
+  // Phases are entered on the way down, so the thresholds must descend and the
+  // lookup must land on the last one crossed.
+  for (let i = 1; i < PHASES.length; i++) {
+    assert(PHASES[i].at < PHASES[i - 1].at, 'phase thresholds do not descend');
+    assert(PHASES[i].rate < PHASES[i - 1].rate, 'a later phase is not faster');
+  }
+  assert(phaseFor(1.0) === 0 && phaseFor(0.5) === 1 && phaseFor(0.1) === 2,
+    'the phase lookup does not follow the thresholds');
+
 });
 
 check('a raid needs level, the previous clear, and the previous set', async () => {

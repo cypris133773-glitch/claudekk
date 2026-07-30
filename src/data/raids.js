@@ -31,22 +31,123 @@ import { GEAR_SLOT_IDS } from './armor.js';
 
 export const CORE_ORDER = GEAR_SLOT_IDS;
 
-/**
- * Boss mechanics, kept to a small reusable set rather than forty-two bespoke
- * ones. Each maps onto something the arena engine already does, so a raid boss
- * is a parameterised version of a fight the game can already run rather than a
- * second combat system nobody would have time to balance.
- */
+// Boss mechanics, kept to a small reusable set rather than forty-two bespoke
+// ones. Each maps onto something the arena engine already does, so a raid boss
+// is a parameterised version of a fight the game can already run rather than a
+// second combat system nobody would have time to balance.
+//
+// Every constant a mechanic needs lives here rather than on the forty-two
+// bosses that use it. Two numbers that have to agree, written in two places,
+// eventually disagree.
+//
+//   tell    which of the three telegraph languages this speaks, and so what
+//           colour and shape the player sees:
+//             burst  amber, a filled circle, it goes off where it is drawn
+//             linger ice blue, an outline, it stays after it lands
+//             aimed  violet, and it is following *you*
+//   cue     the second sound, after the universal 'cast'
+//   cast    seconds of telegraph. Never scaled by tier, power or phase — the
+//           warning is the contract, and shortening it is how a fight stops
+//           being hard and starts being unfair.
+//   cd      base seconds between casts, before the phase rate multiplies it
+//   dmg     multiplier on the boss's damageAmount
+//   radius  blocks
 export const MECHANICS = {
-  slam: { name: 'Shockwave', blurb: 'Rings of force march outward. Keep moving.' },
-  breath: { name: 'Breath', blurb: 'A wide cone in front. Get behind it.' },
-  adds: { name: 'Summons', blurb: 'Calls help. Clear it or be surrounded.' },
-  charge: { name: 'Charge', blurb: 'Closes the gap instantly and knocks you back.' },
-  bombs: { name: 'Detonate', blurb: 'Marks the ground, then it goes off.' },
-  frost: { name: 'Frost', blurb: 'Freezing ground that slows and roots.' },
-  shadow: { name: 'Affliction', blurb: 'Lingering rot in a wide area.' },
-  enrage: { name: 'Frenzy', blurb: 'Below a third health it hits far harder.' },
+  slam: {
+    name: 'Shockwave', blurb: 'Rings of force march outward. Keep moving.',
+    tell: 'burst', cue: 'stomp', cast: 1.2, cd: 9, dmg: 2.6, radius: 4.5,
+  },
+  breath: {
+    name: 'Breath', blurb: 'A wide spray in front. Get out of the arc.',
+    tell: 'burst', cue: 'roar', cast: 1.4, cd: 11, dmg: 0.45, radius: 18,
+  },
+  adds: {
+    name: 'Summons', blurb: 'Calls help. Clear it or be surrounded.',
+    tell: 'aimed', cue: 'summon', cast: 1.0, cd: 14, dmg: 0, radius: 3,
+  },
+  charge: {
+    name: 'Charge', blurb: 'Closes the gap instantly and knocks you back.',
+    tell: 'aimed', cue: 'charge', cast: 0.9, cd: 8, dmg: 1.6, radius: 2.5,
+  },
+  bombs: {
+    name: 'Detonate', blurb: 'Marks the ground, then it goes off.',
+    tell: 'aimed', cue: 'fuse', cast: 1.5, cd: 8, dmg: 3.2, radius: 4.5,
+  },
+  // The blurb used to promise a root. It does not root, and that is deliberate:
+  // with no dodge button, no interrupt and nothing that cleanses, a root is not
+  // a decision the player gets to make, it is a free hit with extra steps.
+  frost: {
+    name: 'Frost', blurb: 'Freezing ground that slows. Do not stand in it.',
+    tell: 'linger', cue: 'shatter', cast: 1.1, cd: 12, dmg: 0.45, radius: 4.2,
+  },
+  shadow: {
+    name: 'Affliction', blurb: 'Lingering rot in a wide area.',
+    tell: 'aimed', cue: 'curse', cast: 2.2, cd: 13, dmg: 2.0, radius: 9,
+  },
+  enrage: {
+    name: 'Frenzy', blurb: 'Below a third health it hits far harder.',
+    tell: 'burst', cue: 'roar', cast: 0.4, cd: 10, dmg: 0.75, radius: 5,
+  },
 };
+
+/**
+ * A boss fights at range or in your face, and which one is decided by the
+ * mechanic rather than written out forty-two times. Breath and Affliction are
+ * both cast from a distance and both stop working if the boss is standing on
+ * the player; everything else wants to be close.
+ *
+ * A boss may override it with its own `stance` where the fight needs it.
+ */
+export function bossStance(boss) {
+  if (boss.stance) return boss.stance;
+  return (boss.mechanic === 'breath' || boss.mechanic === 'shadow') ? 'ranged' : 'melee';
+}
+
+/**
+ * A raid boss's stat block, derived rather than authored forty-two times.
+ *
+ * Power scales health nearly in full and damage only weakly. The reason is that
+ * the player's mitigation does not improve *within* a raid: six bosses buy them
+ * at most six gear rungs, worth about +13% damage and +9% health, and only if
+ * they have the gold for it. A last boss hitting 2.2x as hard as the first
+ * would turn "hard" into "one mistake ends the attempt" for someone wearing
+ * exactly the gear the gate asked for. So the last boss is mostly a *longer*
+ * fight — more repetitions of a mechanic you now know — hitting half again as
+ * heavy.
+ *
+ * 2600 is a starting constant, not a measured one. `tools/balance-sim.js --raid`
+ * is what trues it up; until then this is playable rather than balanced.
+ */
+export function raidScaling(tier, power) {
+  // What a character standing at this raid's gate is carrying: the full
+  // previous tier set, which is `tier` rungs at about +9.4% health a rung, on
+  // a class base whose median is 112.
+  const php = 115 * (1 + 0.144 * tier);
+  return {
+    hp: Math.round(2600 * (1 + 0.45 * tier + 0.04 * tier * tier) * power),
+    damage: php * 0.10 * (0.55 + 0.45 * power),
+    php,
+  };
+}
+
+/**
+ * How the fight paces itself. Thresholds choose the rules, the timer chooses
+ * the beats — each alone fails a different way. A pure timer means an
+ * over-geared player never sees phase 3 and an under-geared one meets it while
+ * still learning phase 1; pure thresholds mean nothing changes for forty
+ * seconds if the player is cautious.
+ */
+export const PHASES = [
+  { at: 1.00, rate: 1.00, reps: 0 },
+  { at: 0.70, rate: 0.82, reps: 1 },
+  { at: 0.35, rate: 0.68, reps: 2 },
+];
+
+export function phaseFor(hpFraction) {
+  let out = 0;
+  for (let i = 0; i < PHASES.length; i++) if (hpFraction <= PHASES[i].at) out = i;
+  return out;
+}
 
 /**
  * The seven raids. `tier` is the gear tier it unlocks, `level` the character
@@ -61,6 +162,7 @@ export const RAIDS = [
     id: 'zulgurub', tier: 0, level: 1,
     name: "Zul'Gurub", blurb: 'A drowned troll city, thick with poison and old blood.',
     theme: { sky: '#2b3a22', fog: '#3d5230', stone: '#4a5a3a', accent: '#8ce06a', lava: false },
+    trial: 'bombs',
     bosses: [
       { id: 'venoxis', name: 'High Priest Venoxis', mechanic: 'shadow', power: 1.00, color: '#8ce06a' },
       { id: 'mandokir', name: 'Bloodlord Mandokir', mechanic: 'charge', power: 1.10, color: '#e0473c' },
@@ -74,6 +176,7 @@ export const RAIDS = [
     id: 'moltencore', tier: 1, level: 11,
     name: 'Molten Core', blurb: 'Grey stone over a lake of fire, and something older beneath it.',
     theme: { sky: '#3a1408', fog: '#5a2410', stone: '#4c4c4c', accent: '#ff8a3c', lava: true },
+    trial: 'frost',
     bosses: [
       { id: 'lucifron', name: 'Lucifron', mechanic: 'shadow', power: 1.00, color: '#ff8a3c' },
       { id: 'magmadar', name: 'Magmadar', mechanic: 'breath', power: 1.12, color: '#ff5a3c' },
@@ -87,6 +190,7 @@ export const RAIDS = [
     id: 'karazhan', tier: 2, level: 21,
     name: 'Karazhan', blurb: 'A haunted tower where the rooms do not stay where you left them.',
     theme: { sky: '#1a1426', fog: '#2e2440', stone: '#3a3348', accent: '#c98fff', lava: false },
+    trial: 'shadow',
     bosses: [
       { id: 'attumen', name: 'Attumen the Huntsman', mechanic: 'charge', power: 1.00, color: '#cfd6e6' },
       { id: 'moroes', name: 'Moroes', mechanic: 'adds', power: 1.12, color: '#a35cff' },
@@ -100,6 +204,7 @@ export const RAIDS = [
     id: 'ulduar', tier: 3, level: 31,
     name: 'Ulduar', blurb: 'Titan machinery, still running, still guarding what it was told to.',
     theme: { sky: '#132030', fog: '#1e3448', stone: '#5a6470', accent: '#7ef0ff', lava: false },
+    trial: 'slam',
     bosses: [
       { id: 'leviathan', name: 'Flame Leviathan', mechanic: 'charge', power: 1.00, color: '#ff8a3c' },
       { id: 'razorscale', name: 'Razorscale', mechanic: 'breath', power: 1.14, color: '#c9a06a' },
@@ -113,6 +218,7 @@ export const RAIDS = [
     id: 'blacktemple', tier: 4, level: 41,
     name: 'Black Temple', blurb: 'A fortress of fel green and black stone, and the one who kept it.',
     theme: { sky: '#0f1a12', fog: '#1c2e1e', stone: '#2e3630', accent: '#9dff7a', lava: false },
+    trial: 'frost',
     bosses: [
       { id: 'najentus', name: "High Warlord Naj'entus", mechanic: 'bombs', power: 1.00, color: '#4aa3ff' },
       { id: 'supremus', name: 'Supremus', mechanic: 'charge', power: 1.16, color: '#ff5a3c' },
@@ -126,6 +232,7 @@ export const RAIDS = [
     id: 'firelands', tier: 5, level: 51,
     name: 'Firelands', blurb: 'The Firelord rebuilt his home. It is worse this time.',
     theme: { sky: '#4a1206', fog: '#7a2410', stone: '#3c2a22', accent: '#ffb03c', lava: true },
+    trial: 'bombs',
     bosses: [
       { id: 'bethtilac', name: "Beth'tilac", mechanic: 'adds', power: 1.00, color: '#ff8a3c' },
       { id: 'rhyolith', name: 'Lord Rhyolith', mechanic: 'slam', power: 1.18, color: '#8b5a2b' },
@@ -139,6 +246,7 @@ export const RAIDS = [
     id: 'icecrown', tier: 6, level: 60,
     name: 'Icecrown Citadel', blurb: 'A frost keep at the top of the world, and the throne inside it.',
     theme: { sky: '#0e1c2e', fog: '#1c3450', stone: '#7a8ea0', accent: '#8fe3ff', lava: false },
+    trial: 'frost',
     bosses: [
       { id: 'marrowgar', name: 'Lord Marrowgar', mechanic: 'bombs', power: 1.00, color: '#cfd6e6' },
       { id: 'deathwhisper', name: 'Lady Deathwhisper', mechanic: 'adds', power: 1.20, color: '#a35cff' },
