@@ -46,6 +46,33 @@ export const T = {
   CUSTOM_HEAD: 31,
   /** Soft radial falloff, used as the blob shadow under every entity. */
   SHADOW: 32,
+
+  /** Cracked, cooling rock. A charred body as much as a floor. */
+  BASALT: 40,
+  /** Faceted, unnoisy ice. Noise reads as rock; facets read as ice. */
+  ICE: 41,
+  /** Dark ice, so what the player casts sits on top of it rather than in it. */
+  BLACKICE: 42,
+
+  // --- Raid materials and faces -------------------------------------------
+  //
+  // Four of the seven are faces, and that is the right split: the head is a
+  // quarter of the model's height and the only part with a dedicated front
+  // slab, so a face tile buys more identity per tile than any material does.
+  /** Beast hide: overlapping scallops, so a hide reads as a hide, not noise. */
+  SCALE: 33,
+  /** Plate with a channel cut into it. Machinery that is still running. */
+  RUNEPLATE: 34,
+  /** Perforated ghost: holes punched below the alpha cutoff. */
+  SPECTRAL: 35,
+  /** Two lit slots on near-black. The lit-face family. */
+  FACE_SLOT: 36,
+  /** A carved ritual mask: heavy brow, narrow slits, banded jaw. */
+  FACE_MASK: 37,
+  /** One machined slit and two rivets. It is not a face, and that is the point. */
+  FACE_VISOR: 38,
+  /** Empty sockets and a hanging jaw. The undead face. */
+  FACE_HOLLOW: 39,
 };
 
 function px(data, x, y, r, g, b, a = 255) {
@@ -201,6 +228,121 @@ function buildAtlasPixels() {
     for (const [ex, ey] of eyes) if (rect(x, y, ex, ey, ex + 1, ey + 1)) return [220, 40, 40];
     if (rect(x, y, 6, 12, 9, 13)) return [30, 16, 16];
     return shade([255, 255, 255], (hash2(x, y, 43) - 0.5) * 34);
+  });
+
+  // Cracks with a cooling halo rather than a hard edge: the ring one pixel
+  // outside a crack takes a dimmer, darker orange, which is what stops the
+  // network reading as painted-on lines.
+  paint(data, T.BASALT, (x, y) => {
+    const crack = hash2(x >> 2, y >> 2, 56) > 0.62;
+    if (crack) return [200, 70, 20];
+    const near = hash2((x + 1) >> 2, y >> 2, 56) > 0.62
+      || hash2((x - 1) >> 2, y >> 2, 56) > 0.62
+      || hash2(x >> 2, (y + 1) >> 2, 56) > 0.62
+      || hash2(x >> 2, (y - 1) >> 2, 56) > 0.62;
+    if (near) return [90, 26, 10];
+    return shade([30, 22, 20], (hash2(x, y, 57) - 0.5) * 16);
+  });
+
+  // No noise, deliberately. Every other stone in the atlas is noisy and noise
+  // is what reads as rock; flat fields between facet bands are what read as
+  // ice, and the contrast between the two is what tells them apart at distance.
+  paint(data, T.ICE, (x, y) => {
+    const band = (((x + y) >> 2) & 1) ? 14 : -14;
+    const chip = x > 11 && x < 14 && y > 2 && y < 5;
+    return shade([168, 206, 228], band + (chip ? 34 : 0));
+  });
+
+  paint(data, T.BLACKICE, (x, y) => {
+    const band = (((x + y) >> 2) & 1) ? 7 : -7;
+    return shade([26, 34, 46], band + (Math.abs(x - y) < 2 ? 26 : 0));
+  });
+
+  // --- Raid materials -------------------------------------------------------
+
+  // Deliberately pale: everything using this tints downward, and a dark base
+  // would leave no headroom. Two shapes on a noisy field — the arc between
+  // scales, which is what makes it read as a hide at thirty blocks, and the
+  // per-scale gradient, which is what stops it reading as a grid at three.
+  paint(data, T.SCALE, (x, y) => {
+    const row = Math.floor(y / 4);
+    const ox = (row & 1) * 2;
+    const sx = (x + ox) % 4, sy = y % 4;
+    const d = Math.hypot(sx - 1.5, sy - 3.0);
+    return shade([176, 168, 148],
+      (d > 2.4 ? -46 : 0) + (1.5 - sy) * 6 + (hash2(x, y, 48) - 0.5) * 14);
+  });
+
+  // The channel colour is a fixed cold grey rather than a shade of the base, so
+  // a plate tinted bronze keeps a cool groove and a plate tinted steel-blue
+  // does not. One tile, two materials, out of one hardcoded triple.
+  paint(data, T.RUNEPLATE, (x, y) => {
+    const border = x < 1 || y < 1 || x > 14 || y > 14;
+    const groove = (Math.abs(x - 8) < 1 && y > 2 && y < 13)
+      || (Math.abs(y - 8) < 1 && x > 2 && x < 13);
+    const r = Math.hypot(x - 8, y - 8);
+    if (groove || (r < 2.2 && r > 1.2)) return [96, 118, 140];
+    return shade([150, 154, 162],
+      (border ? -34 : 0) + (((x + y) & 7) === 0 ? 12 : 0) + (hash2(x, y, 49) - 0.5) * 16);
+  });
+
+  // The holes are denser at the top because this goes on bodies and limbs, and
+  // the top of a limb is the shoulder: a figure that dissolves upward reads as
+  // rising, one that dissolves downward reads as broken. They are literal a=0,
+  // so they discard rather than blend and cost nothing in draw order.
+  paint(data, T.SPECTRAL, (x, y) => {
+    const n = hash2(x >> 1, (y + Math.floor(x / 5)) >> 1, 50);
+    if (n < 0.30 && y < 11) return [0, 0, 0, 0];
+    const wisp = Math.sin(x * 0.9 + y * 0.35) * 12;
+    return shade([236, 238, 244], wisp + (y > 12 ? -30 : 0) + (hash2(x, y, 51) - 0.5) * 18);
+  });
+
+  // --- Raid faces -----------------------------------------------------------
+  //
+  // The head colour tints the head cube and this slab together, and the tint is
+  // a multiply. Every face already in the atlas bakes its features bright on a
+  // near-white field, which works until the head is dark — then the features
+  // get multiplied down with everything else. FACE_SLOT inverts it: the field
+  // is near-black and the features are white, so they come out at exactly the
+  // head colour however dark the head is. It is the only tile here that works
+  // that way and it is what lets a roster of near-black bosses tell apart.
+  paint(data, T.FACE_SLOT, (x, y) => {
+    if (rect(x, y, 3, 6, 5, 8) || rect(x, y, 10, 6, 12, 8)) return [255, 255, 255];
+    // Not decoration: without the bridge the two slots read as two separate
+    // lights at distance, and two lights is what a pair of floor hazards is.
+    if (rect(x, y, 6, 7, 9, 7)) return [90, 90, 96];
+    return shade([26, 24, 30], (hash2(x, y, 52) - 0.5) * 12);
+  });
+
+  // The teeth repeat every three pixels, not two: a 2px band aliases into a
+  // grey smear past ten blocks, and a mask whose teeth turn to mush is a pale
+  // square.
+  paint(data, T.FACE_MASK, (x, y) => {
+    if (rect(x, y, 2, 3, 13, 4)) return [40, 30, 24];
+    if (rect(x, y, 3, 6, 6, 7) || rect(x, y, 9, 6, 12, 7)) return [16, 12, 14];
+    if (rect(x, y, 4, 10, 11, 13)) return (x % 3 === 0) ? [30, 22, 20] : [246, 242, 228];
+    if (rect(x, y, 6, 8, 9, 9)) return [70, 52, 40];
+    return shade([250, 246, 232], (hash2(x, y, 53) - 0.5) * 22);
+  });
+
+  // A machine. The slit is white for the same reason FACE_SLOT's eyes are: it
+  // comes out at the head colour, so a hall of them is told apart by the colour
+  // of one horizontal line.
+  paint(data, T.FACE_VISOR, (x, y) => {
+    if (rect(x, y, 2, 7, 13, 8)) return [255, 255, 255];
+    if (rect(x, y, 1, 2, 14, 3)) return [40, 44, 50];
+    if ((x === 3 || x === 12) && y === 12) return [190, 196, 206];
+    return shade([54, 58, 66], (hash2(x, y, 54) - 0.5) * 14);
+  });
+
+  // Deeper, squarer sockets than FACE_SKELE, and the jaw is a hole rather than
+  // a tooth row — the two must not collide, because a raid that summons
+  // Bonecasters puts them on screen together.
+  paint(data, T.FACE_HOLLOW, (x, y) => {
+    if (rect(x, y, 3, 5, 6, 8) || rect(x, y, 9, 5, 12, 8)) return [10, 12, 16];
+    if (rect(x, y, 5, 11, 10, 11) && x % 2 === 0) return [200, 198, 186];
+    if (rect(x, y, 5, 11, 10, 14)) return [14, 14, 18];
+    return shade([244, 242, 232], (hash2(x, y, 55) - 0.5) * 20);
   });
 
   paint(data, T.FACE_BOSS, (x, y) => {

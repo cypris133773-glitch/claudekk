@@ -4,6 +4,7 @@ import { Entity, TEAM, drawHumanoid } from './entity.js';
 import { T } from '../render/atlas.js';
 import { clamp, rand, pick } from '../core/math.js';
 import { MECHANICS, PHASES, phaseFor, raidScaling, bossStance } from '../data/raids.js';
+import { bossSkin, bossSize } from '../data/bossskins.js';
 
 /**
  * The three telegraph languages, as colours. Keyed to the *action*, never to
@@ -1171,14 +1172,18 @@ export class Mob extends Entity {
     const s = this.def.skin;
     const fusing = this.state === 'fuse';
     const pulse = fusing ? 0.5 + Math.sin(this.age * 40) * 0.5 : 0;
+    // Spread rather than listed field by field: drawHumanoid understands horns,
+    // pauldrons and a tile per limb, and the old list quietly dropped all of
+    // them. A raid boss's identity is mostly in exactly those parts.
     drawHumanoid(r, this, {
-      head: s.head, body: s.body, arm: s.arm, leg: s.leg, hat: s.hat,
+      ...s,
       headTile: s.headTile ?? T.SKIN,
       bodyTile: s.bodyTile ?? T.CLOTH,
-      faceTile: r.customHeadTile !== undefined && !this.def.boss ? r.customHeadTile : s.face,
+      faceTile: r.customHeadTile !== undefined && !this.def.boss
+        ? r.customHeadTile : (s.faceTile ?? s.face),
       faceUntinted: r.customHeadTile !== undefined && !this.def.boss,
       emissive: Math.max(s.emissive || 0, pulse * 0.8, this.elite ? 0.15 : 0),
-      scale: this.elite ? 1.12 : 1,
+      scale: (s.scale || 1) * (this.elite ? 1.12 : 1),
     });
   }
 }
@@ -1202,17 +1207,21 @@ export function createRaidBoss(raid, boss, x, y, z) {
   const base = hex(boss.color);
   const dark = base.map((c) => c * 0.45);
   const stance = bossStance(boss);
+  // Authored silhouette and skin where there is one; otherwise derived from the
+  // one colour the boss carries, so a boss added tomorrow still draws.
+  const size = bossSize(boss.id);
+  const skin = bossSkin(boss.id);
   const def = {
     name: boss.name, weight: 0, minWave: 1, cost: 0, boss: true,
     hp: stats.hp, damage: stats.damage, souls: 0,
     speed: stance === 'ranged' ? 3.2 : 2.9,
     range: stance === 'ranged' ? 30 : 3.8,
     attackSpeed: 0.6,
-    height: Math.min(5.2, 3.0 + boss.power * 0.9),
-    width: Math.min(1.7, 1.0 + boss.power * 0.28),
+    height: size ? size.height : Math.min(5.2, 3.0 + boss.power * 0.9),
+    width: size ? size.width : Math.min(1.7, 1.0 + boss.power * 0.28),
     behavior: 'boss_raid', knockResist: 1,
     tagline: MECHANICS[boss.mechanic].blurb,
-    skin: {
+    skin: skin || {
       head: base, body: dark, arm: base, leg: dark,
       face: T.FACE_BOSS, hat: base.map((c) => Math.min(1, c * 1.3)),
       emissive: 0.18,
