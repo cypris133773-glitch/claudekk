@@ -228,7 +228,7 @@ export function gearMods(classId, gear) {
  * the rungs you skipped are the cheap ones: the whole ladder to a T3 Ring is
  * 68,000 gold, about three quarters of one run at level 31.
  */
-export function canBuy(classId, slotId, gear, level, gold) {
+export function canBuy(classId, slotId, gear, level, gold, cores) {
   const cur = ownedTier(gear, slotId);
   const next = cur + 1;
   if (next > MAX_TIER) return { ok: false, reason: 'Fully upgraded.', maxed: true, next, cost: 0 };
@@ -237,10 +237,31 @@ export function canBuy(classId, slotId, gear, level, gold) {
   if (level < need) {
     return { ok: false, reason: `T${next} unlocks at level ${need}.`, locked: true, next, cost };
   }
+  // The Core, and it is the gate that makes gear per class rather than merely
+  // stored per class. Gold is global, so without this an account that has
+  // raided once buys a full set for every alt it ever rolls — the level gate
+  // stops a level-1 character reaching T3, and nothing at all stopped it
+  // buying the whole of T0 with somebody else's gold.
+  //
+  // `cores` is passed in rather than looked up, because raids.js already
+  // imports this file and a cycle between the two is not worth the tidiness.
+  // Passing null skips the check, which is for previews only.
+  if (cores && !cores.has(coreId(next, slotId))) {
+    return { ok: false, reason: `Needs the T${next} ${GEAR_BY_ID[slotId].name} Core.`, needsCore: true, next, cost };
+  }
   if ((gold || 0) < cost) {
     return { ok: false, reason: `Costs ${cost.toLocaleString()} gold.`, poor: true, next, cost };
   }
   return { ok: true, reason: '', next, cost };
+}
+
+/**
+ * A Core's id. The same string raids.js builds, and it lives here too because
+ * this is the file that checks for it — the alternative is importing raids.js
+ * into the module raids.js already imports.
+ */
+export function coreId(tier, slot) {
+  return `t${tier}.${slot}`;
 }
 
 /** Gold to take a slot from what it owns now up to `tier`, ladder included. */

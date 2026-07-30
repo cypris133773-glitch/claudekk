@@ -16,7 +16,7 @@ import {
 import {
   legacyArmorRefund, canBuy, ownedTier, GEAR_SLOT_IDS, MAX_TIER,
 } from '../data/armor.js';
-import { emptyRaidState, normaliseRaidState } from '../data/raids.js';
+import { emptyRaidState, normaliseRaidState, earnedCores } from '../data/raids.js';
 
 const KEY = 'craftarena.save.v1';
 // The game shipped as BLOCKFRAY, and anyone who played it has their whole
@@ -296,6 +296,17 @@ export class Profile {
     return cd.gear;
   }
 
+  /**
+   * The Cores this class has earned, as a Set of core ids.
+   *
+   * Per class, like the raid record it is read from. Gold is the only thing
+   * that crosses between classes — a Core earned on the Hunter buys the Hunter
+   * nothing on the Warrior, which is the whole point of the two being separate.
+   */
+  cores(classId) {
+    return earnedCores(this.raidState(classId));
+  }
+
   /** Which raid bosses this class has put down. */
   raidState(classId) {
     const cd = this.data.classes[classId];
@@ -312,7 +323,8 @@ export class Profile {
    */
   buyGear(classId, slotId) {
     const gear = this.gear(classId);
-    const verdict = canBuy(classId, slotId, gear, this.level(classId), this.souls);
+    const verdict = canBuy(classId, slotId, gear, this.level(classId), this.souls,
+      this.cores(classId));
     if (!verdict.ok) return verdict;
     this.data.souls -= verdict.cost;
     gear[slotId] = verdict.next;

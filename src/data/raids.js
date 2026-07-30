@@ -27,7 +27,7 @@
  * Taken from the Armoury's own slot order rather than written out again here.
  * Two lists that must agree and are maintained in two places eventually do not.
  */
-import { GEAR_SLOT_IDS } from './armor.js';
+import { GEAR_SLOT_IDS, coreId } from './armor.js';
 
 export const CORE_ORDER = GEAR_SLOT_IDS;
 
@@ -281,10 +281,9 @@ export function coreSlotFor(index) {
   return CORE_ORDER[Math.min(index, CORE_ORDER.length - 1)];
 }
 
-/** A Core's id, e.g. "t3.helm" — the key gear checks for permission to buy. */
-export function coreId(tier, slot) {
-  return `t${tier}.${slot}`;
-}
+/** A Core's id, e.g. "t3.helm". Defined in armor.js, which is the file that
+ *  checks for it, and re-exported here because this is where Cores are earned. */
+export { coreId };
 
 /**
  * A fresh per-class raid record. `killed` holds boss ids, so a boss stays dead

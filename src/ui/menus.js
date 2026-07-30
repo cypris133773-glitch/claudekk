@@ -11,7 +11,7 @@ import {
   PERMANENT, upgradeCost, talentPointsForBestWave, masteryProgress,
 } from '../data/permanent.js';
 import {
-  GEAR_SLOTS, GEAR_TIERS, MAX_TIER, canBuy, ownedTier, gearRating, setTier,
+  GEAR_SLOTS, GEAR_SLOT_IDS, GEAR_TIERS, MAX_TIER, canBuy, ownedTier, gearRating, setTier,
   maxTierForLevel, tierLevel, tierColor, gearName, slotDesc, slotSummary,
   GEAR_BY_ID, gearCost,
 } from '../data/armor.js';
@@ -1125,6 +1125,7 @@ export class Menus {
 
     const gear = this.profile.gear(cls.id);
     const level = this.profile.level(cls.id);
+    const cores = this.profile.cores(cls.id);
     const rating = gearRating(gear);
     const set = setTier(gear);
     const cap = maxTierForLevel(level);
@@ -1149,7 +1150,11 @@ export class Menus {
     const grid = el('div', 'forge-grid');
     p.appendChild(this.paged('armoury', GEAR_SLOTS, byHeight(3, 4, 6), grid, (def) => {
       const tier = ownedTier(gear, def.id);
-      const verdict = canBuy(cls.id, def.id, gear, level, this.profile.souls);
+      const verdict = canBuy(cls.id, def.id, gear, level, this.profile.souls, cores);
+      // Which boss drops the piece you cannot buy yet. "Needs the T2 Helm Core"
+      // is only half an answer; the other half is where to go and get it.
+      const from = verdict.needsCore ? RAID_BY_TIER[verdict.next] : null;
+      const dropper = from ? from.bosses[GEAR_SLOT_IDS.indexOf(def.id)] : null;
       const colour = tierColor(Math.max(0, tier));
       const card = el('div', 'forge-card'
         + (verdict.maxed ? ' maxed' : '')
@@ -1168,12 +1173,14 @@ export class Menus {
         <div class="forge-desc">${tier >= 0
           ? slotSummary(cls.id, def.id, gear)
           : slotDesc(cls.id, def.id)}</div>
+        ${dropper ? `<div class="raid-need">Drops from ${dropper.name} — ${from.name}</div>` : ''}
         <div class="forge-pips">${GEAR_TIERS.map((t) =>
           `<i class="${t.tier <= tier ? 'on' : ''}"></i>`).join('')}</div>`;
       card.appendChild(body);
       const buy = el('button', 'buy-btn', verdict.maxed
         ? 'MAX'
-        : (verdict.locked ? `Lv ${tierLevel(verdict.next)}` : `🪙 ${verdict.cost.toLocaleString()}`));
+        : (verdict.locked ? `Lv ${tierLevel(verdict.next)}`
+          : (verdict.needsCore ? '🔒 Core' : `🪙 ${verdict.cost.toLocaleString()}`)));
       buy.disabled = !verdict.ok;
       // The reason a disabled button is disabled belongs on the button, not in
       // the player's head.
@@ -1641,8 +1648,8 @@ export class Menus {
     const level = this.profile.level(g.cls.id);
     let bestGear = null;
     for (const slot of GEAR_SLOTS) {
-      const v = canBuy(g.cls.id, slot.id, gear, level, souls);
-      if (v.maxed || v.locked) continue;
+      const v = canBuy(g.cls.id, slot.id, gear, level, souls, this.profile.cores(g.cls.id));
+      if (v.maxed || v.locked || v.needsCore) continue;
       if (!bestGear || v.cost < bestGear.v.cost) bestGear = { slot, v };
     }
     if (bestGear) {

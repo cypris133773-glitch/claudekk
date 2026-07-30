@@ -630,6 +630,48 @@ check('tiers are level-gated and cannot be skipped', () => {
   assert(poor.poor && !poor.locked, 'being broke reads as being under-levelled');
 });
 
+check('one class clearing a raid buys another class nothing', async () => {
+  // The bug this exists for, reported from play: a Hunter cleared tier 0, and
+  // the account's level-1 Warrior could then buy the whole T0 set. Gold is
+  // global by design, so the Hunter's winnings fund the Warrior — and without
+  // the Core gate that was the only thing standing between a fresh alt and a
+  // full set of gear it had done nothing to earn.
+  const { Profile } = await import('../src/core/save.js');
+  const { RAIDS, coreId } = await import('../src/data/raids.js');
+  const raid = RAIDS[0];
+
+  const p = new Profile();
+  p.data.souls = 5e6;
+  // The Hunter clears tier 0 outright.
+  for (const b of raid.bosses) p.raidState('hunter').killed[b.id] = true;
+  // And the Warrior is levelled past the gate but has never been in a raid.
+  p.data.classes.warrior.xp = 1e6;
+  assert(p.level('warrior') >= raid.level, 'the fixture warrior is under-levelled');
+
+  for (const slot of GEAR_SLOT_IDS) {
+    const v = p.buyGear('warrior', slot);
+    assert(!v.ok && v.needsCore,
+      `the warrior bought a ${slot} on the hunter's clear (${v.reason})`);
+    assert(ownedTier(p.gear('warrior'), slot) === -1, `${slot} was written anyway`);
+  }
+  assert(p.souls === 5e6, 'gold was spent on a refused purchase');
+
+  // The Hunter, which did the work, can buy its set.
+  for (const slot of GEAR_SLOT_IDS) {
+    assert(p.cores('hunter').has(coreId(0, slot)), `hunter is missing its ${slot} core`);
+  }
+  p.data.classes.hunter.xp = 1e6;
+  const bought = p.buyGear('hunter', 'weapon');
+  assert(bought.ok && ownedTier(p.gear('hunter'), 'weapon') === 0,
+    'the class that cleared the raid could not buy its own piece');
+
+  // And the Core only ever opens the tier it came from. Clearing tier 0 six
+  // times over does not put a T1 piece within reach.
+  p.data.classes.hunter.gear = Object.fromEntries(GEAR_SLOT_IDS.map((s) => [s, 0]));
+  const next = p.buyGear('hunter', 'weapon');
+  assert(!next.ok && next.needsCore, `a T0 clear sold a T1 weapon (${next.reason})`);
+});
+
 check('catching up on gear costs a fraction of a run', () => {
   // The ladder must never be a punishment for levelling first. Someone who
   // ignores gear until 31 pays every rung below T3 for a slot at once — and
