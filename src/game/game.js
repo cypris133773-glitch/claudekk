@@ -25,12 +25,14 @@ const INTERMISSION = 4.0;
 // and shadow both need a 16-block clear radius around the boss, and a layout
 // full of cover turns "run out of the circle" into "run into a pillar".
 const RAID_LAYOUT = 0;
-// The closest of the renderer's four palettes to each raid, so a molten raid is
-// at least lit like one. The bespoke rooms in docs/raids/rooms.md replace this.
-const RAID_THEME = {
-  zulgurub: 0, moltencore: 2, karazhan: 3, ulduar: 3,
-  blacktemple: 2, firelands: 2, icecrown: 3,
-};
+// The renderer's themes 0-3 are the arenas; 4-10 are one per raid, in RAIDS
+// order. A theme carries the sky gradient, the sun, the bounce light and now
+// the fog distance, which between them do most of the work of making a room
+// feel like a place: grey stone lit from below by a lake of fire, or a frost
+// castle in deep blue air at 28/78 instead of the 34/82 every room used to
+// share.
+const RAID_THEME_BASE = 4;
+const raidTheme = (raid) => RAID_THEME_BASE + raid.tier;
 
 export class Game {
   constructor(renderer, audio, profile) {
@@ -147,7 +149,8 @@ export class Game {
     this.layout = opts.layout !== undefined
       ? opts.layout % LAYOUT_COUNT
       : (Math.random() * LAYOUT_COUNT) | 0;
-    this.world = createArena(this.theme, 1 + ((Math.random() * 9000) | 0), this.layout);
+    this.world = createArena(this.theme, 1 + ((Math.random() * 9000) | 0), this.layout,
+      { raid: opts.raid || null });
     this.r.setWorld(this.world);
     // The renderer owns the palette now: sky gradient, sun colour and the
     // hemispheric bounce all come from one themed set.
@@ -204,7 +207,7 @@ export class Game {
   startRaid(classDef, raid, bossIndex) {
     const boss = raid.bosses[bossIndex];
     if (!boss) return false;
-    this.startRun(classDef, { layout: RAID_LAYOUT, theme: RAID_THEME[raid.id] });
+    this.startRun(classDef, { layout: RAID_LAYOUT, theme: raidTheme(raid), raid });
     this.mode = 'raid';
     this.raid = raid;
     this.raidBossIndex = bossIndex;

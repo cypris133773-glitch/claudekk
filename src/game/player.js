@@ -54,6 +54,9 @@ export class Player extends Entity {
       x: world.playerSpawn.x, y: world.playerSpawn.y, z: world.playerSpawn.z,
       width: 0.6, height: 1.8, hp: cls.base.hp, team: TEAM.PLAYER,
     });
+    // A raid room puts you on a fixed mark facing the dais; an arena drops you
+    // in the middle where any facing is as good as another.
+    if (world.playerSpawn.yaw !== undefined) this.yaw = world.playerSpawn.yaw;
     this.cls = cls;
     this.mods = mods;
     this.skills = (skills && skills.length ? skills : cls.skills).slice(0, LOADOUT_SIZE);

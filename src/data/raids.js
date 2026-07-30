@@ -167,7 +167,7 @@ export const RAIDS = [
     // inside the band T0 gear covers.
     id: 'zulgurub', tier: 0, level: 8,
     name: "Zul'Gurub", blurb: 'A drowned troll city, thick with poison and old blood.',
-    theme: { sky: '#2b3a22', fog: '#3d5230', stone: '#4a5a3a', accent: '#8ce06a', lava: false },
+    theme: { sky: '#1e3016', fog: '#3f5c33', stone: '#3a4234', accent: '#c9a227', hazard: '#6edc3c', lava: false, fogNear: 26, fogFar: 62 },
     trial: 'bombs',
     bosses: [
       { id: 'venoxis', name: 'High Priest Venoxis', mechanic: 'shadow', power: 1.00, color: '#8ce06a' },
@@ -181,7 +181,7 @@ export const RAIDS = [
   {
     id: 'moltencore', tier: 1, level: 11,
     name: 'Molten Core', blurb: 'Grey stone over a lake of fire, and something older beneath it.',
-    theme: { sky: '#3a1408', fog: '#5a2410', stone: '#4c4c4c', accent: '#ff8a3c', lava: true },
+    theme: { sky: '#120806', fog: '#40140a', stone: '#3e3e44', stoneHi: '#6e6e74', accent: '#9fd0ff', hazard: '#ff8a3c', lava: true, fogNear: 22, fogFar: 58 },
     trial: 'frost',
     bosses: [
       { id: 'lucifron', name: 'Lucifron', mechanic: 'shadow', power: 1.00, color: '#ff8a3c' },
@@ -195,7 +195,7 @@ export const RAIDS = [
   {
     id: 'karazhan', tier: 2, level: 21,
     name: 'Karazhan', blurb: 'A haunted tower where the rooms do not stay where you left them.',
-    theme: { sky: '#1a1426', fog: '#2e2440', stone: '#3a3348', accent: '#c98fff', lava: false },
+    theme: { sky: '#140f22', fog: '#2a2036', stone: '#3a3348', stoneAlt: '#2e2840', accent: '#ffbf6a', hazard: '#d0491a', lava: false, fogNear: 30, fogFar: 70 },
     trial: 'shadow',
     bosses: [
       { id: 'attumen', name: 'Attumen the Huntsman', mechanic: 'charge', power: 1.00, color: '#cfd6e6' },
@@ -209,7 +209,7 @@ export const RAIDS = [
   {
     id: 'ulduar', tier: 3, level: 31,
     name: 'Ulduar', blurb: 'Titan machinery, still running, still guarding what it was told to.',
-    theme: { sky: '#132030', fog: '#1e3448', stone: '#5a6470', accent: '#7ef0ff', lava: false },
+    theme: { sky: '#0e1a26', fog: '#1c3040', stone: '#3e4048', stoneHi: '#949aa0', accent: '#ffa62b', accentHi: '#7ef0ff', hazard: '#ff8a3c', lava: true, fogNear: 34, fogFar: 86 },
     trial: 'slam',
     bosses: [
       { id: 'leviathan', name: 'Flame Leviathan', mechanic: 'charge', power: 1.00, color: '#ff8a3c' },
@@ -223,7 +223,7 @@ export const RAIDS = [
   {
     id: 'blacktemple', tier: 4, level: 41,
     name: 'Black Temple', blurb: 'A fortress of fel green and black stone, and the one who kept it.',
-    theme: { sky: '#0f1a12', fog: '#1c2e1e', stone: '#2e3630', accent: '#9dff7a', lava: false },
+    theme: { sky: '#060a07', fog: '#101a12', stone: '#22261f', daisStone: '#3a4038', accent: '#a8ff5c', hazard: '#a8ff5c', lava: false, fogNear: 18, fogFar: 52 },
     trial: 'frost',
     bosses: [
       { id: 'najentus', name: "High Warlord Naj'entus", mechanic: 'bombs', power: 1.00, color: '#4aa3ff' },
@@ -237,7 +237,7 @@ export const RAIDS = [
   {
     id: 'firelands', tier: 5, level: 51,
     name: 'Firelands', blurb: 'The Firelord rebuilt his home. It is worse this time.',
-    theme: { sky: '#4a1206', fog: '#7a2410', stone: '#3c2a22', accent: '#ffb03c', lava: true },
+    theme: { sky: '#ff7a24', fog: '#3a0e06', stone: '#1e1614', accent: '#ffb03c', hazard: '#ff8a3c', lava: true, fogNear: 30, fogFar: 74 },
     trial: 'bombs',
     bosses: [
       { id: 'bethtilac', name: "Beth'tilac", mechanic: 'adds', power: 1.00, color: '#ff8a3c' },
@@ -251,7 +251,7 @@ export const RAIDS = [
   {
     id: 'icecrown', tier: 6, level: 60,
     name: 'Icecrown Citadel', blurb: 'A frost keep at the top of the world, and the throne inside it.',
-    theme: { sky: '#0e1c2e', fog: '#1c3450', stone: '#7a8ea0', accent: '#8fe3ff', lava: false },
+    theme: { sky: '#0a1424', fog: '#16304c', stone: '#1a2230', stoneHi: '#b9dcf0', accent: '#e8d6a0', hazard: '#cfeeff', lava: false, fogNear: 28, fogFar: 78 },
     trial: 'frost',
     bosses: [
       { id: 'marrowgar', name: 'Lord Marrowgar', mechanic: 'bombs', power: 1.00, color: '#cfd6e6' },

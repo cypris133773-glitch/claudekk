@@ -54,6 +54,48 @@ const THEMES = [
     sun: [0.24, 0.22, 0.28], sky: [0.74, 0.84, 1.00], ground: [0.44, 0.48, 0.58],
     sunPos: [0.55, 0.30],
   },
+  // --- Raid rooms, 4..10, one per raid in RAIDS order. ---------------------
+  //
+  // Fog is part of a theme now, and it is the single biggest mood lever in
+  // here: every room used to be fogged identically at 34/82, which is why a
+  // drowned swamp and a frost castle read as the same distance away. Pulling
+  // Black Temple in to 18/52 is what makes it feel like a room rather than a
+  // field, and pushing Ulduar out to 34/86 is what makes it feel like a hall.
+  { // the sunken city — shafts of green-gold daylight through a canopy
+    top: [0.12, 0.19, 0.09], bottom: [0.25, 0.36, 0.20],
+    sun: [0.26, 0.30, 0.10], sky: [0.72, 0.82, 0.62], ground: [0.30, 0.34, 0.24],
+    sunPos: [0.20, 0.72], fogNear: 26, fogFar: 62,
+  },
+  { // grey stone over a lake of fire — lit from below, which is the whole read
+    top: [0.07, 0.03, 0.02], bottom: [0.25, 0.08, 0.04],
+    sun: [0.06, 0.03, 0.02], sky: [0.34, 0.34, 0.38], ground: [0.52, 0.22, 0.09],
+    sunPos: [0.00, 0.45], fogNear: 22, fogFar: 58,
+  },
+  { // a broken ballroom, candlelit
+    top: [0.08, 0.06, 0.13], bottom: [0.16, 0.13, 0.21],
+    sun: [0.10, 0.08, 0.16], sky: [0.62, 0.58, 0.80], ground: [0.24, 0.20, 0.30],
+    sunPos: [0.62, 0.70], fogNear: 30, fogFar: 70,
+  },
+  { // a machine hall — the only cold, clean, right-angled room
+    top: [0.06, 0.10, 0.15], bottom: [0.11, 0.19, 0.25],
+    sun: [0.16, 0.20, 0.26], sky: [0.76, 0.84, 0.96], ground: [0.30, 0.36, 0.42],
+    sunPos: [-0.50, 0.28], fogNear: 34, fogFar: 86,
+  },
+  { // black stone and one green fire — the darkest room in the game
+    top: [0.02, 0.04, 0.03], bottom: [0.06, 0.10, 0.07],
+    sun: [0.02, 0.05, 0.02], sky: [0.26, 0.34, 0.26], ground: [0.10, 0.16, 0.10],
+    sunPos: [0.00, -0.60], fogNear: 18, fogFar: 52,
+  },
+  { // black rock under a burning sky — the only room whose sky is the light
+    top: [1.00, 0.48, 0.14], bottom: [0.23, 0.06, 0.02],
+    sun: [0.60, 0.20, 0.04], sky: [0.90, 0.46, 0.18], ground: [0.18, 0.08, 0.06],
+    sunPos: [0.00, 0.85], fogNear: 30, fogFar: 74,
+  },
+  { // the frost castle — pale stone, deep blue air, low hard light
+    top: [0.04, 0.08, 0.14], bottom: [0.09, 0.19, 0.30],
+    sun: [0.14, 0.18, 0.28], sky: [0.82, 0.90, 1.00], ground: [0.08, 0.12, 0.20],
+    sunPos: [0.55, 0.12], fogNear: 28, fogFar: 78,
+  },
 ];
 
 export class Renderer {
@@ -157,7 +199,14 @@ export class Renderer {
   setTheme(index) {
     this.theme = THEMES[((index | 0) % THEMES.length + THEMES.length) % THEMES.length];
     this.skyTint = this.theme.bottom;
+    // Fog belongs to the room. The four arena themes do not carry one and fall
+    // back to the numbers every room used to share.
+    this.fogNear = this.theme.fogNear ?? 34;
+    this.fogFar = this.theme.fogFar ?? 82;
   }
+
+  /** How many themes exist, so a caller can index the raid ones by name. */
+  static get THEME_COUNT() { return THEMES.length; }
 
   /**
    * Vertical gradient plus a soft sun. Drawn *after* the opaque scene, not

@@ -137,7 +137,7 @@ export class World {
    * runs vary in both look and tactics. Every layout shares the same shell:
    * floor, perimeter wall, and a ring of mob spawn points.
    */
-  generate(theme = 0, seed = 1, layout = 0) {
+  generate(theme = 0, seed = 1, layout = 0, opts = {}) {
     this.data.fill(AIR);
     this.spawnPoints.length = 0;
 
@@ -147,7 +147,13 @@ export class World {
       { floor: B.DARKSTONE, accent: B.OBSIDIAN, wall: B.OBSIDIAN, trim: B.METAL, deco: B.DARKSTONE },
       { floor: B.PLANK, accent: B.LOG, wall: B.PLANK, trim: B.LOG, deco: B.LEAVES },
     ];
-    const P = themes[theme % themes.length];
+    // Raid rooms build from their own materials. The shell, the wall, the
+    // spawn ring and the standable-ground filter below are all shared with the
+    // arenas — only the palette and the interior differ, which is the whole
+    // reason a raid room is affordable at all.
+    const raid = opts.raid || null;
+    const P = raid ? RAID_PALETTES[raid.tier % RAID_PALETTES.length]
+      : themes[theme % themes.length];
 
     const FLOOR_Y = 4;
     const R = 26;               // arena radius (square-ish with cut corners)
@@ -196,8 +202,13 @@ export class World {
       (c) => this.layoutLabyrinth(c),
       (c) => this.layoutCauseway(c),
     ];
-    this.layout = layout % builders.length;
-    builders[this.layout](ctx);
+    if (raid) {
+      this.layout = 0;
+      this.layoutRaid(ctx, raid);
+    } else {
+      this.layout = layout % builders.length;
+      builders[this.layout](ctx);
+    }
 
     // Mob spawn ring around the outside of the arena floor
     for (let i = 0; i < 24; i++) {
@@ -229,7 +240,13 @@ export class World {
       return true;
     });
 
-    this.playerSpawn = { x: cx + 0.5, y: FLOOR_Y + 3, z: cz + 0.5 };
+    // A raid starts you at the Threshold: due south on the Walk, twenty blocks
+    // out, facing straight up the room at the dais. The boss is at the far end
+    // and its head fills the upper third of the frame — the reveal is the first
+    // thing the room does, and it only works from a fixed mark.
+    this.playerSpawn = raid
+      ? { x: cx + 0.5, y: FLOOR_Y + 3, z: cz + 20.5, yaw: 0 }
+      : { x: cx + 0.5, y: FLOOR_Y + 3, z: cz + 0.5 };
     // The middle is raised or molten in some layouts; drop the spawn onto
     // whatever is actually there so the player never starts inside geometry.
     this.playerSpawn.y = this.groundAt(this.playerSpawn.x, this.playerSpawn.z, SY - 1) + 1;
@@ -244,6 +261,114 @@ export class World {
   // differently: Fortress is close-quarters with cover, Crucible forces you
   // across chokepoints, Spires is open and favours ranged fights.
   // -------------------------------------------------------------------------
+
+  /**
+   * The raid room. One skeleton, seven materials.
+   *
+   * Every mechanic's escape arithmetic was measured against this shape, so the
+   * three bands are a contract rather than a style:
+   *
+   *   The Dais   r <= 9, raised 2, terraced, and flat on top. The boss's
+   *              ground. `slam` reaches 11 and `shadow` reaches 9, so nothing
+   *              stands here that could block a straight line out.
+   *   The Mid    r 10..19. Cover, perches, hazard — the band that carries the
+   *              raid's identity, and the only one that differs.
+   *   The Walk   r 20..26, floor level, four blocks wide, unbroken, no hazard.
+   *              Kiting must always have a full lap. A room you can be
+   *              cornered in is not a fight, it is a wall with a boss in it.
+   *
+   * Four gaps due N/E/S/W through anything ring-shaped, so the Walk and the
+   * Dais are never more than a quarter-lap apart, and the player spawns on the
+   * south one looking straight up the room.
+   */
+  layoutRaid({ P, FLOOR_Y, cx, cz, seed }, raid) {
+    const at = (x, z) => Math.hypot(x, z);
+
+    // --- The Dais: two terraces, flat top, a rim you can read from the Walk.
+    for (let z = -10; z <= 10; z++) {
+      for (let x = -10; x <= 10; x++) {
+        const d = at(x, z);
+        if (d > 9.5) continue;
+        const h = d <= 7.5 ? 2 : 1;
+        this.fill(cx + x, FLOOR_Y, cz + z, cx + x, FLOOR_Y + h - 1, cz + z, P.accent);
+        // The rim is the one emissive line on the floor, and it is what tells
+        // you where the boss's ground starts from anywhere on the Walk.
+        if (d > 8.4) this.set(cx + x, FLOOR_Y + h - 1, cz + z, P.trim);
+      }
+    }
+
+    // --- The Mid: eight masses at r=15, on the diagonals and between them.
+    // Four are tall enough to break line of sight, because the ranged bosses
+    // have 30 blocks of range — longer than the room is wide, so distance
+    // never breaks it and only geometry can.
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+      const mx = Math.round(cx + Math.cos(a) * 15);
+      const mz = Math.round(cz + Math.sin(a) * 15);
+      const tall = i % 2 === 0;
+      const h = tall ? 6 : 3;
+      const w = tall ? 2 : 3;
+      this.fill(mx - w, FLOOR_Y, mz - w, mx + w, FLOOR_Y + h - 1, mz + w, P.wall);
+      this.fill(mx - w + 1, FLOOR_Y + h, mz - w + 1, mx + w - 1, FLOOR_Y + h, mz + w - 1, P.trim);
+      if (tall) this.set(mx, FLOOR_Y + h + 1, mz, P.deco);
+    }
+
+    // --- Two perches, diagonally opposite, tops at +4. Terraced from one side
+    // so a boss can climb them: an unreachable perch is a place to stand and
+    // win from, which is the one thing a raid room must not have.
+    for (const sign of [-1, 1]) {
+      const px = Math.round(cx + sign * 11);
+      const pz = Math.round(cz + sign * 11);
+      for (let z = -3; z <= 3; z++) {
+        for (let x = -3; x <= 3; x++) {
+          const step = Math.max(Math.abs(x), Math.abs(z));
+          const h = 4 - Math.max(0, step - 1);
+          if (h <= 0) continue;
+          this.fill(px + x, FLOOR_Y, pz + z, px + x, FLOOR_Y + h - 1, pz + z, P.wall);
+        }
+      }
+    }
+
+    // --- Hazard, in the Mid only. Never on the Dais, never on the Walk, and
+    // never in a cardinal gate: a hazard that blocks the lap breaks the one
+    // promise the Walk makes.
+    if (P.hazard) {
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2 + 0.4;
+        const hx = Math.round(cx + Math.cos(a) * 17);
+        const hz = Math.round(cz + Math.sin(a) * 17);
+        for (let z = -2; z <= 2; z++) {
+          for (let x = -2; x <= 2; x++) {
+            if (at(x, z) > 2.4) continue;
+            const d = at(hx + x - cx, hz + z - cz);
+            if (d < 11 || d > 19) continue;
+            this.set(hx + x, FLOOR_Y - 1, hz + z, P.hazard);
+          }
+        }
+      }
+    }
+
+    // --- Light, and only where the discipline allows it: the dais rim, the
+    // perch tops, and above head height. Loose emissive blocks on the floor
+    // compete with the telegraphs, and the telegraphs have to win.
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const lx = Math.round(cx + Math.cos(a) * 9);
+      const lz = Math.round(cz + Math.sin(a) * 9);
+      this.set(lx, FLOOR_Y + 2, lz, P.deco);
+    }
+
+    // --- Spawn ring for adds, on the Mid rather than the arena's r=22 default,
+    // so a summon lands in the fight instead of a lap behind it.
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2 + 0.26;
+      this.spawnPoints.push({
+        x: cx + Math.cos(a) * 13,
+        y: FLOOR_Y,
+        z: cz + Math.sin(a) * 13,
+      });
+    }
+  }
 
   /** Central dais, four corner towers, cover pillars and lava spokes. */
   layoutFortress({ P, FLOOR_Y, cx, cz, seed, inArena }) {
@@ -732,11 +857,35 @@ export class World {
   }
 }
 
+/**
+ * One palette per raid tier. Materials only — the sky, the sun, the bounce
+ * light and the fog belong to the renderer's theme, and between them they carry
+ * more of a room's mood than its blocks do.
+ */
+const RAID_PALETTES = [
+  // Zul'Gurub: green-black stone under water, gold decoration. The green is
+  // reserved for poison, so decoration cannot be green anywhere in this room.
+  { floor: B.MOSSY, accent: B.DARKSTONE, wall: B.COBBLE, trim: B.GOLD, deco: B.LEAVES, hazard: null },
+  // Molten Core: grey stone, and the light comes from the lake underneath it.
+  { floor: B.STONE, accent: B.COBBLE, wall: B.DARKSTONE, trim: B.METAL, deco: B.OBSIDIAN, hazard: B.LAVA },
+  // Karazhan: a broken ballroom. Wood and dark stone, lit by candles.
+  { floor: B.PLANK, accent: B.DARKSTONE, wall: B.BRICK, trim: B.LOG, deco: B.GLOW, hazard: null },
+  // Ulduar: the machine hall, and the only right-angled room in the set.
+  { floor: B.METAL, accent: B.DARKSTONE, wall: B.METAL, trim: B.RUNE, deco: B.CRYSTAL, hazard: null },
+  // Black Temple: black stone and one green fire. The darkest room in the game.
+  { floor: B.DARKSTONE, accent: B.OBSIDIAN, wall: B.OBSIDIAN, trim: B.RUNE, deco: B.GLOW, hazard: null },
+  // Firelands: black rock under a burning sky, standing in the fire itself.
+  { floor: B.OBSIDIAN, accent: B.DARKSTONE, wall: B.OBSIDIAN, trim: B.LAVA, deco: B.GLOW, hazard: B.LAVA },
+  // Icecrown: pale stone and ice. The only room whose walls are brighter than
+  // its floor, which is what makes it read as built rather than carved.
+  { floor: B.STONE, accent: B.CRYSTAL, wall: B.BRICK, trim: B.CRYSTAL, deco: B.CRYSTAL, hazard: null },
+];
+
 export const LAYOUT_COUNT = 6;
 export const LAYOUT_NAMES = [
   'Fortress', 'Crucible', 'Spires', 'Colosseum', 'Labyrinth', 'Causeway',
 ];
 
-export function createArena(theme, seed, layout = 0) {
-  return new World().generate(theme, clamp(seed, 1, 99999), layout);
+export function createArena(theme, seed, layout = 0, opts = {}) {
+  return new World().generate(theme, clamp(seed, 1, 99999), layout, opts);
 }

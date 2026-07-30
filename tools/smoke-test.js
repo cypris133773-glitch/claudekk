@@ -1538,6 +1538,62 @@ check('a wipe costs nothing and a kill is recorded once', async () => {
   assert(isBossDead(h2.profile.raidState(CLASSES[0].id), boss.id), 'a kill was not recorded');
 });
 
+check('every raid room keeps the promises the mechanics rely on', async () => {
+  const { Game } = await import('../src/game/game.js');
+  const { RAIDS } = await import('../src/data/raids.js');
+  const { BLOCKS } = await import('../src/world/blocks.js');
+  const { makeHarness } = await import('./harness.js');
+
+  for (const raid of RAIDS) {
+    const h = makeHarness({ gear: 0 });
+    const g = new Game(h.renderer, h.audio, h.profile);
+    g.startRaid(CLASSES[0], raid, 0);
+    const w = g.world;
+    const cx = 32, cz = 32;
+
+    // The Walk: a full lap at r 20..26, standable and free of hazard, on every
+    // bearing. Kiting is the counterplay to half the mechanics in the set, and
+    // a room you can be cornered in is a wall with a boss in it.
+    let blocked = 0;
+    for (let i = 0; i < 180; i++) {
+      const a = (i / 180) * Math.PI * 2;
+      let ok = false;
+      for (let r = 20; r <= 25 && !ok; r++) {
+        const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
+        const y = w.groundAt(x, z, 14) + 1;
+        if (w.isSolid(x, y + 0.1, z) || w.isSolid(x, y + 1.2, z)) continue;
+        const under = BLOCKS[w.blockAt(x, y - 0.5, z)];
+        if (under && under.damage) continue;
+        ok = true;
+      }
+      if (!ok) blocked++;
+    }
+    assert(blocked === 0, `${raid.id}: the walk is blocked on ${blocked} of 180 bearings`);
+
+    // The Dais: flat on top. slam reaches 11 blocks and shadow reaches 9, and
+    // both are answered by walking in a straight line — an obstruction here is
+    // a mechanic with no counterplay.
+    let junk = 0;
+    for (let z = -8; z <= 8; z++) {
+      for (let x = -8; x <= 8; x++) {
+        if (Math.hypot(x, z) > 8) continue;
+        if (w.isSolid(cx + x, w.floorY + 2.6, cz + z)) junk++;
+      }
+    }
+    assert(junk === 0, `${raid.id}: ${junk} obstructions on the dais`);
+
+    // The Threshold: a fixed mark, facing up the room, not inside geometry.
+    const p = g.player;
+    assert(!w.isSolid(p.x, p.y + 0.1, p.z) && !w.isSolid(p.x, p.y + 1.2, p.z),
+      `${raid.id}: the player spawns inside the room`);
+    assert(p.yaw === 0, `${raid.id}: the player does not face the dais`);
+    assert(p.z > cz + 12, `${raid.id}: the player does not spawn at the threshold`);
+
+    // Somewhere for summons to land that is not a lap behind the fight.
+    assert(w.spawnPoints.length >= 8, `${raid.id}: only ${w.spawnPoints.length} spawn points`);
+  }
+});
+
 check('a raid wipe never banks the run twice', async () => {
   const { Game } = await import('../src/game/game.js');
   const { RAIDS } = await import('../src/data/raids.js');
