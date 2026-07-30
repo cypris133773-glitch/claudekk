@@ -60,7 +60,7 @@ core" is therefore a *tile* whose hot pixels are baked bright, plus a modest
 whole-body emissive to carry it through fog. Emissive also lerps the light
 toward white (`gl.js:62`) and cancels 60% of fog, so it flattens shading — over
 about 0.4 a boss stops having a readable silhouette and becomes a bright
-cut-out. **0.40 is the hard ceiling; the roster sits at 0.10–0.38.**
+cut-out. **0.40 is the hard ceiling; the roster sits at 0.08–0.38.**
 
 **Alpha is per-entity too**, and it applies to the whole model including horns
 and pauldrons. Below about 0.55 a translucent boss stops occluding the floor
@@ -114,11 +114,11 @@ the contrast locally instead.
 | --- | --- | --- | --- | --- | --- |
 | Zul'Gurub | 63 | 30–45 | bruised crimson, plum, wet hide, bone | lean and tall; narrow hitboxes | **Horns.** All six. |
 | Molten Core | 63 | 22–38 | charcoal, ash, banked orange | squat, smooth, no appendages | **Emissive core** (`BASALT` seams) |
-| Karazhan | 46–52 | 95–170 | ivory, ash-lavender, cold steel | narrow, tall, top-light | **Translucency** + a hat on every one |
+| Karazhan | 46–52 | 88–175 | ivory, ash-lavender, cold steel | narrow, tall, top-light | **Translucency** + a hat on every one |
 | Ulduar | 65 | 30–48 | iron, bronze, one steel-cyan | rectangular; widest hitboxes in the game | **Plate** + pauldrons on all six |
 | Black Temple | 25 | 16–30 | black-plum, one hot hue each | top-heavy wedge | **The lit face** — brightest pixel on the model |
 | Firelands | 23 | 130–175 | ash-white body, charcoal limbs | mass low and wide | **Inverted value** — pale bosses on the darkest floor |
-| Icecrown | 33 | 70–105 | pale steel-blue, bone, ice white | armoured, upright, crowned | **Rime** — `ICE` growths on plate |
+| Icecrown | 33 | 43–128 | pale steel-blue, bone, ice white | armoured, upright, crowned | **Rime** — `ICE` growths on plate |
 
 ### 1 · Zul'Gurub — horned, and the only green in the room is poison
 
@@ -136,7 +136,7 @@ tiers later, so "horns" is genuinely a tier-0 signature rather than a decoration
 The horns are also the tell for how far into the raid you are: 3-segment stubs on
 the first boss, and the sixth's read as a crown.
 
-Silhouette: **lean.** Hitboxes 0.7–1.2 apart from the fifth, which is the beast
+Silhouette: **lean.** Hitboxes 0.75–1.3 apart from the fifth, which is the beast
 and breaks the rule on purpose.
 
 ### 2 · Molten Core — charred outside, lit from within
@@ -270,13 +270,507 @@ last raid and the escalation is the point.
 
 ## 2. The forty-two skins
 
-*(Written in the next section of this document — see below.)*
+Written in the shape `drawHumanoid` consumes, using the `hex()` helper already
+exported from `mobs.js`. Note that `Mob.draw()` currently renames `face` to
+`faceTile` on its way through; these blocks use `faceTile` directly, which is
+what the renderer path actually wants and what a raid boss table should store.
+
+Before the rosters, the one rule that decides every hex below.
+
+> **On a bright tile, write the colour you want. On a dark tile, write a bright
+> colour.**
+
+`rgb = tex.rgb * uTint.rgb`, so the tile is a ceiling. `CLOTH`, `SKIN`,
+`SPECTRAL` and `BONE` are near-white (multipliers 1.00, 1.00, 0.93, 0.87) and
+the hex reads as written. `RUNEPLATE` (0.60), `SCALE` (0.69), `STONE` (0.50),
+`ICE` (0.80) darken it. `BASALT` (0.10 on its base, 0.78 on its cracks) and
+`BLACKICE` (0.13) are almost black — a dark hex on either produces a black
+rectangle, so Molten Core's charcoal bodies are written as *pale* colours and
+come out dark, with the tile's hot cracks surviving at nearly full strength.
+That inversion is the single most counter-intuitive thing in this document and
+it is why the Molten Core roster below looks wrong until you multiply it out.
+
+Every roster is followed by its effective body luminance after the multiply, so
+the §1 value rule can be checked rather than trusted.
+
+---
+
+### Zul'Gurub — bone and bruise
+
+Robes on `CLOTH`, hides on `SCALE`, every mask and horn on `BONE`. The masks are
+the brightest thing on any of these models by a factor of five, and they are the
+only part that does not change between the six — the ritual is what they have in
+common.
+
+```js
+venoxis: {          // High Priest Venoxis — plum robes, first mask
+  head: hex('#e6dfc2'), headTile: T.BONE, faceTile: T.FACE_MASK,
+  body: hex('#32203c'), bodyTile: T.CLOTH,
+  arm:  hex('#4a3358'), armTile: T.CLOTH,
+  leg:  hex('#241a2e'), legTile: T.CLOTH,
+  horns: hex('#ded7ba'), hornTile: T.BONE,
+  emissive: 0.10,
+},
+mandokir: {         // Bloodlord Mandokir — crimson hide, bone shoulders
+  head: hex('#d8cfae'), headTile: T.BONE, faceTile: T.FACE_MASK,
+  body: hex('#8e3020'), bodyTile: T.SCALE,
+  arm:  hex('#7a2a1c'), armTile: T.SCALE,
+  leg:  hex('#4e2018'), legTile: T.SCALE,
+  horns: hex('#cfc6a4'), hornTile: T.BONE,
+  pauldrons: hex('#c4bb98'), pauldronTile: T.BONE,
+  emissive: 0.12,
+},
+arlokk: {           // High Priestess Arlokk — black hide, violet trim, small
+  head: hex('#3a2c40'), headTile: T.SCALE, faceTile: T.FACE_CRAWLER,
+  body: hex('#2e2434'), bodyTile: T.SCALE,
+  arm:  hex('#4a3552'), armTile: T.SCALE,
+  leg:  hex('#241c2a'), legTile: T.SCALE,
+  horns: hex('#b8a8c8'), hornTile: T.BONE,
+  emissive: 0.14,
+},
+jindo: {            // Jin'do the Hexxer — cold mask, headdress
+  head: hex('#cfd6d0'), headTile: T.BONE, faceTile: T.FACE_MASK,
+  body: hex('#243440'), bodyTile: T.CLOTH,
+  arm:  hex('#356072'), armTile: T.CLOTH,
+  leg:  hex('#1c2830'), legTile: T.CLOTH,
+  hat:  hex('#3a6a84'), hatTile: T.CLOTH,
+  horns: hex('#a8c4cf'), hornTile: T.BONE,
+  emissive: 0.16,
+},
+gahzranka: {        // Gahz'ranka — the beast; no mask, no ritual
+  head: hex('#5a7e98'), headTile: T.SCALE, faceTile: T.FACE_BOSS,
+  body: hex('#476a84'), bodyTile: T.SCALE,
+  arm:  hex('#3e5e76'), armTile: T.SCALE,
+  leg:  hex('#2c4456'), legTile: T.SCALE,
+  horns: hex('#cfd2c0'), hornTile: T.BONE,
+  emissive: 0.10,
+},
+hakkar: {           // Hakkar the Soulflayer — crowned, the sixth
+  head: hex('#e0d6b4'), headTile: T.BONE, faceTile: T.FACE_MASK,
+  body: hex('#8a2418'), bodyTile: T.SCALE,
+  arm:  hex('#a03020'), armTile: T.SCALE,
+  leg:  hex('#521810'), legTile: T.SCALE,
+  hat:  hex('#d8cda6'), hatTile: T.BONE,
+  horns: hex('#efe6c8'), hornTile: T.BONE,
+  pauldrons: hex('#cfc4a0'), pauldronTile: T.BONE,
+  emissive: 0.24,
+},
+```
+
+Effective body L: 30 · 35 · 26 · 33 · 43 · 33. Floor is 63, so every one of them
+is a 1.5–2.4:1 dark-on-light pair, and the bone runs L 190–215 on top of that.
+Gahz'ranka is the lightest and the largest, which is correct: the beast is the
+one that reads as a mass rather than a silhouette.
+
+---
+
+### Molten Core — pale hexes, black bodies
+
+Every body is `BASALT`. Read the hexes as multipliers, not as colours: `#d8c0b0`
+on a tile whose base is `[30,22,20]` produces a body at L 19 whose crack network
+is still `[170,52,16]`. Five of six have no horns, no pauldrons and no hat.
+
+```js
+lucifron: {         // Lucifron — the plain one, the reference
+  head: hex('#ff9a5c'), headTile: T.BASALT, faceTile: T.FACE_SLOT,
+  body: hex('#cfb4a4'), bodyTile: T.BASALT,
+  arm:  hex('#c0a294'), armTile: T.BASALT,
+  leg:  hex('#8f7a6e'), legTile: T.BASALT,
+  emissive: 0.22,
+},
+magmadar: {         // Magmadar — low, wide, hottest crust
+  head: hex('#ff7a3c'), headTile: T.BASALT, faceTile: T.FACE_SLOT,
+  body: hex('#e0b49a'), bodyTile: T.BASALT,
+  arm:  hex('#d8a88c'), armTile: T.BASALT,
+  leg:  hex('#a08070'), legTile: T.BASALT,
+  emissive: 0.26,
+},
+gehennas: {         // Gehennas — ashed over, the dullest and smallest
+  head: hex('#c8a894'), headTile: T.BASALT, faceTile: T.FACE_SLOT,
+  body: hex('#b8b0aa'), bodyTile: T.BASALT,
+  arm:  hex('#a89e98'), armTile: T.BASALT,
+  leg:  hex('#8a827e'), legTile: T.BASALT,
+  emissive: 0.20,
+},
+garr: {             // Garr — obsidian body, crystal crown
+  head: hex('#b0a0c0'), headTile: T.OBSIDIAN, faceTile: T.FACE_SLOT,
+  body: hex('#a494b4'), bodyTile: T.OBSIDIAN,
+  arm:  hex('#9c8caa'), armTile: T.OBSIDIAN,
+  leg:  hex('#786a88'), legTile: T.OBSIDIAN,
+  hat:  hex('#ffb46a'), hatTile: T.CRYSTAL,
+  emissive: 0.24,
+},
+geddon: {           // Baron Geddon — the bright one; brightest crust in the raid
+  head: hex('#ffd24a'), headTile: T.BASALT, faceTile: T.FACE_SLOT,
+  body: hex('#ffd0a0'), bodyTile: T.BASALT,
+  arm:  hex('#ffc490'), armTile: T.BASALT,
+  leg:  hex('#c8a078'), legTile: T.BASALT,
+  emissive: 0.38,
+},
+ragnaros1: {        // Ragnaros — at the height cap; nothing added, nothing needed
+  head: hex('#ff5a28'), headTile: T.BASALT, faceTile: T.FACE_SLOT,
+  body: hex('#ffc0a0'), bodyTile: T.BASALT,
+  arm:  hex('#ffb090'), armTile: T.BASALT,
+  leg:  hex('#c08a70'), legTile: T.BASALT,
+  emissive: 0.34,
+},
+```
+
+Effective body L: 19 · 22 · 24 · 30 (obsidian is a lighter base) · 26 · 24.
+Against a floor at 63 that is 2.1–3.3:1, the strongest dark-on-light set in the
+document, and the hue separation between them is carried entirely by what the
+crack colour becomes: orange, red-orange, grey-red, violet, yellow, red.
+
+Garr is the only one on `OBSIDIAN` and the only one with a hat, because a
+`bombs` boss needs to be identifiable the instant it appears in a pack — it is
+the one whose position you have to track between detonations.
+
+---
+
+### Karazhan — perforated, hatted, pale
+
+All six on `SPECTRAL` with `alpha` between 0.70 and 0.90, and all six wearing
+something. The hat is the most solid-looking part of a translucent model, which
+is the read this raid is built on.
+
+```js
+attumen: {          // Attumen the Huntsman — the most solid of them
+  head: hex('#b4bccc'), headTile: T.SPECTRAL, faceTile: T.FACE_HOLLOW,
+  body: hex('#96a2b4'), bodyTile: T.SPECTRAL,
+  arm:  hex('#a2aec0'), armTile: T.SPECTRAL,
+  leg:  hex('#7e8a9c'), legTile: T.SPECTRAL,
+  hat:  hex('#8f98a8'), hatTile: T.METAL,
+  pauldrons: hex('#7f8898'), pauldronTile: T.METAL,
+  alpha: 0.88, emissive: 0.12,
+},
+moroes: {           // Moroes — thinnest model in the game
+  head: hex('#c0b0cc'), headTile: T.SPECTRAL, faceTile: T.FACE_HOLLOW,
+  body: hex('#a894b8'), bodyTile: T.SPECTRAL,
+  arm:  hex('#b8a6c8'), armTile: T.SPECTRAL,
+  leg:  hex('#6e5a7e'), legTile: T.SPECTRAL,
+  hat:  hex('#6e5a7e'), hatTile: T.CLOTH,
+  alpha: 0.70, emissive: 0.16,
+},
+maiden: {           // Maiden of Virtue — ivory, gilt halo, stands still
+  head: hex('#cfc4a8'), headTile: T.SPECTRAL, faceTile: T.FACE_HOLLOW,
+  body: hex('#b8ad94'), bodyTile: T.SPECTRAL,
+  arm:  hex('#c4b89e'), armTile: T.SPECTRAL,
+  leg:  hex('#9a9078'), legTile: T.SPECTRAL,
+  hat:  hex('#e8c86a'), hatTile: T.GOLD,
+  alpha: 0.85, emissive: 0.18,
+},
+bigbadwolf: {       // The Big Bad Wolf — the only Karazhan boss with horns
+  head: hex('#a8794a'), headTile: T.SCALE, faceTile: T.FACE_CRAWLER,
+  body: hex('#96683e'), bodyTile: T.SCALE,
+  arm:  hex('#a8794a'), armTile: T.SCALE,
+  leg:  hex('#6e4a2c'), legTile: T.SCALE,
+  hat:  hex('#4e3620'), hatTile: T.CLOTH,
+  horns: hex('#6e4e30'), hornTile: T.SCALE,     // ears, not horns
+  alpha: 0.90, emissive: 0.08,
+},
+curator: {          // The Curator — a machine, and it shows
+  head: hex('#a8dcf0'), headTile: T.CRYSTAL, faceTile: T.FACE_VISOR,
+  body: hex('#9fb0c0'), bodyTile: T.RUNEPLATE,
+  arm:  hex('#8fa0b0'), armTile: T.RUNEPLATE,
+  leg:  hex('#7a8c9c'), legTile: T.RUNEPLATE,
+  hat:  hex('#d8b46a'), hatTile: T.GOLD,
+  alpha: 0.78, emissive: 0.24,
+},
+malchezaar: {       // Prince Malchezaar — tallest, darkest, crowned
+  head: hex('#a086c0'), headTile: T.SPECTRAL, faceTile: T.FACE_SLOT,
+  body: hex('#8a6ea8'), bodyTile: T.SPECTRAL,
+  arm:  hex('#9478b4'), armTile: T.SPECTRAL,
+  leg:  hex('#5e4a78'), legTile: T.SPECTRAL,
+  hat:  hex('#3a2c4e'), hatTile: T.CLOTH,
+  horns: hex('#d8c8e8'), hornTile: T.BONE,
+  pauldrons: hex('#4a3a60'), pauldronTile: T.CLOTH,
+  alpha: 0.82, emissive: 0.20,
+},
+```
+
+Effective body L: 161 · 158 · 174 · 88 (on `SCALE`, the dark one) · 106 · 120.
+Floor is 46–52, so the pale four are 3.1–3.8:1 light-on-dark. The Wolf is the
+deliberate hole in the pattern — the only opaque-reading, dark, horned, noisy
+model in a raid of pale perforated ghosts, because it is the only one of the six
+that was never a person.
+
+---
+
+### Ulduar — plate, on a grid
+
+`RUNEPLATE` on head, body and arms; pauldrons on every one; `FACE_VISOR` on
+four, so a machine's identity is the colour of one horizontal line. Trim is
+bronze rather than the room's amber lamps.
+
+```js
+leviathan: {        // Flame Leviathan — a vehicle with arms
+  head: hex('#ff8a3c'), headTile: T.RUNEPLATE, faceTile: T.FACE_VISOR,
+  body: hex('#4e4a44'), bodyTile: T.RUNEPLATE,
+  arm:  hex('#5a544c'), armTile: T.RUNEPLATE,
+  leg:  hex('#3a3630'), legTile: T.RUNEPLATE,
+  pauldrons: hex('#6e5a3a'), pauldronTile: T.RUNEPLATE,
+  emissive: 0.18,
+},
+razorscale: {       // Razorscale — plate over scale, bronze
+  head: hex('#c9a06a'), headTile: T.RUNEPLATE, faceTile: T.FACE_VISOR,
+  body: hex('#52483a'), bodyTile: T.RUNEPLATE,
+  arm:  hex('#a8834a'), armTile: T.SCALE,
+  leg:  hex('#6e5638'), legTile: T.SCALE,
+  pauldrons: hex('#8a6a3a'), pauldronTile: T.RUNEPLATE,
+  horns: hex('#c4b088'), hornTile: T.BONE,
+  emissive: 0.16,
+},
+ignis: {            // Ignis the Furnace Master — a furnace wearing plate
+  head: hex('#ff6a3c'), headTile: T.BASALT, faceTile: T.FACE_SLOT,
+  body: hex('#d8b09a'), bodyTile: T.BASALT,
+  arm:  hex('#5e5a54'), armTile: T.RUNEPLATE,
+  leg:  hex('#4a4640'), legTile: T.RUNEPLATE,
+  pauldrons: hex('#7a6a4a'), pauldronTile: T.RUNEPLATE,
+  emissive: 0.30,
+},
+kologarn: {         // Kologarn — stone, not machine; widest hitbox in the game
+  head: hex('#5a5654'), headTile: T.STONE, faceTile: T.FACE_BOSS,
+  body: hex('#4a4644'), bodyTile: T.STONE,
+  arm:  hex('#544e4a'), armTile: T.STONE,
+  leg:  hex('#3a3634'), legTile: T.STONE,
+  pauldrons: hex('#605a56'), pauldronTile: T.STONE,
+  emissive: 0.10,
+},
+thorim: {           // Thorim — the small fast one; the raid's only cool trim
+  head: hex('#9fd0ff'), headTile: T.RUNEPLATE, faceTile: T.FACE_VISOR,
+  body: hex('#40485a'), bodyTile: T.RUNEPLATE,
+  arm:  hex('#4a5468'), armTile: T.RUNEPLATE,
+  leg:  hex('#323a4a'), legTile: T.RUNEPLATE,
+  hat:  hex('#c9a860'), hatTile: T.GOLD,
+  pauldrons: hex('#7a8494'), pauldronTile: T.METAL,
+  emissive: 0.22,
+},
+yogg: {             // Yogg-Saron — no plate, no pauldrons, no right angles
+  head: hex('#9dffb4'), headTile: T.SPECTRAL, faceTile: T.FACE_SLOT,
+  body: hex('#7ad89a'), bodyTile: T.SPECTRAL,
+  arm:  hex('#8ae0a8'), armTile: T.SPECTRAL,
+  leg:  hex('#5aa878'), legTile: T.SPECTRAL,
+  alpha: 0.90, emissive: 0.26,
+},
+```
+
+Effective body L: 44 · 43 · 26 · 35 · 41 · 180.
+
+Yogg-Saron is the only boss in Ulduar with no pauldrons, no `RUNEPLATE` and no
+visor, and it is 3.5× the luminance of the other five. That is the whole trick:
+five machines train the eye for four fights, and the sixth is soft, pale,
+translucent and wrong. It costs nothing — the same tile Karazhan already needs —
+and it is the strongest single reveal in the set.
+
+---
+
+### Black Temple — one hot hue each, on the darkest bodies in the game
+
+Every one is `FACE_SLOT` with the hot hue in the `head` colour, so the eyes come
+out at exactly that hue and the head cube stays black. Nothing else on the model
+carries it except the horns and one pauldron.
+
+```js
+najentus: {         // High Warlord Naj'entus — cold blue, spined
+  head: hex('#4aa3ff'), headTile: T.SCALE, faceTile: T.FACE_SLOT,
+  body: hex('#1e2430'), bodyTile: T.SCALE,
+  arm:  hex('#252c3a'), armTile: T.SCALE,
+  leg:  hex('#161b24'), legTile: T.SCALE,
+  horns: hex('#6fb8ff'), hornTile: T.BONE,
+  pauldrons: hex('#262e3c'), pauldronTile: T.METAL,
+  emissive: 0.16,
+},
+supremus: {         // Supremus — the big one, second in
+  head: hex('#ff6a3c'), headTile: T.BASALT, faceTile: T.FACE_SLOT,
+  body: hex('#b09080'), bodyTile: T.BASALT,
+  arm:  hex('#a88878'), armTile: T.BASALT,
+  leg:  hex('#806860'), legTile: T.BASALT,
+  pauldrons: hex('#a08878'), pauldronTile: T.BASALT,
+  emissive: 0.28,
+},
+akama: {            // Shade of Akama — small, hooded, faded
+  head: hex('#a35cff'), headTile: T.SPECTRAL, faceTile: T.FACE_SLOT,
+  body: hex('#2e2440'), bodyTile: T.SPECTRAL,
+  arm:  hex('#3a2e50'), armTile: T.SPECTRAL,
+  leg:  hex('#221a30'), legTile: T.SPECTRAL,
+  hat:  hex('#1e1828'), hatTile: T.CLOTH,
+  alpha: 0.78, emissive: 0.18,
+},
+teron: {            // Teron Gorefiend — robed, reads as floating
+  head: hex('#8a5cff'), headTile: T.CLOTH, faceTile: T.FACE_SLOT,
+  body: hex('#241c30'), bodyTile: T.CLOTH,
+  arm:  hex('#2e2440'), armTile: T.CLOTH,
+  leg:  hex('#1a1424'), legTile: T.CLOTH,
+  hat:  hex('#1a1424'), hatTile: T.CLOTH,
+  horns: hex('#6a4a9a'), hornTile: T.BONE,
+  alpha: 0.86, emissive: 0.20,
+},
+bloodboil: {        // Gurtogg Bloodboil — swollen, the widest here
+  head: hex('#ff4a3c'), headTile: T.SCALE, faceTile: T.FACE_SLOT,
+  body: hex('#4a3028'), bodyTile: T.SCALE,
+  arm:  hex('#573a30'), armTile: T.SCALE,
+  leg:  hex('#33221c'), legTile: T.SCALE,
+  pauldrons: hex('#3a2420'), pauldronTile: T.SCALE,
+  emissive: 0.14,
+},
+illidan: {          // Illidan Stormrage — fel, and the darkest body in the game
+  head: hex('#9dff7a'), headTile: T.CLOTH, faceTile: T.FACE_SLOT,
+  body: hex('#1a1c18'), bodyTile: T.CLOTH,
+  arm:  hex('#212420'), armTile: T.CLOTH,
+  leg:  hex('#121410'), legTile: T.CLOTH,
+  horns: hex('#7ade5a'), hornTile: T.BONE,
+  pauldrons: hex('#262a24'), pauldronTile: T.METAL,
+  emissive: 0.18,
+},
+```
+
+Effective body L: 24 · 21 · 38 · 30 · 36 · 27. The room's floor is 25, so these
+are the one roster in the document that does *not* clear 1.8:1 — by design. A
+Black Temple boss is a hole in a dark room with two lit slots in it, and the
+outline you see is the outline of what it occludes. It only works because
+`rooms.md` made that room 80% near-black and gave it exactly one other colour.
+
+---
+
+### Firelands — pale on black
+
+Ash bodies on `BONE`, charcoal limbs, almost no emissive. The inversion of
+Molten Core, five tiers later, in the same element.
+
+```js
+bethtilac: {        // Beth'tilac — low and splayed; scale 1.10
+  head: hex('#ded2bc'), headTile: T.BONE, faceTile: T.FACE_CRAWLER,
+  body: hex('#e8dcc8'), bodyTile: T.SCALE,
+  arm:  hex('#4a3e36'), armTile: T.SCALE,
+  leg:  hex('#2e2622'), legTile: T.SCALE,
+  scale: 1.10, emissive: 0.08,
+},
+rhyolith: {         // Lord Rhyolith — a walking outcrop
+  head: hex('#ff8a4a'), headTile: T.BASALT, faceTile: T.FACE_SLOT,
+  body: hex('#cfc4b0'), bodyTile: T.BONE,
+  arm:  hex('#b09080'), armTile: T.BASALT,
+  leg:  hex('#a08070'), legTile: T.BASALT,
+  emissive: 0.14,
+},
+alysrazor: {        // Alysrazor — the lean one, gilded
+  head: hex('#ffd24a'), headTile: T.BONE, faceTile: T.FACE_SLOT,
+  body: hex('#d8cfb4'), bodyTile: T.BONE,
+  arm:  hex('#c8bfa4'), armTile: T.BONE,
+  leg:  hex('#4a4038'), legTile: T.BASALT,
+  horns: hex('#f0e8d0'), hornTile: T.BONE,
+  pauldrons: hex('#e8c86a'), pauldronTile: T.GOLD,
+  emissive: 0.12,
+},
+shannox: {          // Shannox — bone armour, masked
+  head: hex('#d8c8a8'), headTile: T.BONE, faceTile: T.FACE_MASK,
+  body: hex('#c8bca4'), bodyTile: T.BONE,
+  arm:  hex('#bfb298'), armTile: T.BONE,
+  leg:  hex('#3a3028'), legTile: T.BASALT,
+  horns: hex('#efe6cc'), hornTile: T.BONE,
+  pauldrons: hex('#ded2b8'), pauldronTile: T.BONE,
+  emissive: 0.10,
+},
+baleroc: {          // Baleroc — a column with a lit face
+  head: hex('#ff5a3c'), headTile: T.BASALT, faceTile: T.FACE_SLOT,
+  body: hex('#d0c4ac'), bodyTile: T.BONE,
+  arm:  hex('#423830'), armTile: T.BASALT,
+  leg:  hex('#302822'), legTile: T.BASALT,
+  emissive: 0.16,
+},
+ragnaros2: {        // Ragnaros, Firelord — the exception, and the reveal
+  head: hex('#ff3c14'), headTile: T.BASALT, faceTile: T.FACE_SLOT,
+  body: hex('#ffc4a0'), bodyTile: T.BASALT,
+  arm:  hex('#ffb494'), armTile: T.BASALT,
+  leg:  hex('#d8a088'), legTile: T.BASALT,
+  emissive: 0.38,
+},
+```
+
+Effective body L: 152 · 170 · 172 · 160 · 165 · 25. Floor is 23, so the first
+five run 6.5–7.4:1 — the widest boss-to-floor contrast in the document — and the
+sixth is 1.1:1 and carries itself entirely on emissive and crack colour. Five
+pale bosses then one black one, in the raid whose sky is on fire.
+
+---
+
+### Icecrown — rime
+
+`RUNEPLATE` bodies at mid value, `ICE` on horns, pauldrons and crowns, and
+nothing else in `ICE`. The appendages are a different material from the body in
+this raid and only in this raid, which is what makes them read as growth.
+
+```js
+marrowgar: {        // Lord Marrowgar — bone lattice, ice spikes
+  head: hex('#9aa4ae'), headTile: T.BONE, faceTile: T.FACE_HOLLOW,
+  body: hex('#7e8894'), bodyTile: T.BONE,
+  arm:  hex('#8a94a0'), armTile: T.BONE,
+  leg:  hex('#5e6672'), legTile: T.BONE,
+  horns: hex('#cfeaff'), hornTile: T.ICE,
+  pauldrons: hex('#b4d8ee'), pauldronTile: T.ICE,
+  emissive: 0.16,
+},
+deathwhisper: {     // Lady Deathwhisper — robed, smallest, translucent
+  head: hex('#c8b4e0'), headTile: T.CLOTH, faceTile: T.FACE_HOLLOW,
+  body: hex('#5a4a72'), bodyTile: T.CLOTH,
+  arm:  hex('#6a5a84'), armTile: T.CLOTH,
+  leg:  hex('#3a2e4e'), legTile: T.CLOTH,
+  hat:  hex('#3a2e4e'), hatTile: T.CLOTH,
+  horns: hex('#dcecff'), hornTile: T.ICE,
+  alpha: 0.85, emissive: 0.22,
+},
+saurfang: {         // Deathbringer Saurfang — plate soldier, red trim
+  head: hex('#d4564a'), headTile: T.RUNEPLATE, faceTile: T.FACE_SLOT,
+  body: hex('#8a94a4'), bodyTile: T.RUNEPLATE,
+  arm:  hex('#7e8898'), armTile: T.RUNEPLATE,
+  leg:  hex('#5e6674'), legTile: T.RUNEPLATE,
+  hat:  hex('#6e2420'), hatTile: T.CLOTH,
+  pauldrons: hex('#b4d8ee'), pauldronTile: T.ICE,
+  emissive: 0.14,
+},
+festergut: {        // Festergut — bloated, sickly, the widest here
+  head: hex('#9aae84'), headTile: T.SCALE, faceTile: T.FACE_SLOT,
+  body: hex('#b4c0a0'), bodyTile: T.SCALE,
+  arm:  hex('#a4b090'), armTile: T.SCALE,
+  leg:  hex('#6e7a5e'), legTile: T.SCALE,
+  pauldrons: hex('#cfe4ee'), pauldronTile: T.ICE,
+  emissive: 0.12,
+},
+sindragosa: {       // Sindragosa — dark ice under white rime; scale 1.06
+  head: hex('#9fd8ff'), headTile: T.BLACKICE, faceTile: T.FACE_HOLLOW,
+  body: hex('#cfe8ff'), bodyTile: T.BLACKICE,
+  arm:  hex('#bcdcff'), armTile: T.BLACKICE,
+  leg:  hex('#8fb4d8'), legTile: T.BLACKICE,
+  horns: hex('#e8f6ff'), hornTile: T.ICE,
+  pauldrons: hex('#d8ecff'), pauldronTile: T.ICE,
+  alpha: 0.88, scale: 1.06, emissive: 0.24,
+},
+lichking: {         // The Lich King — crowned, upright, the last one; scale 1.04
+  head: hex('#cfe0f0'), headTile: T.RUNEPLATE, faceTile: T.FACE_SLOT,
+  body: hex('#7e8ea8'), bodyTile: T.RUNEPLATE,
+  arm:  hex('#8a9ab4'), armTile: T.RUNEPLATE,
+  leg:  hex('#5a6880'), legTile: T.RUNEPLATE,
+  hat:  hex('#dcf0ff'), hatTile: T.ICE,
+  horns: hex('#cfe8ff'), hornTile: T.ICE,
+  pauldrons: hex('#6e7e96'), pauldronTile: T.RUNEPLATE,
+  scale: 1.04, emissive: 0.30,
+},
+```
+
+Effective body L: 115 · 80 · 89 · 128 · 43 · 85. Floor is 33, so five of the six
+are 2.4–3.9:1 light-on-dark. Sindragosa is 1.3:1 and is the exception the whole
+raid is built around: a dark, translucent body carrying the brightest trim in the
+game (ice at L 200+ across horns and both pauldrons), so what you track is the
+rime and not the body. She is also the only boss whose *silhouette* is mostly
+`ICE`, which is why the Lich King — who follows her — puts his ice in a crown
+instead, on a solid mid-value body. Two frost bosses back to back had to differ
+by construction, not by hue, because `mechanics.md` gives them the same
+telegraph colour.
 
 ---
 
 ## 3. Silhouette and scale
 
-Height and hitbox width per boss. Three rules generated the table:
+Height and hitbox width per boss. *Drawn* and *Span* include `scale`. Three rules generated the table:
 
 1. **`height ≤ 5.3`.** Drawn height is `1.094 × height`, and past ~5.8 blocks
    drawn the head leaves the frame at melee range.
@@ -331,7 +825,7 @@ would just be a second height field.
 | 5 | Gurtogg Bloodboil | 4.4 | 4.8 | 1.60 | 2.5 | swollen |
 | 6 | Illidan Stormrage | 4.6 | 5.0 | 1.10 | 2.6 | tall, narrow, horned |
 | **Firelands** | mean 4.4 | | | | | low and wide |
-| 1 | Beth'tilac | 3.6 | 3.9 | 1.55 | 2.1 | low, splayed, `scale 1.10` |
+| 1 | Beth'tilac | 3.6 | 4.3 | 1.55 | 2.3 | low, splayed, `scale 1.10` |
 | 2 | Lord Rhyolith | 5.0 | 5.5 | 1.80 | 2.9 | a walking outcrop |
 | 3 | Alysrazor | 4.2 | 4.6 | 1.00 | 2.4 | the lean one |
 | 4 | Shannox | 4.0 | 4.4 | 1.35 | 2.3 | armoured hunter |
@@ -342,8 +836,8 @@ would just be a second height field.
 | 2 | Lady Deathwhisper | 3.4 | 3.7 | 0.80 | 1.9 | robed, smallest |
 | 3 | Deathbringer Saurfang | 4.0 | 4.4 | 1.25 | 2.3 | plate soldier |
 | 4 | Festergut | 4.2 | 4.6 | 1.70 | 2.4 | bloated |
-| 5 | Sindragosa | 5.0 | 5.5 | 1.45 | 2.9 | tall, `scale 1.06` |
-| 6 | The Lich King | 4.6 | 5.0 | 1.20 | 2.6 | upright, crowned, `scale 1.04` |
+| 5 | Sindragosa | 5.0 | 5.8 | 1.45 | 3.0 | tall, `scale 1.06` |
+| 6 | The Lich King | 4.6 | 5.2 | 1.20 | 2.7 | upright, crowned, `scale 1.04` |
 
 The three `scale` uses: Beth'tilac at 1.10 to get a spread, low-slung read out of
 a model whose proportions are fixed; Sindragosa at 1.06 and the Lich King at 1.04
@@ -559,13 +1053,247 @@ reclaim anything.
 
 ## 5. Fight effects
 
-*(Written in the next section of this document — see below.)*
+`mechanics.md` §2 already fixed what a telegraph *means*: three colours keyed to
+the action (`#ff7a3c` burst, `#8fe3ff` linger, `#b06cff` aimed), three shapes,
+three durations. This section only fixes what it *looks like*, and it adds no
+colours and no shapes of its own.
+
+The rule that keeps flavour and safety separate, and the reason a boss can be
+red while its attacks are violet:
+
+> **The danger colour is on the ground. The boss's own colour is in the air.**
+
+Every ground ring, every zone and every shockwave uses the mechanic's colour
+class. Every mote, gib, projectile and trail uses the boss's `color` from
+`raids.js`. The player reads the floor to survive and reads the air to know
+what they are fighting, and neither read is ever contaminated by the other.
+
+### 5.1 Per mechanic
+
+Everything below is a call into `effects.js` as it stands unless marked
+**[new]**.
+
+**slam** — `Telegraph` at 4.5 / 8 / 11 in `#ff7a3c`, then `game.explode` in the
+same amber, which already spawns a `Shockwave`. `Shockwave.draw` is doing the
+work here and it is already good: three lagging rings of leaning blocks plus a
+column of light at the origin for the first 55%. Add nothing to it. The only
+per-raid layer is debris — 10 `Gib`s thrown from the impact ring at the boss's
+`bodyTile` and `body` colour, so a Molten Core slam throws basalt and an
+Icecrown slam throws ice.
+
+**breath** — no ground telegraph exists for a cone and `mechanics.md` §1
+deliberately did not add one. The wind-up is drawn instead: `game.burst(x,
+eyeY, z, 6, boss.color)` every 0.2 s for the 1.4 s charge — **42 motes total**,
+gathering at head height where the stream will come from — plus the amber
+`impactFlash(0.18)` that every cast gets. Then 5 volleys × 6 `Projectile`s,
+`speed: 22, size: 0.34, gravity: 0, life: 1.0` in the boss's colour. At 22
+blocks/s a shot crosses the 18-block reach in 0.82 s, which is slow enough to
+watch and thick enough to see edge-on — R3.
+
+**adds** — three violet `Telegraph` rings, radius 1.6, 1.0 s, at the three spawn
+points 3 blocks from the boss. On each spawn, `game.burst(x, y + 0.6, z, 14,
+'#b06cff')` — the Broodmother's existing line, unchanged. The add itself is a
+normal mob and looks like one; the violet is the only thing that says it is
+about to appear.
+
+**charge** — two violet `Telegraph`s, radius 2.5, one on the boss and one on the
+player. Two rings with nothing between them read as a line and cost no new
+drawing code, exactly as `mechanics.md` §4.4 says. During the 1.1 s travel, 2
+`Particle`s per frame at the boss's feet, boss colour, `gravity: 0, life: 0.35,
+size: 0.22` — a wake, which is the only thing that makes a fast-moving voxel
+read as fast rather than as teleporting. On contact, a `Shockwave` at radius 2.5
+in violet, duration 0.3.
+
+**bombs** — one violet `Telegraph` under the player, radius 4.5, 1.5 s, then
+`game.explode` in violet. The staggered second and third bombs are the same
+thing 0.6 s apart. Nothing else: this is the mechanic whose whole value is that
+the picture is simple and the boundary is honest, and any extra particle in the
+middle of the ring makes it harder to see where the edge is.
+
+**frost** — ice-blue `Telegraph`, 1.1 s, then `Zone({radius: 4.2, duration: 8,
+color: '#8fe3ff', slow: 0.35})`. `Zone.draw`'s wobbling ring plus inner scatter
+is already the right read for "the floor is gone here". On landing, 10
+`Particle`s with `gravity: 20` and **[new]** a `tile` argument so they can be
+drawn on `T.ICE` instead of `T.BLANK` — shards, not sparks. That is a single
+optional constructor parameter and one line in `Particle.draw`; see §5.3.
+
+**shadow** — violet `Telegraph`, radius 9, 2.2 s, centred on the player, then
+`game.explode` in violet plus `applyDot`. While the dot is up: one `Particle` at
+the player's feet every 0.25 s, violet, `gravity: -2` so it rises, `life: 0.8` —
+**24 motes over the 6 s**. It is the only persistent visual the player wears,
+and it has to be sparse: a dot indicator that fills the bottom of the frame is
+the thing that hides the next telegraph.
+
+**enrage** — no new visual. `checkEnrage` already fires `roar`, a banner, 0.5
+shake and a 40-mote burst at `#ff5a3c`. Two additions, both one line: the boss's
+aura ring brightens (`drawAuras` already reads `m.enraged`), and the boss's own
+`emissive` steps up by 0.08, **clamped to the 0.40 ceiling from §0** — Geddon
+and the Firelord are already at 0.38 and must not go past it. `enrageNova`'s
+three rings are amber like every other burst.
+
+### 5.2 The per-raid flavour layer
+
+One row per raid, and it is entirely gibs and motes — nothing here touches a
+telegraph.
+
+| Raid | Gib tile | Gib colour | Mote colour | Reads as |
+| --- | --- | --- | --- | --- |
+| Zul'Gurub | `T.BONE` | boss `body` | boss `color` | splintered bone and hide |
+| Molten Core | `T.BASALT` | boss `body` | `#ff8a3c` | cooling clinker |
+| Karazhan | `T.SPECTRAL` | boss `body` | boss `color` | it comes apart rather than breaks |
+| Ulduar | `T.RUNEPLATE` | boss `body` | `#ffa62b` | shed plate |
+| Black Temple | `T.SCALE` | boss `body` | boss `color` | dark chunks, lit trim |
+| Firelands | `T.BONE` | boss `body` | `#ffd24a` | ash and cinders |
+| Icecrown | `T.ICE` | boss `pauldrons`, else `horns` | boss `color` | rime shatters off first |
+
+Two of the seven throw the *trim* rather than the body: Icecrown's gibs are ice
+because ice is what a player sees on that roster, and Karazhan's are `SPECTRAL`
+so they are perforated even as debris. `Gib` already takes a `tile` argument
+(`effects.js:147`) and already collides, bounces, settles and fades, so this
+whole table is data.
+
+### 5.3 What actually needs new code
+
+Three things, and only one of them is a new class.
+
+1. **The boundary ring in `Telegraph.draw`.** Already owed by `mechanics.md`
+   §2.4 and already costed there at five lines. Every radius in that document
+   and every telegraph in this one assumes it. Without it a raid telegraph is
+   dishonest for a full second.
+2. **A `tile` argument on `Particle`.** One optional constructor parameter,
+   defaulting to `T.BLANK`, and one substitution in `draw`. It is what turns
+   frost motes into shards and Firelands motes into cinders, and without it
+   every particle in all forty-two fights is the same untextured cube.
+3. **A `Core` class** — §6. Modelled on `Potion`, which already does fall,
+   settle, bob, spin, halo and a rising column of motes.
+
+Nothing else. No new telegraph shape, no cone, no beam, no vertical primitive,
+no per-part emissive.
+
+### 5.4 The draw-call budget, which is the real constraint
+
+`Telegraph.draw` runs `segs = max(12, round(radius × 6))` and draws **two boxes
+per segment, every frame, for the whole delay**. At the raid radii that is:
+
+| Mechanic | Radius | Segs | Boxes/frame | Duration |
+| --- | --- | --- | --- | --- |
+| slam ring 3 | 11 | 66 | 132 | 0.5 s |
+| shadow | 9 | 54 | 108 | 2.2 s |
+| bombs | 4.5 | 27 | 54 | 1.5 s |
+| charge (×2) | 2.5 | 15 | 60 | 0.9 s |
+
+`Shockwave` is worse per frame but far shorter: at radius 11 it is
+`max(14, 77) × 3 = 231` boxes for 0.35 s, plus the column.
+
+Shadow is the problem — 108 draw calls a frame for 2.2 seconds, on a phone,
+while a boss and up to seven adds are also drawing. **Cap the segment count at
+56** (`segs = min(round(radius × 6), 56)`). At radius 9 that is a mote every
+1.01 blocks instead of every 1.05 — the ring is a dotted ring either way, since
+each block is only 0.28 wide — and at radius 11 it saves 20 boxes a frame for no
+visible change. One `Math.min`.
+
+The wider rule this implies, and it is worth stating because it is the one
+budget a raid fight can actually blow:
+
+> **No more than 250 effect boxes on screen at once.** One telegraph (≤112),
+> one shockwave settling (≤231 for 0.35 s), one zone (≤44), and the motes.
+> `mechanics.md` §2.6 already forbids two mechanics resolving within 0.8 s of
+> each other, which is what makes this budget hold — the pacing rule and the
+> draw-call rule are the same rule seen from two sides.
 
 ---
 
 ## 6. The Core drop
 
-*(Written in the next section of this document — see below.)*
+A boss dies and drops a Core. A Core is *permission* — it unlocks a tier's gear
+slot for purchase, it is not the item — and there is exactly one per boss, which
+makes it the single most important object in a raid and the one thing in this
+document that has never been drawn before.
+
+### What it looks like
+
+**One colour for all forty-two: `#ffe9a8`, emissive 1.0.**
+
+Not the raid's accent, not the boss's colour, not a danger colour. A Core looks
+identical in Zul'Gurub at level 1 and in Icecrown at 60, so a player learns the
+object once and never has to ask again what the glowing thing is. It is also the
+only pale-gold emissive object in any of the seven rooms — `rooms.md` gives the
+floor-level accent to gold in Zul'Gurub and bone-gold in Icecrown, but both of
+those are *architecture*, static, and at the Dais rim, while this is at chest
+height, in the middle, and moving.
+
+The shape says which slot, in the fixed `CORE_ORDER` from `armor.js`:
+
+| # | Slot | Shape | Boxes |
+| --- | --- | --- | --- |
+| 1 | weapon | one tall thin bar, 0.12 × 0.85 × 0.12, pitched 0.4 rad | 1 |
+| 2 | chest | one wide slab, 0.52 × 0.34 × 0.18 | 1 |
+| 3 | helm | a 0.36 cube under a 0.50 × 0.07 × 0.50 brim | 2 |
+| 4 | boots | two 0.18 × 0.22 × 0.30 blocks, side by side | 2 |
+| 5 | ring | eight 0.09 cubes on a circle of radius 0.24, spinning | 8 |
+| 6 | trinket | three 0.26 cubes at 30° yaw offsets, counter-spinning | 3 |
+
+All on `T.CRYSTAL` — the tile the `Potion` already uses for the same job, faceted
+and unnoisy, so it reads as a made object rather than a rock. Around it, the same
+three supporting elements `Potion.draw` uses and for the same reasons:
+
+- a **ground halo**, `0.9 × 0.002 × 0.9` on `T.BLANK` at `alpha: 0.22`, so it
+  reads on a dark floor;
+- a **column of three rising motes**, 0.08 cubes, cycling upward over 0.9
+  blocks, which is what actually catches the eye at range;
+- a **bob and spin** — `sin(spin × 1.6) × 0.09` vertical, `spin` on yaw.
+
+Plus one thing the potion does not have: a **cage** of four `T.GOLD` bars,
+0.05 × 0.55 × 0.05, at the corners of a 0.42 square, counter-rotating on yaw.
+Four bars, not eight — enough to say "contained", cheap enough not to hide the
+shape inside. Total: **11–18 boxes per frame**, against the potion's 6.
+
+### How it drops without stopping the fight
+
+The boss is dead, but adds may not be, and the player may still be moving. The
+sequence is 2 seconds long and never takes control:
+
+```
+t = 0.00   boss dies. Existing death path: 14 Gibs on the raid's gib tile
+           (§5.2), a 40-mote burst in the boss's colour, screenShake 0.6,
+           sfx('explode') then sfx('roar').
+t = 0.35   the Core appears inside the collapsing gibs, at the boss's chest
+           height, at scale 0.3.
+t = 0.35   → 0.95  it rises 1.2 blocks and grows to full size, spinning up.
+           The gibs are still falling underneath it — the Core comes out of
+           the wreck rather than replacing it.
+t = 0.95   it settles at head height and begins to bob. game.notify with
+           the raid name and the slot, 2.6 s, using the existing banner.
+t = 2.00   auto-collected, or earlier on touch, whichever comes first.
+```
+
+Four rules keep it out of the way:
+
+1. **It is at head height, not on the floor.** Everything dangerous in this game
+   is on the floor (R2). Putting the reward at eye level means it is never
+   mistaken for a hazard and never hidden behind a corpse or a zone.
+2. **It never expires.** `Potion` blinks out over its last four seconds because
+   an arena floor fills up; a Core is one object per fight and a timer on it
+   would add urgency to the one moment in a raid that should not have any. It
+   is the only object in the game with `lifetime = Infinity`.
+3. **It auto-collects.** No walking to it, no pickup radius to miss with a
+   thumb. Touching it early just skips the wait. There is no version of this
+   where a player finishes a boss and then loses the reward to a misread.
+4. **The banner is `game.notify`,** the same one that already says
+   "COLOSSUS ENRAGES". No modal, no camera lock, no pause. If three adds are
+   still alive the player reads six words in the top third of the screen and
+   keeps fighting, and the Armoury will still be there afterwards.
+
+### Why it is not more than this
+
+The temptation is a slow-motion moment, a dimmed room, a camera push. All three
+require code the renderer does not have (there is no camera controller for
+cutscenes, no time scale, no post-process), all three take control away on a
+touchscreen where the player's thumb is already on the stick, and all three
+would have to be skippable by the fifth time — which is the tenth minute of the
+first raid. A glowing object that rises out of the wreck, says what it is, and
+lets itself be taken is the whole ceremony the moment can afford, and it is the
+version that is still good on the forty-second boss.
 
 ---
 
@@ -580,15 +1308,19 @@ than colour.
 ### R1 — The player owns brightness; the boss owns mass
 
 Player effects: emissive 0.85–1.0, small, fast, short-lived.
-Boss bodies: emissive ≤ 0.40, large, slow.
-Boss effects: emissive 0.55–0.75, large, slow, and **ground-anchored**.
+**Boss bodies: emissive ≤ 0.40**, large, slow, matte, textured.
 
-Nothing a boss does is ever as bright as what the player does. That single
-ordering means that in a confused moment — three adds, a nova going off, a
-channel up — the brightest thing on screen is always yours, so the frame is
-always readable as "my stuff, then their stuff, then the room". Getting this
-backwards is how a boss fight becomes unplayable on a phone, and it is a
-one-number fix.
+Note what this rule does *not* say. Boss telegraphs and zones go through the
+same `Telegraph`, `Zone` and `Shockwave` classes the player's own skills use, at
+the same emissive 0.7–1.0, and they should — a warning that is dimmer than a
+spell is a warning nobody reads. The separation between the two is R2, R3 and
+R4: plane, speed and colour class. Brightness separates the *boss* from its own
+effects, not the boss from the player.
+
+So the value ordering in any frame is: player effects and enemy telegraphs at
+the top, both at 0.85–1.0; enemy bodies in the middle at ≤ 0.40; the room at the
+bottom, matte and dark below the eyeline per `rooms.md` §3. Three bands, and a
+boss never climbs out of its own.
 
 ### R2 — Enemy danger is flat on the floor; player damage is in the air
 

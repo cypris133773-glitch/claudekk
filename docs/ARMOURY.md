@@ -201,10 +201,19 @@ the rest comes from the arena and from quests.
 **Progress is per class**, like levels, talents and gear. Only gold is shared.
 
 **Two gates, both of which must be open.** The previous raid must be cleared
-*and* its set fully bought, and the character must be at the tier's level: T0
-from 1, T1 from 11, T2 from 21, T3 from 31, T4 from 41, T5 from 51, T6 at 60.
-A level-45 Warrior who has cleared T4 and bought the set still waits until 51
-for Firelands.
+*and* its set fully bought, and the character must be at the raid's level: T0
+from **8**, T1 from 11, T2 from 21, T3 from 31, T4 from 41, T5 from 51, T6 at
+60. A level-45 Warrior who has cleared T4 and bought the set still waits until
+51 for Firelands.
+
+The first raid is the one exception to "the raid opens where the tier opens",
+and it is measured rather than chosen. T0 *gear* is buyable from level 1 and
+that has not moved. But a level-1 character has two skills, no talents and
+nothing bought, and `balance-sim --raid 0` at that level is a column of wipes
+across all nine classes. Level 8 is where the second pair of skills and a
+handful of talent points have landed — still inside the band T0 gear covers,
+and the same simulation there wins 42 of 54 fights with the losses on the last
+two bosses, which is the shape a raid is supposed to have.
 
 **A boss is consumed by killing it, not by fighting it.** Wiping is free and the
 attempt can be repeated as often as needed; only the kill removes the boss from

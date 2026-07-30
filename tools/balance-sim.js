@@ -15,6 +15,7 @@ import { Game } from '../src/game/game.js';
 import { CLASSES, CLASS_BY_ID, defaultLoadout, resolveLoadout } from '../src/data/classes.js';
 import { GEAR_SLOT_IDS, MAX_TIER } from '../src/data/armor.js';
 import { PERMANENT, talentPointsForBestWave } from '../src/data/permanent.js';
+import { talentPointsForLevel } from '../src/data/levels.js';
 import { RAIDS } from '../src/data/raids.js';
 import { forwardVec } from '../src/core/math.js';
 import { LAYOUT_NAMES } from '../src/world/world.js';
@@ -36,12 +37,12 @@ const stubAudio = {
   play() {}, startMusic() {}, stopMusic() {}, setMusicIntensity() {}, ensure() {},
 };
 
-function stubProfile(forgeLevel = 0, gearTier = -1) {
+function stubProfile(forgeLevel = 0, gearTier = -1, level = SIM_LEVEL) {
   const classes = {};
   for (const c of CLASSES) {
     classes[c.id] = {
       talents: {}, bestWave: 0, kills: 0, runs: 0, mastery: 0,
-      loadout: defaultLoadout(c),
+      loadout: defaultLoadout(c, level),
     };
   }
   const permanent = {};
@@ -71,10 +72,10 @@ function stubProfile(forgeLevel = 0, gearTier = -1) {
     forgeLevels: (id) => (classes[id].forge || (classes[id].forge = {})),
     gear: (id) => (classes[id].gear || (classes[id].gear = {})),
     raidState: (id) => (classes[id].raid || (classes[id].raid = { killed: {} })),
-    level: () => SIM_LEVEL,
+    level: () => level,
     // The bot always fights with the default kit; unlockable skills are a
     // player choice, and simulating them would measure the harness's taste.
-    loadout: (cls) => resolveLoadout(cls, classes[cls.id].loadout, SIM_LEVEL),
+    loadout: (cls) => resolveLoadout(cls, classes[cls.id].loadout, level),
     finishRun() {},
     save() {},
   };
@@ -246,10 +247,13 @@ if (raidIdx >= 0) {
 
 function simulateRaid(classId, raid, bossIndex) {
   const cls = CLASS_BY_ID[classId];
-  // What the gate actually asks for: the full previous tier's set. Simulating
-  // a raid against a naked character measures nothing the game will ever run.
-  const profile = stubProfile(0, Math.max(0, raid.tier - 1));
-  autoSpendTalents(profile, cls, talentPointsForBestWave(20 + raid.tier * 6));
+  // Exactly what the gate asks for and nothing more: the character is at the
+  // raid's own level, carrying the full previous tier's set, with the talent
+  // points and the skill pool that level actually buys. A tier-0 raider is
+  // level 1 with two skills, not a level-60 character in starter gear — and
+  // measuring the second one tells you nothing about the first.
+  const profile = stubProfile(0, Math.max(0, raid.tier - 1), raid.level);
+  autoSpendTalents(profile, cls, talentPointsForLevel(raid.level));
   const game = new Game(stubRenderer, stubAudio, profile);
   game.startRaid(cls, raid, bossIndex);
 
@@ -274,7 +278,9 @@ if (raidTier >= 0) {
   const raid = RAIDS.find((r) => r.tier === raidTier);
   if (!raid) { console.error(`no raid at tier ${raidTier}`); process.exit(1); }
   const targets = args.find((a) => CLASS_BY_ID[a]) ? [args.find((a) => CLASS_BY_ID[a])] : CLASSES.map((c) => c.id);
-  console.log(`\n${raid.name} — tier ${raid.tier}, entered in a full T${Math.max(0, raid.tier - 1)} set\n`);
+  console.log(`\n${raid.name} — tier ${raid.tier}, at level ${raid.level} `
+    + `in a full T${Math.max(0, raid.tier - 1)} set, `
+    + `${talentPointsForLevel(raid.level)} talent points\n`);
   console.log('boss                        ' + targets.map((t) => t.slice(0, 5).padStart(6)).join(''));
   console.log('-'.repeat(28 + targets.length * 6));
   for (let bi = 0; bi < raid.bosses.length; bi++) {

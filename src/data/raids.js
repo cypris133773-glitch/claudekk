@@ -159,7 +159,13 @@ export function phaseFor(hpFraction) {
  */
 export const RAIDS = [
   {
-    id: 'zulgurub', tier: 0, level: 1,
+    // Level 8, not 1. The gear tier opens at 1 — that part is the Armoury's
+    // and it has not moved — but a level-1 character has two skills, no
+    // talents and nothing bought, and putting a raid boss in front of them is
+    // offering a fight the game knows they cannot win. Eight is where the
+    // second pair of skills and a handful of talent points have landed, still
+    // inside the band T0 gear covers.
+    id: 'zulgurub', tier: 0, level: 8,
     name: "Zul'Gurub", blurb: 'A drowned troll city, thick with poison and old blood.',
     theme: { sky: '#2b3a22', fog: '#3d5230', stone: '#4a5a3a', accent: '#8ce06a', lava: false },
     trial: 'bombs',

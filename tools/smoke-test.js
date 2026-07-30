@@ -1544,8 +1544,13 @@ check('a raid needs level, the previous clear, and the previous set', async () =
   const st = emptyRaidState();
   const fullT0 = Object.fromEntries(CORE_ORDER.map((s) => [s, 0]));
 
-  // The first raid asks for nothing but level 1.
-  assert(raidAccess(t0, { level: 1, raidState: st, gear: {} }).ok, 'the first raid is gated');
+  // The first raid asks for a level and nothing else — no previous clear, no
+  // previous set, because there is no tier below it. It does not open at level
+  // 1: a character with two skills and no talents has no fight there.
+  assert(!raidAccess(t0, { level: 1, raidState: st, gear: {} }).ok,
+    'the first raid opens at level 1');
+  assert(raidAccess(t0, { level: t0.level, raidState: st, gear: {} }).ok,
+    'the first raid is gated on something other than level');
 
   // Level alone is not enough.
   assert(!raidAccess(t1, { level: 5, raidState: st, gear: fullT0 }).ok, 'level gate is open too early');
