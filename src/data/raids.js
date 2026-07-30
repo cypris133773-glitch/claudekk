@@ -170,7 +170,7 @@ export const RAIDS = [
     // second pair of skills and a handful of talent points have landed, still
     // inside the band T0 gear covers.
     id: 'zulgurub', tier: 0, level: 8,
-    name: "Zul'Gurub", blurb: 'A drowned troll city, thick with poison and old blood.',
+    name: "Zul'Craftub", blurb: 'A drowned troll city, thick with poison and old blood.',
     theme: { sky: '#1e3016', fog: '#3f5c33', stone: '#3a4234', accent: '#c9a227', hazard: '#6edc3c', lava: false, fogNear: 26, fogFar: 62 },
     trial: 'bombs',
     bosses: [
@@ -198,7 +198,7 @@ export const RAIDS = [
   },
   {
     id: 'karazhan', tier: 2, level: 21,
-    name: 'Karazhan', blurb: 'A haunted tower where the rooms do not stay where you left them.',
+    name: 'Karacraft', blurb: 'A haunted tower where the rooms do not stay where you left them.',
     theme: { sky: '#140f22', fog: '#2a2036', stone: '#3a3348', stoneAlt: '#2e2840', accent: '#ffbf6a', hazard: '#d0491a', lava: false, fogNear: 30, fogFar: 70 },
     trial: 'shadow',
     bosses: [
@@ -212,7 +212,7 @@ export const RAIDS = [
   },
   {
     id: 'ulduar', tier: 3, level: 31,
-    name: 'Ulduar', blurb: 'Titan machinery, still running, still guarding what it was told to.',
+    name: 'Craftuar', blurb: 'Titan machinery, still running, still guarding what it was told to.',
     theme: { sky: '#0e1a26', fog: '#1c3040', stone: '#3e4048', stoneHi: '#949aa0', accent: '#ffa62b', accentHi: '#7ef0ff', hazard: '#ff8a3c', lava: true, fogNear: 34, fogFar: 86 },
     trial: 'slam',
     bosses: [
@@ -254,7 +254,7 @@ export const RAIDS = [
   },
   {
     id: 'icecrown', tier: 6, level: 60,
-    name: 'Icecrown Citadel', blurb: 'A frost keep at the top of the world, and the throne inside it.',
+    name: 'Craftcrown Citadel', blurb: 'A frost keep at the top of the world, and the throne inside it.',
     theme: { sky: '#0a1424', fog: '#16304c', stone: '#1a2230', stoneHi: '#b9dcf0', accent: '#e8d6a0', hazard: '#cfeeff', lava: false, fogNear: 28, fogFar: 78 },
     trial: 'frost',
     bosses: [

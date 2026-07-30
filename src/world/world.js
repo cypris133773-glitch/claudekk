@@ -851,14 +851,14 @@ export class World {
  * more of a room's mood than its blocks do.
  */
 const RAID_PALETTES = [
-  // Zul'Gurub: green-black stone under water, gold decoration. The green is
+  // Zul'Craftub: green-black stone under water, gold decoration. The green is
   // reserved for poison, so decoration cannot be green anywhere in this room.
   { floor: B.MOSSY, accent: B.DARKSTONE, wall: B.COBBLE, trim: B.GOLD, deco: B.LEAVES, hazard: null },
   // Molten Core: grey stone, and the light comes from the lake underneath it.
   { floor: B.STONE, accent: B.COBBLE, wall: B.DARKSTONE, trim: B.METAL, deco: B.OBSIDIAN, hazard: null },
-  // Karazhan: a broken ballroom. Wood and dark stone, lit by candles.
+  // Karacraft: a broken ballroom. Wood and dark stone, lit by candles.
   { floor: B.PLANK, accent: B.DARKSTONE, wall: B.BRICK, trim: B.LOG, deco: B.GLOW, hazard: null },
-  // Ulduar: the machine hall, and the only right-angled room in the set.
+  // Craftuar: the machine hall, and the only right-angled room in the set.
   { floor: B.METAL, accent: B.DARKSTONE, wall: B.METAL, trim: B.RUNE, deco: B.CRYSTAL, hazard: null },
   // Black Temple: black stone and one green fire. The darkest room in the game.
   { floor: B.DARKSTONE, accent: B.OBSIDIAN, wall: B.OBSIDIAN, trim: B.RUNE, deco: B.GLOW, hazard: null },
@@ -867,7 +867,7 @@ const RAID_PALETTES = [
   // however well it would suit the room. `hazard` is null because this room's
   // interior lays its own cracks and two hazard passes tile the floor.
   { floor: B.BASALT, accent: B.OBSIDIAN, wall: B.BASALT, trim: B.OBSIDIAN, deco: B.GLOW, hazard: null },
-  // Icecrown: dark ice underfoot, pale ice overhead. The only room whose walls
+  // Craftcrown: dark ice underfoot, pale ice overhead. The only room whose walls
   // are brighter than its floor, which is what makes it read as built rather
   // than carved — and the dark floor is what keeps everything the player casts
   // sitting on top of it rather than in it.
@@ -888,7 +888,7 @@ const RAID_PALETTES = [
  * the room is wide, so distance can never break it and only geometry can.
  */
 const RAID_INTERIORS = [
-  // Zul'Gurub — eight fallen idols. Five stand and three lie where they fell,
+  // Zul'Craftub — eight fallen idols. Five stand and three lie where they fell,
   // and the toppled ones are the cover you actually use: a three-high mass a
   // boss walks around rather than over.
   (w, { P, FLOOR_Y, cx, cz }) => {
@@ -929,7 +929,7 @@ const RAID_INTERIORS = [
     }
   },
 
-  // Karazhan — a ballroom, and a hall is defined by its rhythm. Sixteen
+  // Karacraft — a ballroom, and a hall is defined by its rhythm. Sixteen
   // columns on a ring with lintels between them, and a chequered floor so a
   // shockwave marching outward has something to march across.
   (w, { P, FLOOR_Y, cx, cz }) => {
@@ -967,7 +967,7 @@ const RAID_INTERIORS = [
     }
   },
 
-  // Ulduar — the machine hall, and the only right-angled room in the set.
+  // Craftuar — the machine hall, and the only right-angled room in the set.
   // Straight orange lines of molten metal on cold grey plate is the most
   // readable hazard in the game and it costs nothing new.
   (w, { P, FLOOR_Y, cx, cz }) => {
@@ -1044,7 +1044,7 @@ const RAID_INTERIORS = [
     }
   },
 
-  // Icecrown — the frost castle. Eight buttresses stepping off the wall and
+  // Craftcrown — the frost castle. Eight buttresses stepping off the wall and
   // eight ribs springing from their tops, open between them so you see sky
   // through the vault. A closed dome would cost four times as much and would
   // shut the room in.

@@ -819,8 +819,8 @@ export class Menus {
   /**
    * The RAID button's hint. The number leads and the raid's name follows: on a
    * narrow phone the hint is clipped to one line, and the half worth keeping is
-   * the half that changes. "Icecrown Citadel · 5 of 6" truncates to the name of
-   * a place; "5 of 6 · Icecrown Cit…" truncates to the answer.
+   * the half that changes. "Craftcrown Citadel · 5 of 6" truncates to the name of
+   * a place; "5 of 6 · Craftcrown Ci…" truncates to the answer.
    */
   raidHint(classId) {
     const st = this.profile.raidState(classId);
