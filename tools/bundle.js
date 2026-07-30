@@ -52,6 +52,17 @@ function transform(file, src) {
   // Bare side-effect imports are not used, but drop them defensively.
   out = out.replace(/^import\s*['"][^'"]+['"]\s*;?/gm, '');
 
+  // Re-exports are not supported, and the check has to come *before* the
+  // `export { ... }` rewrite below — otherwise that rewrite happily eats the
+  // braces and leaves `from './x.js';` behind as a bare statement. The bundle
+  // then builds clean and throws a SyntaxError in the browser, which is the
+  // worst failure mode a build step has: green here, blank page there.
+  const reexport = out.match(/^export\s*(\{[^}]*\}|\*)\s*from\s*['"][^'"]+['"]/m);
+  if (reexport) {
+    throw new Error(`${file}: re-export is not supported — "${reexport[0]}". `
+      + 'Import the name and export it again as a const.');
+  }
+
   // export { a, b };  -> record names, drop the statement
   out = out.replace(/^export\s*\{([^}]*)\}\s*;?/gm, (_m, names) => {
     for (const n of names.split(',')) {

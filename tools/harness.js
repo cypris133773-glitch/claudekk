@@ -7,6 +7,7 @@
 // silently, as each copy drifted.
 
 import { CLASSES, resolveLoadout, defaultLoadout } from '../src/data/classes.js';
+import { GEAR_SLOT_IDS } from '../src/data/armor.js';
 
 /**
  * `opts.loadout` overrides every class's equipped skills (used by the
@@ -23,6 +24,7 @@ export function makeHarness(opts = {}) {
     play() {}, startMusic() {}, stopMusic() {}, setMusicIntensity() {}, ensure() {},
   };
 
+  const level = opts.level || 60;
   const classes = {};
   for (const c of CLASSES) {
     classes[c.id] = {
@@ -30,6 +32,12 @@ export function makeHarness(opts = {}) {
       bestWave: opts.bestWave || 0,
       kills: 0, runs: 0, mastery: 0,
       loadout: opts.loadout || defaultLoadout(c),
+      // `opts.gear` is a tier every slot is set to, so a fixture can ask for
+      // "a fully geared character" without spelling out six slots. Absent
+      // means unowned — tier 0 is a real tier, so it cannot be the default.
+      gear: opts.gear === undefined
+        ? {}
+        : Object.fromEntries(GEAR_SLOT_IDS.map((id) => [id, opts.gear])),
     };
   }
   const profile = {
@@ -43,9 +51,11 @@ export function makeHarness(opts = {}) {
     // The Forge moved into the per-class bag; the harness keeps one bag per
     // class so a fixture can hand a single class a stocked Forge.
     forgeLevels: (id) => (classes[id].forge || (classes[id].forge = {})),
+    gear: (id) => classes[id].gear,
+    level: () => level,
     // Level 60 by default: a harness that only ever saw a level-1 pool would
     // test two skills out of thirteen.
-    loadout: (cls) => resolveLoadout(cls, classes[cls.id].loadout, opts.level || 60),
+    loadout: (cls) => resolveLoadout(cls, classes[cls.id].loadout, level),
     finishRun() {}, save() {},
   };
 

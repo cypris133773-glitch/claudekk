@@ -70,6 +70,16 @@ function prime() {
   B.game.wave = 7;
   B.game.soulsEarned = 420;
   B.profile.data.souls = 250000;
+  // Optional: hand the shown class a level and a full set, so gear screens can
+  // be photographed in the state that matters rather than empty.
+  if (window.__shotGear !== undefined) {
+    for (const c of B.CLASSES) {
+      const cd = B.profile.data.classes[c.id];
+      cd.xp = 1e9;
+      cd.gear = {};
+      for (const s of B.GEAR_SLOT_IDS) cd.gear[s] = window.__shotGear;
+    }
+  }
   B.game.affixes = B.AFFIXES.slice(0, 3);
   // Land on the branch/tab worth looking at rather than the default first one.
   if (window.__shotTab !== undefined) B.menus.talentBranch = window.__shotTab;
@@ -94,6 +104,9 @@ const page = await context.newPage();
 await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'load' });
 const frame = page.frames().find((f) => f !== page.mainFrame());
 await frame.waitForFunction(() => !!window.CRAFTARENA, null, { timeout: 20000 });
+if (process.env.SHOT_GEAR !== undefined) {
+  await frame.evaluate((t) => { window.__shotGear = t; }, Number(process.env.SHOT_GEAR));
+}
 if (process.env.SHOT_TAB !== undefined) {
   await frame.evaluate((t) => { window.__shotTab = t; }, Number(process.env.SHOT_TAB));
 }

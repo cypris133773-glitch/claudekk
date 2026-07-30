@@ -1749,14 +1749,15 @@ body.show-popout-btn #popout-btn { display: block; }
   color: var(--quality, var(--dim));
   margin-left: 6px;
 }
-/* Set bonuses key off the lowest tier you own, so the slot holding them back
-   is the single most useful thing on the screen to point at. */
-.forge-card.weakest {
-  box-shadow: inset 0 0 0 1px rgba(255, 90, 60, 0.45);
+/* A slot whose next tier is behind a level, not behind gold. It reads as
+   greyed rather than dimmed, because the two are different problems: one you
+   fix this run, the other you fix over the next ten levels. */
+.forge-card.locked {
+  opacity: 0.55;
+  filter: saturate(0.35);
 }
-.forge-card.weakest .quality-tag::after {
-  content: ' · holding sets back';
-  color: #ff9a7a;
+.forge-card.locked .buy-btn {
+  border-style: dashed;
 }
 
 /* Class level and XP. The bar is the glance; the numbers under it are the

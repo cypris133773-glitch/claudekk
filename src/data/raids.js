@@ -23,8 +23,13 @@
  * Which slot each boss's Core belongs to, in kill order. Fixed across every
  * raid so a player learns it once: the first boss is always the weapon, the
  * last is always the trinket.
+ *
+ * Taken from the Armoury's own slot order rather than written out again here.
+ * Two lists that must agree and are maintained in two places eventually do not.
  */
-export const CORE_ORDER = ['weapon', 'chest', 'helm', 'boots', 'ring', 'trinket'];
+import { GEAR_SLOT_IDS } from './armor.js';
+
+export const CORE_ORDER = GEAR_SLOT_IDS;
 
 /**
  * Boss mechanics, kept to a small reusable set rather than forty-two bespoke

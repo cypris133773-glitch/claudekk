@@ -13,6 +13,10 @@ import {
   emptyQuestState, normaliseQuestState, applyProgress, activeQuests,
   claimQuest, rerollQuest, rerollCost,
 } from './questlog.js';
+import {
+  legacyArmorRefund, canBuy, ownedTier, GEAR_SLOT_IDS, MAX_TIER,
+} from '../data/armor.js';
+import { emptyRaidState, normaliseRaidState } from '../data/raids.js';
 
 const KEY = 'craftarena.save.v1';
 // The game shipped as BLOCKFRAY, and anyone who played it has their whole
@@ -61,6 +65,13 @@ function emptyProfile() {
       // every point of it the moment you picked one, which is exactly what
       // made a maxed account play every class the same.
       forge: {},
+      // Six gear slots, per class, same reasoning. Absent means unowned: tier 0
+      // is a real tier that costs real gold, so `gear.helm === 0` has to mean
+      // "owns the T0 Helm" and cannot double as "owns nothing".
+      gear: {},
+      // Which raid bosses this class has put down. Per class like everything
+      // else here; only gold is shared.
+      raid: emptyRaidState(),
     };
   }
   return {
@@ -127,6 +138,8 @@ export class Profile {
       };
       if (this.migrateToLevels()) migrated = true;
       if (this.refundForge()) migrated = true;
+      if (this.refundArmoury()) migrated = true;
+      this.normaliseGear();
       // Write it straight back under the new key, so the migration happens
       // once rather than on every boot for the rest of the account's life.
       if (migrated) this.save();
@@ -203,11 +216,55 @@ export class Profile {
         changed = true;
       }
     }
-    if (refund > 0) {
-      this.data.souls += Math.round(refund);
-      this.pendingRefund = Math.round(refund);
-    }
+    if (refund > 0) this.bankRefund(refund);
     return changed;
+  }
+
+  /** Refunds from every migration land in one figure the menu can announce. */
+  bankRefund(amount) {
+    const n = Math.round(amount);
+    if (n <= 0) return;
+    this.data.souls += n;
+    this.pendingRefund = (this.pendingRefund || 0) + n;
+  }
+
+  /**
+   * The Armoury went from fourteen account-wide slots with no ceiling to six
+   * per-class slots across seven level-gated tiers. There is no honest mapping
+   * between the two — "tier 74 Idol" has no equivalent in a shop that no longer
+   * sells boss damage — so every gold piece spent on the old one is paid back
+   * exactly, and the player re-spends it here at whatever tier their level
+   * allows.
+   *
+   * Deleting the old bag is what makes this run once: on the next boot there is
+   * nothing left to refund.
+   */
+  refundArmoury() {
+    const old = this.data.armor;
+    if (!old || !Object.keys(old).length) return false;
+    this.bankRefund(legacyArmorRefund(old));
+    this.data.armor = {};
+    return true;
+  }
+
+  /**
+   * Repair gear bags from disk. A save from before this existed has none, and
+   * one written by a build with different slots can hold keys that no longer
+   * mean anything — both have to end up as something `gearMods` can read.
+   *
+   * Nothing is refunded here: the only tiers that can be out of range are ones
+   * no build ever sold.
+   */
+  normaliseGear() {
+    for (const cd of Object.values(this.data.classes)) {
+      const clean = {};
+      for (const slot of GEAR_SLOT_IDS) {
+        const t = ownedTier(cd.gear, slot);
+        if (t >= 0) clean[slot] = Math.min(MAX_TIER, t);
+      }
+      cd.gear = clean;
+      cd.raid = normaliseRaidState(cd.raid);
+    }
   }
 
   save() {
@@ -230,7 +287,38 @@ export class Profile {
 
   classData(classId) { return this.data.classes[classId]; }
 
-  get armor() { return this.data.armor; }
+  // --- Gear ------------------------------------------------------------------
+
+  /** A class's six slots. Shared gold, separate gear — see `armor.js`. */
+  gear(classId) {
+    const cd = this.data.classes[classId];
+    if (!cd.gear) cd.gear = {};
+    return cd.gear;
+  }
+
+  /** Which raid bosses this class has put down. */
+  raidState(classId) {
+    const cd = this.data.classes[classId];
+    if (!cd.raid) cd.raid = emptyRaidState();
+    return cd.raid;
+  }
+
+  /**
+   * Buy the next tier of one slot, or fail with the reason why.
+   *
+   * Every gate lives in `canBuy` rather than here, so the button that is drawn
+   * disabled and the purchase that is refused agree by construction instead of
+   * by two copies of the same conditions staying in step.
+   */
+  buyGear(classId, slotId) {
+    const gear = this.gear(classId);
+    const verdict = canBuy(classId, slotId, gear, this.level(classId), this.souls);
+    if (!verdict.ok) return verdict;
+    this.data.souls -= verdict.cost;
+    gear[slotId] = verdict.next;
+    this.save();
+    return verdict;
+  }
 
   // --- Skill loadout -------------------------------------------------------
 

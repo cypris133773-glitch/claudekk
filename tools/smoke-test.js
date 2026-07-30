@@ -6,8 +6,10 @@ import {
   defaultLoadout, resolveLoadout, unlockedSkills,
 } from '../src/data/classes.js';
 import {
-  ARMOR_SLOTS, ARMOR_SETS, armorCost, armorMods, armorRating, armorTierName,
-  ARMOR_MAX_TIER, armorSets, nextArmorSet,
+  GEAR_SLOTS, GEAR_SLOT_IDS, GEAR_TIERS, MAX_TIER, CLASS_GEAR, SHARED_SLOT_EFFECTS,
+  gearCost, gearMods, gearRating, gearName, tierLevel, maxTierForLevel,
+  ownedTier, canBuy, ladderCost, setTier, hasFullSet, missingForSet,
+  slotEffect, weaponAppearance, legacyArmorRefund,
 } from '../src/data/armor.js';
 import {
   PERMANENT, upgradeCost, permanentMods, talentPointsForBestWave,
@@ -554,22 +556,213 @@ check('mastery never stops progressing', () => {
   assert(masteryMods(last).allDamage > 0, 'mastery grants nothing');
 });
 
-check('armour costs climb and its bonuses add up', () => {
-  for (const def of ARMOR_SLOTS) {
-    // baseCost is the pre-multiplier list price; the shop charges the marked-up
-    // one, and the pricing check above is what pins the multiplier itself.
-    assert(armorCost(def, 0) > 0, `${def.id} tier 0 cost`);
-    for (let t = 1; t < ARMOR_MAX_TIER; t++) {
-      assert(armorCost(def, t) > armorCost(def, t - 1), `${def.id} cost flat at ${t}`);
-    }
-    assert(armorTierName(def, 0).includes(def.name), `${def.id} unforged name`);
-    assert(armorTierName(def, 12) !== armorTierName(def, 2), `${def.id} names do not change`);
+check('gear costs climb and its bonuses add up', () => {
+  for (let t = 1; t <= MAX_TIER; t++) {
+    assert(gearCost(t) > gearCost(t - 1), `gear cost flat at T${t}`);
+    assert(tierLevel(t) > tierLevel(t - 1), `T${t} does not need a higher level`);
   }
-  const tiers = Object.fromEntries(ARMOR_SLOTS.map((s) => [s.id, 3]));
-  const mods = armorMods(tiers);
-  assert(armorRating(tiers) === ARMOR_SLOTS.length * 3, 'armour rating');
-  assert(mods.maxHp > 0 && mods.allDamage > 0, 'armour gives no stats');
-  assert(Object.keys(armorMods({})).length === 0, 'empty armour grants nothing');
+  assert(gearCost(0) === 800, 'T0 is not 800 gold');
+  assert(gearCost(MAX_TIER) === 800 * 4 ** MAX_TIER, 'the cost curve is not 800 x 4^tier');
+
+  const full = Object.fromEntries(GEAR_SLOT_IDS.map((id) => [id, MAX_TIER]));
+  for (const cls of CLASSES) {
+    const mods = gearMods(cls.id, full);
+    assert(mods.maxHpPct > 0, `${cls.id} gear grants no health`);
+    const dmg = (mods.allDamage || 0) + (mods.meleeDamage || 0) + (mods.spellDamage || 0);
+    assert(dmg > 0, `${cls.id} gear grants no damage`);
+    assert(Object.keys(gearMods(cls.id, {})).length === 0,
+      `${cls.id} gets stats from gear it does not own`);
+  }
+  assert(gearRating(full) === GEAR_SLOTS.length * (MAX_TIER + 1), 'gear rating');
+  assert(gearRating({}) === 0, 'an empty kit has a rating');
+});
+
+check('owning tier 0 is not the same as owning nothing', () => {
+  // The convention the whole system rests on, and the one that is easy to break
+  // by writing `gear[slot] || 0` somewhere. T0 costs 800 gold; if absence and
+  // zero were the same value, that purchase would be invisible to every gate.
+  assert(ownedTier({}, 'helm') === -1, 'an unowned slot does not read as -1');
+  assert(ownedTier({ helm: 0 }, 'helm') === 0, 'a bought T0 slot reads as unowned');
+
+  const t0 = Object.fromEntries(GEAR_SLOT_IDS.map((id) => [id, 0]));
+  assert(hasFullSet(t0, 0), 'a full T0 set does not count as a full T0 set');
+  assert(!hasFullSet({}, 0), 'an empty kit counts as a full T0 set');
+  assert(missingForSet({ ...t0, ring: -1 }, 0).length === 0
+    || missingForSet({}, 0).length === GEAR_SLOTS.length, 'set gap counted wrong');
+  assert(setTier({}) === -1, 'an empty kit has a set tier');
+  assert(setTier(t0) === 0, 'a full T0 kit is not a T0 set');
+
+  // And the stats have to follow: T0 is a real rung, so it must pay something.
+  const some = gearMods('warrior', { chest: 0 });
+  assert(some.maxHpPct > 0, 'a bought T0 Chestplate grants nothing');
+});
+
+check('tiers are level-gated and cannot be skipped', () => {
+  const empty = {};
+  // Level 60 with all the gold in the world still only buys the first rung.
+  const rich = canBuy('warrior', 'ring', empty, 60, 1e12);
+  assert(rich.ok && rich.next === 0, 'a level-60 character can skip straight past T0');
+
+  // And the ladder is walked one rung at a time, all the way up.
+  const gear = {};
+  for (let t = 0; t <= MAX_TIER; t++) {
+    const v = canBuy('warrior', 'ring', gear, 60, 1e12);
+    assert(v.ok && v.next === t, `ladder skipped to T${v.next} instead of T${t}`);
+    gear.ring = v.next;
+  }
+  assert(canBuy('warrior', 'ring', gear, 60, 1e12).maxed, 'the ladder never ends');
+
+  // Level is the wall gold cannot climb.
+  for (let t = 1; t <= MAX_TIER; t++) {
+    const at = Object.fromEntries([['ring', t - 1]]);
+    const under = canBuy('warrior', 'ring', at, tierLevel(t) - 1, 1e12);
+    assert(under.locked, `T${t} is buyable below level ${tierLevel(t)}`);
+    const on = canBuy('warrior', 'ring', at, tierLevel(t), 1e12);
+    assert(on.ok, `T${t} is not buyable at level ${tierLevel(t)}`);
+  }
+  assert(maxTierForLevel(1) === 0 && maxTierForLevel(60) === MAX_TIER,
+    'the level-to-tier ceiling is wrong at the ends');
+  assert(maxTierForLevel(59) === MAX_TIER - 1, 'T6 is buyable before the cap');
+
+  // Poverty is a separate verdict from being locked, because the two need
+  // different buttons: one says "Lv 41", the other says a price.
+  const poor = canBuy('warrior', 'ring', {}, 60, 0);
+  assert(poor.poor && !poor.locked, 'being broke reads as being under-levelled');
+});
+
+check('catching up on gear costs a fraction of a run', () => {
+  // The ladder must never be a punishment for levelling first. Someone who
+  // ignores gear until 31 pays every rung below T3 for a slot at once — and
+  // that has to stay small next to what a run at that level pays.
+  const toT3 = ladderCost({}, 'ring', 3);
+  assert(toT3 === 800 + 3200 + 12800 + 51200, `the T3 ladder costs ${toT3}`);
+  assert(toT3 < gearCost(4), 'the whole ladder to T3 costs more than one T4 piece');
+
+  // And a full kit has to be roughly the length of the level climb, not a
+  // multiple of it: gear runs alongside levelling, it does not outlast it.
+  let total = 0;
+  for (const _ of GEAR_SLOTS) total += ladderCost({}, 'ring', MAX_TIER);
+  assert(total > 2e7 && total < 3e7, `a full kit costs ${total} gold`);
+});
+
+/**
+ * One number for "how much damage is this bag worth", so nine classes routing
+ * their weapon through five different multipliers can still be compared.
+ *
+ * The weights are not arbitrary. `allDamage`, `meleeDamage` and `spellDamage`
+ * each multiply everything that class casts, so they count in full. `dotDamage`
+ * only reaches the part of the kit that ticks, and `critMult` only pays out on
+ * the share of hits that crit — so both count for less than their face value.
+ */
+function damageWeight(e) {
+  return (e.allDamage || 0) + (e.meleeDamage || 0) + (e.spellDamage || 0)
+    + (e.dotDamage || 0) * 0.7 + (e.critMult || 0) * 0.6 + (e.healing || 0) * 0.5;
+}
+
+check('gear reinforces each class rather than flattening them', () => {
+  const seen = new Set();
+  for (const cls of CLASSES) {
+    const spec = CLASS_GEAR[cls.id];
+    assert(spec, `${cls.id} has no gear table`);
+    assert(spec.trinketDesc, `${cls.id}'s trinket has no description`);
+    for (const slot of ['weapon', 'trinket']) {
+      const keys = Object.keys(spec[slot].effect);
+      assert(keys.length > 0, `${cls.id} ${slot} grants nothing`);
+      for (const v of Object.values(spec[slot].effect)) {
+        assert(v > 0, `${cls.id} ${slot} has a non-positive value`);
+      }
+    }
+    seen.add(JSON.stringify(spec.trinket.effect));
+  }
+  // Nine classes, nine different trinkets — otherwise "class-defining" is a
+  // label on a stat two classes share.
+  assert(seen.size === CLASSES.length, `only ${seen.size} distinct trinkets`);
+
+  // Weapons all pull about the same weight, routed through whichever multiplier
+  // the class actually uses. A 2x spread here would mean one class's Armoury is
+  // worth twice another's for the same gold.
+  const weights = CLASSES.map((c) => damageWeight(CLASS_GEAR[c.id].weapon.effect));
+  assert(Math.max(...weights) / Math.min(...weights) < 1.25,
+    `weapon damage spread across classes is ${(Math.max(...weights) / Math.min(...weights)).toFixed(2)}x`);
+
+  // The four shared slots really are shared.
+  for (const slot of ['chest', 'helm', 'boots', 'ring']) {
+    const a = JSON.stringify(slotEffect('warrior', slot));
+    assert(a === JSON.stringify(SHARED_SLOT_EFFECTS[slot].effect), `${slot} is not shared`);
+    for (const cls of CLASSES) {
+      assert(JSON.stringify(slotEffect(cls.id, slot)) === a, `${cls.id} ${slot} differs`);
+    }
+  }
+});
+
+check('a full set is a real difference and a bounded one', () => {
+  for (const cls of CLASSES) {
+    const full = gearMods(cls.id, Object.fromEntries(GEAR_SLOT_IDS.map((id) => [id, MAX_TIER])));
+    const dmg = damageWeight(full);
+    assert(dmg > 0.5 && dmg < 1.0, `${cls.id} full T6 grants ${(dmg * 100).toFixed(0)}% damage`);
+    assert(full.maxHpPct > 0.5 && full.maxHpPct < 0.9,
+      `${cls.id} full T6 grants ${(full.maxHpPct * 100).toFixed(0)}% health`);
+  }
+  // Counting mods must never arrive as a fraction: a Shaman with one rung of a
+  // trinket would otherwise get a whole extra chain jump, because the loop that
+  // reads it rounds up.
+  for (const cls of CLASSES) {
+    for (let t = -1; t <= MAX_TIER; t++) {
+      const mods = gearMods(cls.id, t < 0 ? {} : { trinket: t });
+      for (const k of ['jumps', 'pierce', 'maxPets']) {
+        if (k in mods) {
+          assert(Number.isInteger(mods[k]) && mods[k] >= 1,
+            `${cls.id} T${t} has a fractional ${k}: ${mods[k]}`);
+        }
+      }
+    }
+  }
+});
+
+check('every weapon tier looks different from the one below it', () => {
+  for (const cls of CLASSES) {
+    const seen = new Set();
+    let prevScale = 0;
+    for (let t = -1; t <= MAX_TIER; t++) {
+      const look = weaponAppearance(cls, t);
+      assert(look.type === cls.weapon.type, `${cls.id} T${t} changed weapon shape`);
+      assert(look.color.every((c) => c >= 0 && c <= 1), `${cls.id} T${t} colour out of range`);
+      assert(look.scale >= prevScale, `${cls.id} T${t} shrank`);
+      prevScale = look.scale;
+      seen.add(`${look.tile}|${look.color.map((c) => c.toFixed(3)).join(',')}`);
+    }
+    assert(seen.size === MAX_TIER + 2, `${cls.id} has only ${seen.size} distinct weapons`);
+    assert(weaponAppearance(cls, MAX_TIER).trail, `${cls.id} T6 has no trail`);
+    assert(!weaponAppearance(cls, MAX_TIER - 1).trail, `${cls.id} T5 already has the T6 trail`);
+    assert(!weaponAppearance(cls, -1).core, `${cls.id} ungeared already has an inlay`);
+  }
+  // Nine classes times seven tiers plus the ungeared look, all distinct.
+  const all = new Set();
+  for (const cls of CLASSES) {
+    for (let t = -1; t <= MAX_TIER; t++) {
+      const l = weaponAppearance(cls, t);
+      all.add(`${cls.id}|${l.tile}|${l.color.map((c) => c.toFixed(3)).join(',')}`);
+    }
+  }
+  assert(all.size === CLASSES.length * (MAX_TIER + 2),
+    `only ${all.size} distinct weapon appearances`);
+});
+
+check('gear names read as something a player can say out loud', () => {
+  for (const slot of GEAR_SLOTS) {
+    assert(gearName(slot.id, -1).includes(slot.name), `${slot.id} unowned name`);
+    const names = new Set();
+    for (let t = 0; t <= MAX_TIER; t++) {
+      const n = gearName(slot.id, t);
+      assert(n.includes(slot.name), `${slot.id} T${t} lost its slot name`);
+      names.add(n);
+    }
+    assert(names.size === MAX_TIER + 1, `${slot.id} reuses a tier name`);
+  }
+  for (const t of GEAR_TIERS) {
+    assert(/^#[0-9a-f]{6}$/i.test(t.color), `T${t.tier} has no usable colour`);
+    assert(t.raid && t.tile, `T${t.tier} is missing presentation`);
+  }
 });
 
 check('every armour and Forge effect is read by game code', async () => {
@@ -584,7 +777,9 @@ check('every armour and Forge effect is read by game code', async () => {
   // passed happily. This is the check that would have caught it.
   const keys = new Set([
     ...PERMANENT.flatMap((d) => Object.keys(d.effect)),
-    ...ARMOR_SLOTS.flatMap((d) => Object.keys(d.effect)),
+    ...Object.values(SHARED_SLOT_EFFECTS).flatMap((d) => Object.keys(d.effect)),
+    ...Object.values(CLASS_GEAR).flatMap((c) =>
+      [...Object.keys(c.weapon.effect), ...Object.keys(c.trinket.effect)]),
   ]);
   for (const k of keys) {
     assert(sources.includes(`.${k}`), `'${k}' is sold but never read by the game`);
@@ -703,37 +898,31 @@ check('everything index.html loads is present and not deployment-ignored', async
 });
 
 
-check('armour set bonuses key off the weakest slot', () => {
-  const even = Object.fromEntries(ARMOR_SLOTS.map((s) => [s.id, 12]));
-  assert(armorSets(even).length >= 2, 'an even tier-12 kit completes no sets');
+check('a set is measured by the weakest slot', () => {
+  const even = Object.fromEntries(GEAR_SLOT_IDS.map((id) => [id, 3]));
+  assert(setTier(even) === 3, 'an even T3 kit is not a T3 set');
 
-  // One neglected slot must hold the whole set back, or the bonus is just a
-  // reward for buying anything at all.
+  // One neglected slot must hold the whole set back, or "full set" is just a
+  // label for having bought anything at all — and the raid gate that reads it
+  // would let a player walk into Icecrown in one good weapon.
   const lopsided = { ...even, boots: 0 };
-  assert(armorSets(lopsided).length === 0, 'a bare slot still completes sets');
-
-  const nxt = nextArmorSet(even);
-  assert(nxt && nxt.need > 0, 'no next set to aim for from tier 12');
-  assert(nextArmorSet(Object.fromEntries(ARMOR_SLOTS.map((s) => [s.id, 999]))) === null,
-    'a maxed kit still reports a next set');
-
-  // The bonuses must actually reach the modifier bag.
-  const withSets = armorMods(even);
-  const withoutSets = ARMOR_SLOTS.reduce((acc, d) => {
-    for (const [k, v] of Object.entries(d.effect)) acc[k] = (acc[k] || 0) + v * 12;
-    return acc;
-  }, {});
-  assert(withSets.maxHp > withoutSets.maxHp, 'set bonuses never reach the player');
+  assert(setTier(lopsided) === 0, 'a bare slot still completes the set');
+  assert(!hasFullSet(lopsided, 3), 'a lopsided kit passes the set gate');
+  assert(missingForSet(lopsided, 3).join() === 'boots', 'the missing piece is misreported');
+  assert(missingForSet({}, 0).length === GEAR_SLOTS.length, 'an empty kit is missing nothing');
 });
 
-check('the Armoury is deep enough to outlast the Forge', () => {
-  assert(ARMOR_SLOTS.length >= 8, `only ${ARMOR_SLOTS.length} equipment slots`);
-  assert(ARMOR_SETS.length >= 4, `only ${ARMOR_SETS.length} set tiers`);
+check('the Armoury is deep enough to outlast the level climb', () => {
+  assert(GEAR_SLOTS.length === 6, `${GEAR_SLOTS.length} slots, not six`);
+  assert(GEAR_TIERS.length === MAX_TIER + 1, 'the tier table does not match the cap');
   let total = 0;
-  for (const d of ARMOR_SLOTS) {
-    for (let t = 0; t < ARMOR_MAX_TIER; t++) total += armorCost(d, t);
-  }
-  assert(total > 1e7, `a full kit only costs ${Math.round(total)} souls`);
+  for (const _ of GEAR_SLOTS) for (let t = 0; t <= MAX_TIER; t++) total += gearCost(t);
+  assert(total > 2e7, `a full kit only costs ${Math.round(total)} gold`);
+  // T6 alone has to be the majority of it, because it is the chase that starts
+  // the moment you cap — if it were a third of the cost, capping would end the
+  // game rather than open its last stretch.
+  const t6 = GEAR_SLOTS.length * gearCost(MAX_TIER);
+  assert(t6 / total > 0.6, `T6 is only ${Math.round((t6 / total) * 100)}% of the Armoury`);
 });
 
 
@@ -986,57 +1175,60 @@ check('an older save keeps the talent points it already had', async () => {
 
 // --- Armoury depth ---------------------------------------------------------
 
-check('the Armoury has enough slots and bands to stay legible', async () => {
-  const { QUALITIES, qualityFor } = await import('../src/data/armor.js');
-  assert(ARMOR_SLOTS.length >= 12, `only ${ARMOR_SLOTS.length} armour slots`);
-  const ids = new Set(ARMOR_SLOTS.map((s) => s.id));
-  assert(ids.size === ARMOR_SLOTS.length, 'duplicate armour slot id');
-  for (const s of ARMOR_SLOTS) {
-    assert(s.icon && s.school && s.desc, `${s.id} is missing presentation`);
-    assert(Object.keys(s.effect).length > 0, `${s.id} grants nothing`);
+check('the Armoury stays legible at six slots', () => {
+  const ids = new Set(GEAR_SLOTS.map((s) => s.id));
+  assert(ids.size === GEAR_SLOTS.length, 'duplicate gear slot id');
+  for (const s of GEAR_SLOTS) {
+    assert(s.icon && s.school && s.lead, `${s.id} is missing presentation`);
   }
-  // Quality bands must cover the whole tier range without a gap, and must
-  // never go backwards — a slot that reads "Rare" at T40 and "Fine" at T41
-  // would be worse than no band at all.
-  let last = -1;
-  for (const q of QUALITIES) {
-    assert(q.at > last, `quality band ${q.name} is out of order`);
-    last = q.at;
-    assert(/^#[0-9a-f]{6}$/i.test(q.color), `${q.name} has no usable colour`);
+  // Slot order is what raid bosses drop Cores in, so the two must agree by
+  // construction rather than by two lists happening to match.
+  assert(GEAR_SLOT_IDS[0] === 'weapon' && GEAR_SLOT_IDS[5] === 'trinket',
+    'the Core drop order has moved');
+  // Tier names and levels climb, and T6 lands exactly on the level cap.
+  let lastLevel = 0;
+  for (const t of GEAR_TIERS) {
+    assert(t.level > lastLevel || t.tier === 0, `T${t.tier} does not need a higher level`);
+    lastLevel = t.level;
   }
-  assert(qualityFor(0).at === 0, 'an unforged slot has no band');
-  let seenAt = -1;
-  for (let t = 0; t <= ARMOR_MAX_TIER; t++) {
-    const at = qualityFor(t).at;
-    assert(at >= seenAt, `quality went backwards at tier ${t}`);
-    seenAt = at;
-  }
+  assert(GEAR_TIERS[0].level === 1, 'T0 is not available from the start');
+  assert(GEAR_TIERS[MAX_TIER].level === 60, 'T6 does not land on the level cap');
+  assert(new Set(GEAR_TIERS.map((t) => t.name)).size === GEAR_TIERS.length,
+    'two tiers share a name');
 });
 
-check('armour set bonuses keep arriving past the old ceiling', () => {
-  assert(ARMOR_SETS.length >= 6, `only ${ARMOR_SETS.length} set bonuses`);
-  let prevTier = 0;
-  for (const set of ARMOR_SETS) {
-    assert(set.tier > prevTier, `set ${set.name} does not climb`);
-    prevTier = set.tier;
-    assert(Object.keys(set.effect).length >= 2, `set ${set.name} grants a single stat`);
-  }
-  // Compared per key rather than by summing the effect bag: a bag mixing
-  // "+220 health" with "+6% damage reduction" has no meaningful total, and a
-  // check built on one would pass or fail for reasons unrelated to balance.
-  // Within a single stat the comparison is real, and it catches the typo that
-  // matters — a deeper set paying less of something than a shallower one.
-  const seen = new Map();
-  for (const set of ARMOR_SETS) {
-    for (const [k, v] of Object.entries(set.effect)) {
-      if (seen.has(k)) {
-        assert(v > seen.get(k),
-          `set ${set.name} gives ${k} ${v}, less than an earlier set's ${seen.get(k)}`);
-      }
-      seen.set(k, v);
-    }
-  }
-  assert(prevTier >= ARMOR_MAX_TIER * 0.9, 'the last set arrives long before the tier cap');
+check('the old Armoury is refunded to the coin', async () => {
+  const { PRICE_MULTIPLIER } = await import('../src/data/permanent.js');
+  // The old shop's price for going from tier t to t+1, reproduced here so the
+  // refund is checked against the formula players actually paid rather than
+  // against the migration's own arithmetic.
+  const oldCost = (baseCost, growth, t) =>
+    Math.round(baseCost * Math.pow(growth, t) * PRICE_MULTIPLIER);
+  let expect = 0;
+  for (let t = 0; t < 7; t++) expect += oldCost(90, 1.11, t);       // helm
+  for (let t = 0; t < 3; t++) expect += oldCost(140, 1.126, t);     // idol
+  const got = legacyArmorRefund({ helm: 7, idol: 3 });
+  assert(got === expect, `refund is ${got}, should be ${expect}`);
+
+  assert(legacyArmorRefund({}) === 0, 'an empty old Armoury refunds gold');
+  assert(legacyArmorRefund({ helm: 0 }) === 0, 'an unbought slot refunds gold');
+  // A slot the old shop never had must not crash the migration; it is priced
+  // at the table's midpoint rather than dropped, so nobody loses gold to a key
+  // an older build wrote.
+  assert(legacyArmorRefund({ nonsense: 2 }) > 0, 'an unknown old slot refunds nothing');
+});
+
+check('the gear migration runs once and pays exactly once', async () => {
+  const { Profile } = await import('../src/core/save.js');
+  const p = new Profile();
+  p.data.armor = { helm: 6, chest: 4, idol: 2 };
+  p.data.souls = 0;
+  const owed = legacyArmorRefund(p.data.armor);
+  assert(p.refundArmoury(), 'the migration reported nothing to do');
+  assert(p.souls === owed, `refunded ${p.souls}, owed ${owed}`);
+  // Second boot: nothing left to refund, and no second payout.
+  assert(!p.refundArmoury(), 'the migration wants to run again');
+  assert(p.souls === owed, 'the migration paid twice');
 });
 
 // --- Quests ----------------------------------------------------------------
@@ -1376,11 +1568,10 @@ check('every shop applies the global price multiplier', async () => {
     assert(upgradeCost(def, 0) === Math.round(raw * PRICE_MULTIPLIER),
       `Forge track ${def.id} is not priced through PRICE_MULTIPLIER`);
   }
-  for (const def of ARMOR_SLOTS) {
-    const raw = def.baseCost * Math.pow(def.growth, 3);
-    assert(armorCost(def, 3) === Math.round(raw * PRICE_MULTIPLIER),
-      `Armoury slot ${def.id} is not priced through PRICE_MULTIPLIER`);
-  }
+  // The Armoury is deliberately outside the multiplier: its prices are pinned
+  // to the level curve rather than to a global dial, and a 50% markup applied
+  // on top would put T6 out of reach of the cap it is meant to be the chase for.
+  assert(gearCost(3) === 51200, 'gear prices have drifted off the 800 x 4^tier curve');
 });
 
 // --- Wave affixes ----------------------------------------------------------

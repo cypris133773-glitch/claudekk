@@ -11,8 +11,8 @@ import {
   PERMANENT, upgradeCost, talentPointsForBestWave, masteryProgress,
 } from '../data/permanent.js';
 import {
-  ARMOR_SLOTS, armorCost, armorTierName, ARMOR_MAX_TIER, armorRating,
-  armorSets, nextArmorSet, qualityFor,
+  GEAR_SLOTS, GEAR_TIERS, MAX_TIER, canBuy, ownedTier, gearRating, setTier,
+  maxTierForLevel, tierLevel, tierColor, gearName, slotDesc, slotSummary,
 } from '../data/armor.js';
 import { skillCost, skillCooldown } from '../game/skills.js';
 import { storage } from '../core/save.js';
@@ -221,7 +221,7 @@ export class Menus {
 
     const menu = el('div', 'main-menu grid');
     const best = this.profile.data.stats.bestWave;
-    const rating = armorRating(this.profile.armor);
+    const rating = gearRating(this.profile.gear(this.selectedClass));
     // A claimable reward sitting unnoticed behind a menu is a reward that
     // never happened, so the count is on the button itself.
     const quests = this.profile.activeQuests();
@@ -230,7 +230,7 @@ export class Menus {
     const items = [
       { label: 'PLAY', hint: best ? `Best: wave ${best}` : 'Start your first run', primary: true, go: () => this.show('classes') },
       { label: 'THE FORGE', hint: 'Permanent upgrades', go: () => this.show('forge') },
-      { label: 'ARMOURY', hint: rating ? `Armour rating ${rating}` : 'Buy and upgrade gear', go: () => this.show('armoury') },
+      { label: 'ARMOURY', hint: rating ? `${rating} of 42 pieces` : 'Buy and upgrade gear', go: () => this.show('armoury') },
       { label: 'TALENTS', hint: 'Spend talent points', go: () => this.show('talents') },
       { label: 'QUESTS', hint: ready ? `${ready} ready to claim` : `${questDone} of 500 done`, go: () => this.show('quests') },
       { label: 'RECORDS', hint: 'Career statistics', go: () => this.show('stats') },
@@ -778,74 +778,82 @@ export class Menus {
   }
 
   // -------------------------------------------------------------------------
-  // The Armoury — five gear slots with no ceiling
+  // The Armoury — six slots, seven tiers, per class
   // -------------------------------------------------------------------------
 
   buildArmoury() {
     const wrap = el('div', 'screen');
-    wrap.appendChild(this.backBar('title'));
-    const rating = armorRating(this.profile.armor);
-    // The lowest tier you own is the number that matters: set bonuses key off
-    // it, so the screen leads with it rather than making the player scan
-    // fourteen rows to find their weakest slot.
-    const tiers = ARMOR_SLOTS.map((d) => this.profile.armor[d.id] || 0);
-    const weakest = Math.min(...tiers);
-    const weakSlot = ARMOR_SLOTS[tiers.indexOf(weakest)];
-    // Only worth calling out once the kit is actually uneven. On a fresh
-    // account every slot is T0, so flagging "holding sets back" would put the
-    // warning on all fourteen rows — which is noise, not a signal.
-    const uneven = Math.max(...tiers) > weakest;
-    const p = this.panel('Armoury', uneven
-      ? `Rating ${rating} · weakest slot: ${weakSlot.name} T${weakest}`
-      : `Rating ${rating}`);
-
-    // Set bonuses key off the *lowest* tier you own, so the screen has to show
-    // which slot is holding the set back — otherwise a player pours souls into
-    // one slot and never understands why the bonus stays locked.
-    const sets = armorSets(this.profile.armor);
-    const next = nextArmorSet(this.profile.armor);
-    const setBar = el('div', 'set-bar');
-    for (const st of sets) setBar.appendChild(el('span', 'set-chip on', `✓ ${st.name}`));
-    if (next) {
-      setBar.appendChild(el('span', 'set-chip',
-        `${next.set.name} — every slot to T${next.set.tier}`));
+    const cls = CLASSES.find((c) => c.id === this.selectedClass) || CLASSES[0];
+    // Gear is per class, so — like the Forge and the talent tree — the screen
+    // leads with whose kit you are looking at. Shared gold, separate gear.
+    const picker = el('div', 'class-picker');
+    for (const c of CLASSES) {
+      const b = el('button', 'pill' + (c.id === cls.id ? ' active' : ''), c.name);
+      b.style.setProperty('--accent', c.color);
+      this.click(b, () => { this.selectedClass = c.id; this.refresh(); });
+      picker.appendChild(b);
     }
-    p.appendChild(setBar);
+    wrap.appendChild(this.backBar('title'));
+    wrap.appendChild(picker);
+
+    const gear = this.profile.gear(cls.id);
+    const level = this.profile.level(cls.id);
+    const rating = gearRating(gear);
+    const set = setTier(gear);
+    const cap = maxTierForLevel(level);
+    const sub = set >= 0
+      ? `Level ${level} · full T${set} set · ${rating} of 42 pieces`
+      : `Level ${level} · ${rating} of 42 pieces`;
+    const p = this.panel(`${cls.name} — Armoury`, sub);
+
+    // What the level currently allows, and what the next level-gate is. Without
+    // this the player sees "T3 unlocks at level 31" on six separate rows and
+    // has to work out the pattern for themselves.
+    const bar = el('div', 'set-bar');
+    bar.appendChild(el('span', 'set-chip on',
+      cap >= MAX_TIER ? '✓ every tier unlocked' : `Buyable up to T${cap}`));
+    if (cap < MAX_TIER) {
+      const nxt = GEAR_TIERS[cap + 1];
+      bar.appendChild(el('span', 'set-chip',
+        `T${nxt.tier} ${nxt.name} at level ${nxt.level} — ${nxt.raid}`));
+    }
+    p.appendChild(bar);
 
     const grid = el('div', 'forge-grid');
-    p.appendChild(this.paged('armoury', ARMOR_SLOTS, byHeight(3, 4, 6), grid, (def) => {
-      const tier = this.profile.armor[def.id] || 0;
-      const maxed = tier >= ARMOR_MAX_TIER;
-      const cost = armorCost(def, tier);
-      const afford = this.profile.souls >= cost;
-      const q = qualityFor(tier);
-      const card = el('div', 'forge-card' + (!afford && !maxed ? ' poor' : '')
-        + (uneven && tier === weakest ? ' weakest' : ''));
-      // Quality is a band on the tier and adds no numbers of its own. It earns
-      // its place by making the state of a fourteen-slot kit readable at a
-      // glance instead of as fourteen identical grey rows.
-      card.style.setProperty('--quality', q.color);
+    p.appendChild(this.paged('armoury', GEAR_SLOTS, byHeight(3, 4, 6), grid, (def) => {
+      const tier = ownedTier(gear, def.id);
+      const verdict = canBuy(cls.id, def.id, gear, level, this.profile.souls);
+      const colour = tierColor(Math.max(0, tier));
+      const card = el('div', 'forge-card'
+        + (verdict.maxed ? ' maxed' : '')
+        + (verdict.poor ? ' poor' : '')
+        + (verdict.locked ? ' locked' : ''));
+      // The tier's colour is the whole read on this screen: six rows, and the
+      // one that is still grey is the one to buy next.
+      card.style.setProperty('--quality', tier < 0 ? '#5a6172' : colour);
       const icon = el('div', 'forge-icon');
       icon.appendChild(iconElement(def.icon, 34, { school: SCHOOLS[def.school] }));
       card.appendChild(icon);
       const body = el('div', 'forge-body');
       body.innerHTML = `
-        <div class="forge-name">${armorTierName(def, tier)}
-          <span class="quality-tag">${q.name}</span></div>
-        <div class="forge-desc">${def.desc}${tier
-          ? ` · <b>T${tier}</b> · ${this.armorSummary(def, tier)}`
-          : ''}</div>`;
+        <div class="forge-name">${gearName(def.id, tier)}
+          ${tier >= 0 ? `<span class="quality-tag">T${tier}</span>` : ''}</div>
+        <div class="forge-desc">${tier >= 0
+          ? slotSummary(cls.id, def.id, gear)
+          : slotDesc(cls.id, def.id)}</div>
+        <div class="forge-pips">${GEAR_TIERS.map((t) =>
+          `<i class="${t.tier <= tier ? 'on' : ''}"></i>`).join('')}</div>`;
       card.appendChild(body);
-      const buy = el('button', 'buy-btn', maxed ? 'MAX' : `🪙 ${cost}`);
-      buy.disabled = maxed || !afford;
+      const buy = el('button', 'buy-btn', verdict.maxed
+        ? 'MAX'
+        : (verdict.locked ? `Lv ${tierLevel(verdict.next)}` : `🪙 ${verdict.cost.toLocaleString()}`));
+      buy.disabled = !verdict.ok;
+      // The reason a disabled button is disabled belongs on the button, not in
+      // the player's head.
+      if (!verdict.ok && !verdict.maxed) buy.title = verdict.reason;
       this.click(buy, () => {
-        const t = this.profile.armor[def.id] || 0;
-        if (t >= ARMOR_MAX_TIER) return;
-        const c = armorCost(def, t);
-        if (this.profile.souls < c) { this.ctx.audio.play('deny'); return; }
-        this.profile.souls -= c;
-        this.profile.armor[def.id] = t + 1;
-        this.profile.save();
+        const done = this.profile.buyGear(cls.id, def.id);
+        if (!done.ok) { this.ctx.audio.play('deny'); return; }
         this.ctx.audio.play('buy');
         this.refresh();
       });
@@ -854,23 +862,6 @@ export class Menus {
     }));
     wrap.appendChild(p);
     return wrap;
-  }
-
-  /** "+45 health, +9% armor" for the tiers already bought in one slot. */
-  armorSummary(def, tier) {
-    if (!tier) return 'nothing yet';
-    const label = {
-      maxHp: (v) => `+${Math.round(v)} health`,
-      armor: (v) => `+${(v * 100).toFixed(1)}% armor`,
-      moveSpeed: (v) => `+${(v * 100).toFixed(1)}% speed`,
-      dodge: (v) => `+${(v * 100).toFixed(1)}% dodge`,
-      critChance: (v) => `+${(v * 100).toFixed(1)}% crit`,
-      allDamage: (v) => `+${(v * 100).toFixed(1)}% damage`,
-      resourceMax: (v) => `+${Math.round(v)} resource`,
-    };
-    return Object.entries(def.effect)
-      .map(([k, v]) => (label[k] ? label[k](v * tier) : `${k} ${v * tier}`))
-      .join(', ');
   }
 
   // -------------------------------------------------------------------------
@@ -1316,13 +1307,24 @@ export class Menus {
       });
     }
 
-    // The next armour set, which is always gated by the weakest slot.
-    const nxt = nextArmorSet(this.profile.armor);
-    if (nxt) {
+    // The cheapest gear upgrade this class can actually buy right now. Cheapest
+    // rather than best, because the answer has to be something they can act on
+    // when they close this screen.
+    const gear = this.profile.gear(g.cls.id);
+    const level = this.profile.level(g.cls.id);
+    let bestGear = null;
+    for (const slot of GEAR_SLOTS) {
+      const v = canBuy(g.cls.id, slot.id, gear, level, souls);
+      if (v.maxed || v.locked) continue;
+      if (!bestGear || v.cost < bestGear.v.cost) bestGear = { slot, v };
+    }
+    if (bestGear) {
       out.push({
-        icon: '🛡',
-        label: nxt.set.name,
-        need: `every slot to T${nxt.set.tier}`,
+        icon: bestGear.slot.icon,
+        label: gearName(bestGear.slot.id, bestGear.v.next),
+        need: bestGear.v.ok
+          ? 'ready'
+          : `${(bestGear.v.cost - souls).toLocaleString()} more`,
       });
     }
 

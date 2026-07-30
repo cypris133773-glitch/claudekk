@@ -6,6 +6,7 @@ import { T } from '../render/atlas.js';
 import { clamp, forwardVec, rand } from '../core/math.js';
 import { castSkill, skillCooldown } from './skills.js';
 import { LOADOUT_SIZE } from '../data/classes.js';
+import { weaponAppearance } from '../data/armor.js';
 
 /** Sum every modifier source into one flat bag of numbers. */
 export function buildMods(cls, talentRanks, permanent) {
@@ -456,7 +457,10 @@ export class Player extends Entity {
    * Everything is expressed in the camera's basis so it tracks the view.
    */
   drawViewModel(r, camera) {
-    const w = this.cls.weapon;
+    // `this.weapon` is the gear-tier appearance, set once when the run starts.
+    // Falling back to the class's plain weapon keeps every harness that builds
+    // a Player directly — the balance sim, the smoke tests — working unchanged.
+    const w = this.weapon || weaponAppearance(this.cls, -1);
     const swing = this.swing;
     const ease = swing * swing * (3 - 2 * swing);        // smoothstep the swing
     const bobX = Math.sin(this.bobPhase * 2) * 0.012;
@@ -480,25 +484,41 @@ export class Player extends Entity {
     const py = camera.y + fwd[1] * reach + drop;
     const pz = camera.z + fwd[2] * reach + rz * side;
 
-    const color = [
-      parseInt(w.color.slice(1, 3), 16) / 255,
-      parseInt(w.color.slice(3, 5), 16) / 255,
-      parseInt(w.color.slice(5, 7), 16) / 255,
-    ];
+    const color = w.color;
     const tile = T[w.tile] ?? T.METAL;
     const yaw = camera.yaw + 0.42;
     const pitch = camera.pitch - 0.62 - ease * 1.05;
 
     // One factor over every shape, so the proportions that were tuned by eye
-    // stay exactly as they were and only the size changes.
-    const S = 1.6;
+    // stay exactly as they were and only the size changes. The tier scales it
+    // further: a T6 weapon is about a quarter larger than a T0 one, which is
+    // the cheapest way to make a tier readable at a glance.
+    const S = 1.6 * (w.scale || 1);
+    // The tier's flourishes. Each one is a couple of extra boxes on a shape
+    // that already exists, which is what makes sixty-three appearances
+    // affordable: nothing here is modelled, it is all dials on one mesh.
+    const glow = w.emissive || 0;
+    const accent = w.accent || color;
+    const gemSize = 0.036 * S;
+    /** A small emissive stone, drawn only from T4. */
+    const gem = (p, pitchOf) => {
+      if (!w.gem) return;
+      r.drawBox(p[0], p[1], p[2], gemSize, gemSize, gemSize,
+        { tile: T.CRYSTAL, color: accent, emissive: 1, yaw, pitch: pitchOf });
+    };
     if (w.type === 'staff') {
       const len = 0.42 * S;
       r.drawBox(px, py, pz, 0.035 * S, 0.035 * S, len, { tile: T.LOG_SIDE, color: [0.42, 0.32, 0.22], yaw, pitch });
-      // Glowing head at the far end of the shaft.
+      // Glowing head at the far end of the shaft, and from T2 a second, wider
+      // ring of the tier's colour behind it.
       const tipF = 0.20 * S;
+      if (w.core) {
+        r.drawBox(px + fwd[0] * tipF * 0.72, py + fwd[1] * tipF * 0.72 + 0.045 * S, pz + fwd[2] * tipF * 0.72,
+          0.052 * S, 0.052 * S, 0.030 * S, { tile: T.RUNE, color: accent, emissive: 0.8, yaw, pitch });
+      }
       r.drawBox(px + fwd[0] * tipF, py + fwd[1] * tipF + 0.06 * S, pz + fwd[2] * tipF,
         0.075 * S, 0.075 * S, 0.075 * S, { tile, color, emissive: 1, yaw, pitch });
+      gem([px + fwd[0] * tipF * 0.2, py + fwd[1] * tipF * 0.2 - 0.05 * S, pz + fwd[2] * tipF * 0.2], pitch);
     } else if (w.type === 'bow') {
       // A bow held vertically: two limbs angled off a grip, with a bright
       // string between the tips. Reads as ranged at a glance, which a sword
@@ -514,9 +534,11 @@ export class Player extends Entity {
         r.drawBox(a[0], a[1], a[2], 0.026 * S, 0.13 * S, 0.026 * S,
           { tile, color, yaw, pitch: bp + s * 0.42 });
       }
-      // The string, drawn as one thin emissive span so the draw reads.
+      // The string, drawn as one thin emissive span so the draw reads. Higher
+      // tiers colour it, which is the clearest tell a bow has.
       r.drawBox(px + fwd[0] * 0.02, py, pz + fwd[2] * 0.02, 0.010 * S, 0.40 * S, 0.010 * S,
-        { tile: T.BLANK, color: [0.85, 0.9, 0.8], emissive: 0.5, yaw, pitch: bp });
+        { tile: T.BLANK, color: w.core ? accent : [0.85, 0.9, 0.8], emissive: 0.5 + glow * 0.5, yaw, pitch: bp });
+      gem(along(0), bp);
     } else if (w.type === 'hammer') {
       // A warhammer: short haft, heavy blocky head. Weight is the whole read.
       const bp = pitch + 1.35;
@@ -526,11 +548,17 @@ export class Player extends Entity {
       const along = (t) => [px - ux * t, py - uy * t, pz - uz * t];
       const head = along(-0.06 * S);
       r.drawBox(head[0], head[1], head[2], 0.11 * S, 0.10 * S, 0.09 * S, { tile, color, yaw, pitch: bp });
+      // A band of the tier's colour around the head from T2.
+      if (w.core) {
+        r.drawBox(head[0], head[1], head[2], 0.115 * S, 0.032 * S, 0.095 * S,
+          { tile: T.RUNE, color: accent, emissive: 0.7, yaw, pitch: bp });
+      }
       r.drawBox(px, py, pz, 0.032 * S, 0.30 * S, 0.032 * S,
         { tile: T.LOG_SIDE, color: [0.40, 0.29, 0.19], yaw, pitch: bp });
       const cap = along(0.19 * S);
       r.drawBox(cap[0], cap[1], cap[2], 0.048 * S, 0.030 * S, 0.044 * S,
-        { tile, color, emissive: 0.35, yaw, pitch: bp });
+        { tile, color, emissive: 0.35 + glow * 0.4, yaw, pitch: bp });
+      gem(along(0.10 * S), bp);
     } else {
       const len = (w.type === 'dagger' ? 0.22 : 0.32) * S;
       const bp = pitch + 1.35;
@@ -540,12 +568,32 @@ export class Player extends Entity {
       const uz = Math.cos(yaw) * Math.sin(bp);
       const along = (t) => [px - ux * t, py - uy * t, pz - uz * t];
       r.drawBox(px, py, pz, 0.026 * S, len, 0.05 * S, { tile, color, yaw, pitch: bp });
+      // A fuller of the tier's colour running the length of the blade, from T2.
+      if (w.core) {
+        r.drawBox(px, py, pz, 0.030 * S, len * 0.82, 0.014 * S,
+          { tile: T.RUNE, color: accent, emissive: 0.55 + glow * 0.45, yaw, pitch: bp });
+      }
       const g = along(len * 0.52);
       r.drawBox(g[0], g[1], g[2], 0.095 * S, 0.026 * S, 0.042 * S,
         { tile: T.METAL, color: [0.55, 0.5, 0.45], yaw, pitch: bp });
       const h = along(len * 0.74);
       r.drawBox(h[0], h[1], h[2], 0.030 * S, 0.10 * S, 0.034 * S,
         { tile: T.LOG_SIDE, color: [0.42, 0.30, 0.20], yaw, pitch: bp });
+      gem(along(len * 0.52), bp);
+    }
+
+    // T6 alone leaves a trail, and only while swinging — a permanent one would
+    // sit in the corner of the screen for the whole run and stop reading as
+    // anything at all.
+    if (w.trail && swing > 0.02 && swing < 0.98) {
+      for (let i = 1; i <= 3; i++) {
+        const back = i * 0.075;
+        const s = (0.030 - i * 0.006) * S;
+        r.drawBox(
+          px - fwd[0] * back, py - fwd[1] * back + back * 0.35, pz - fwd[2] * back,
+          s, s, s,
+          { tile: T.BLANK, color: accent, emissive: 1 - i * 0.25, yaw, pitch });
+      }
     }
   }
 }

@@ -5,6 +5,7 @@
 //   node tools/balance-sim.js                 # every class, 5 runs each
 //   node tools/balance-sim.js mage 20         # one class, 20 runs
 //   node tools/balance-sim.js --forge 5       # simulate a maxed-ish account
+//   node tools/balance-sim.js --gear 6        # simulate a full T6 set
 //
 // The bot is deliberately mediocre: it kites or closes depending on range,
 // attacks constantly and fires skills off cooldown. Treat its results as a
@@ -12,7 +13,7 @@
 
 import { Game } from '../src/game/game.js';
 import { CLASSES, CLASS_BY_ID, defaultLoadout, resolveLoadout } from '../src/data/classes.js';
-import { ARMOR_SLOTS } from '../src/data/armor.js';
+import { GEAR_SLOT_IDS, MAX_TIER } from '../src/data/armor.js';
 import { PERMANENT, talentPointsForBestWave } from '../src/data/permanent.js';
 import { forwardVec } from '../src/core/math.js';
 import { LAYOUT_NAMES } from '../src/world/world.js';
@@ -34,7 +35,7 @@ const stubAudio = {
   play() {}, startMusic() {}, stopMusic() {}, setMusicIntensity() {}, ensure() {},
 };
 
-function stubProfile(forgeLevel = 0, armorTier = 0) {
+function stubProfile(forgeLevel = 0, gearTier = -1) {
   const classes = {};
   for (const c of CLASSES) {
     classes[c.id] = {
@@ -52,15 +53,23 @@ function stubProfile(forgeLevel = 0, armorTier = 0) {
       for (const def of PERMANENT) classes[c.id].forge[def.id] = Math.min(def.max, forgeLevel);
     }
   }
-  const armor = {};
-  if (armorTier > 0) for (const s of ARMOR_SLOTS) armor[s.id] = armorTier;
+  // Gear is per class and absence means unowned, so a tier of -1 is a
+  // character wearing nothing rather than one in a full T0 set.
+  if (gearTier >= 0) {
+    for (const c of CLASSES) {
+      classes[c.id].gear = Object.fromEntries(
+        GEAR_SLOT_IDS.map((id) => [id, Math.min(MAX_TIER, gearTier)]));
+    }
+  }
   return {
-    data: { permanent, armor, classes, souls: 0, stats: {} },
+    data: { permanent, armor: {}, classes, souls: 0, stats: {} },
     settings: { showDamage: false, difficulty: DIFFICULTY },
     classData: (id) => classes[id],
     // The Forge moved into the per-class bag; the harness keeps one bag per
     // class so a fixture can hand a single class a stocked Forge.
     forgeLevels: (id) => (classes[id].forge || (classes[id].forge = {})),
+    gear: (id) => (classes[id].gear || (classes[id].gear = {})),
+    level: () => SIM_LEVEL,
     // The bot always fights with the default kit; unlockable skills are a
     // player choice, and simulating them would measure the harness's taste.
     loadout: (cls) => resolveLoadout(cls, classes[cls.id].loadout, SIM_LEVEL),
@@ -127,9 +136,9 @@ function botInput(game) {
   return state;
 }
 
-function simulateRun(classId, { forge = 0, armor = 0, talentPoints = 0, layout } = {}) {
+function simulateRun(classId, { forge = 0, gear = -1, talentPoints = 0, layout } = {}) {
   const cls = CLASS_BY_ID[classId];
-  const profile = stubProfile(forge, armor);
+  const profile = stubProfile(forge, gear);
   if (talentPoints > 0) autoSpendTalents(profile, cls, talentPoints);
 
   const game = new Game(stubRenderer, stubAudio, profile);
@@ -207,11 +216,11 @@ let DIFFICULTY = 2;
 const diffIdx = process.argv.indexOf('--difficulty');
 if (diffIdx >= 0) DIFFICULTY = Number(process.argv[diffIdx + 1]) || 2;
 
-let armor = 0;
-const armorIdx = args.indexOf('--armor');
-if (armorIdx >= 0) {
-  armor = Number.isFinite(Number(args[armorIdx + 1])) ? Number(args[armorIdx + 1]) : 5;
-  args.splice(armorIdx, 2);
+let gear = -1;
+const gearIdx = args.indexOf('--gear');
+if (gearIdx >= 0) {
+  gear = Number.isFinite(Number(args[gearIdx + 1])) ? Number(args[gearIdx + 1]) : MAX_TIER;
+  args.splice(gearIdx, 2);
 }
 let layout;
 const layoutIdx = args.indexOf('--layout');
@@ -230,7 +239,7 @@ const median = (xs) => {
 
 console.log(`\nCRAFT ARENA balance simulation — ${runs} run(s) per class`
   + (forge ? `, Forge level ${forge}` : ', no permanent upgrades')
-  + (armor ? `, armour tier ${armor}` : '')
+  + (gear >= 0 ? `, gear T${gear}` : '')
   + `, difficulty ${DIFFICULTY}`
   + (layout === undefined ? ', mixed layouts' : `, ${LAYOUT_NAMES[layout % LAYOUT_NAMES.length]} layout`)
   + '\n');
@@ -244,7 +253,7 @@ for (const id of targets) {
     // Talent points scale with the best wave reached so far, like the real game.
     const best = results.length ? Math.max(...results.map((r) => r.wave)) : 0;
     results.push(simulateRun(id, {
-      forge, armor, layout, talentPoints: talentPointsForBestWave(best),
+      forge, gear, layout, talentPoints: talentPointsForBestWave(best),
     }));
   }
   const waves = results.map((r) => r.wave);

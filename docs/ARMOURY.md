@@ -86,17 +86,25 @@ and the levels are far apart, which is exactly where a grind should bite.
 
 ## 3. Stats: what each slot does
 
-Every slot's values scale linearly with tier, so T4 is four times T1 and the
-maths stays legible.
+Values scale linearly in **rungs owned**, and T0 is the first rung — so a full
+T6 set is seven rungs, not six. That is the one place the shipped numbers differ
+from the first draft of this document, and it is deliberate: with `value × tier`
+the T0 set cost 4,800 gold and granted exactly nothing, which is an entry fee
+rather than a purchase.
 
-| Slot | Per tier | Full T6 |
+| Slot | Per rung | Full T6 (7 rungs) |
 | --- | --- | --- |
-| Weapon | +8% damage | +48% |
-| Chest | +7% max health | +42% |
-| Helm | +4% max health, +1.2% crit | +24%, +7.2% |
-| Boots | +2.5% move speed, +1% dodge | +15%, +6% |
-| Ring | +3% damage, +2% crit damage | +18%, +12% |
+| Weapon | +7% damage | +49% |
+| Chest | +6% max health | +42% |
+| Helm | +3.4% max health, +1% crit | +23.8%, +7% |
+| Boots | +2.15% move speed, +0.85% dodge | +15%, +6% |
+| Ring | +2.6% damage, +1.7% crit damage | +18.2%, +11.9% |
 | Trinket | class-defining — see below | |
+
+Weapons all come to about +7% a rung, but routed through whichever multiplier
+that class actually uses — melee, spell, damage-over-time, crit damage — so the
+gold buys the same amount of power everywhere without every class getting the
+same generic stat. A smoke check pins the spread across the nine at under 1.25×.
 
 A full T6 set is roughly **+70% damage and +65% health**. That is a real
 difference and a bounded one. For comparison, a maxed Forge today grants +200%
@@ -121,8 +129,14 @@ gear reinforces what the class already is instead of flattening it.
 | Priest | spell damage + healing | +absorb, +healing done |
 | Rogue | crit damage | +attack speed, +dodge |
 | Demonslayer | melee + lifesteal | +hatred per hit, +move speed |
-| Paladin | melee + healing | +armour, +block |
+| Paladin | melee + healing | +armour, −damage taken |
 | Hunter | ranged damage | +pet power, +pierce |
+
+Two of those trinkets grant something that is *counted* rather than scaled — the
+Shaman's chain jumps and the Hunter's pierce. Those accumulate as fractions and
+are floored once, at the end, so a single rung cannot buy a whole extra jump off
+a loop that rounds up. A smoke check holds that: no fractional counting mod ever
+reaches the game.
 
 ## 5. The weapon is visible, and always different
 
@@ -177,6 +191,12 @@ bosses each, because a T set has six pieces.
 trinket. A Core is not the item — it is permission to *buy* that item, and the
 gold still has to be earned. Bosses pay about half the gold the piece costs;
 the rest comes from the arena and from quests.
+
+> The Core requirement is **not yet enforced**, and deliberately so. Raid combat
+> does not exist, so gating purchases on Cores today would make the Armoury
+> unbuyable — a shop nobody can shop at is worse than a missing gate. It goes in
+> in the same change that makes Cores obtainable. Until then the gates are
+> level, ladder and gold.
 
 **Progress is per class**, like levels, talents and gear. Only gold is shared.
 

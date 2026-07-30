@@ -13,7 +13,7 @@ import { difficultyFor } from '../data/difficulty.js';
 import { affixesForWave, affixSoulBonus } from '../data/affixes.js';
 import { rollPotion, DROP_CHANCE, ELITE_DROP_CHANCE, BOSS_DROPS, POTION_LIFETIME } from '../data/potions.js';
 import { xpForRun, xpForWave, XP_PER_KILL, XP_ELITE_MULT, XP_BOSS_MULT } from '../data/levels.js';
-import { armorMods } from '../data/armor.js';
+import { gearMods, ownedTier, weaponAppearance } from '../data/armor.js';
 import { forwardVec, clamp, rand, dist2 } from '../core/math.js';
 import { T } from '../render/atlas.js';
 
@@ -98,11 +98,12 @@ export class Game {
     this.reset();
     this.cls = classDef;
     const cd = this.profile.classData(classDef.id);
-    // Permanent power comes from three account-wide sources that all flatten
-    // into the same bag: the Forge, the Armoury and this class's mastery rank.
-    // Per class: a fresh class starts with the Forge it has bought itself.
+    // Permanent power comes from three sources that all flatten into the same
+    // bag: the Forge, the Armoury and this class's mastery rank. All three are
+    // per class now — only gold is shared — so a fresh class starts with the
+    // level it has earned and nothing it has not.
     const perm = permanentMods(this.profile.forgeLevels(classDef.id));
-    for (const [k, v] of Object.entries(armorMods(this.profile.data.armor))) {
+    for (const [k, v] of Object.entries(gearMods(classDef.id, this.profile.gear(classDef.id)))) {
       perm[k] = (perm[k] || 0) + v;
     }
     for (const [k, v] of Object.entries(masteryMods(masteryRank(cd.mastery || 0)))) {
@@ -131,6 +132,12 @@ export class Game {
     this.r.setTheme(this.theme);
 
     this.player = new Player(classDef, this.baseMods(), this.world, this.loadout);
+    // The weapon in your hands is the visible half of the gear system, so the
+    // tier is resolved once here rather than looked up every frame by the view
+    // model. `-1` is "no weapon bought" and draws the class's plain starting
+    // look, which is what a level-1 character should be holding.
+    this.player.weapon = weaponAppearance(
+      classDef, ownedTier(this.profile.gear(classDef.id), 'weapon'));
     this.director = new WaveDirector(this.difficulty);
     this.rerollsLeft = perm.rerolls || 0;
     this.running = true;
