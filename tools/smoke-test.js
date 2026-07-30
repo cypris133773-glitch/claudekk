@@ -1659,6 +1659,69 @@ check('every boss has a silhouette and a skin that can be read', async () => {
   assert(Object.keys(BOSS_SKINS).length === 42, 'not every boss has a skin');
 });
 
+check('you can see across every arena', async () => {
+  const { createArena, LAYOUT_COUNT, LAYOUT_NAMES } = await import('../src/world/world.js');
+
+  // Reported from play: too much cover, and finding the last enemy of a wave
+  // meant walking the floor. Measured, the Colosseum's four concentric walls
+  // left a median sightline of four blocks — you could see four blocks, in a
+  // fifty-block arena, and the wave did not end until you had crossed it.
+  for (let L = 0; L < LAYOUT_COUNT; L++) {
+    const medians = [];
+    for (const seed of [7, 99, 4242]) {
+      const w = createArena(0, seed, L);
+      const cx = 32.5, cz = 32.5;
+      const ranges = [];
+      // Twelve standable vantage points, a full sweep from each.
+      for (let s = 0; s < 12; s++) {
+        const sa = (s / 12) * Math.PI * 2, sr = 6 + (s % 3) * 6;
+        const ox = cx + Math.cos(sa) * sr, oz = cz + Math.sin(sa) * sr;
+        const oy = w.groundAt(ox, oz, 20) + 1.6;
+        if (w.isSolid(ox, oy, oz)) continue;
+        for (let i = 0; i < 60; i++) {
+          const a = (i / 60) * Math.PI * 2;
+          let vis = 26;
+          for (let r = 2; r <= 26; r += 2) {
+            const tx = ox + Math.cos(a) * r, tz = oz + Math.sin(a) * r;
+            if (Math.hypot(tx - cx, tz - cz) > 24) { vis = r; break; }
+            if (!w.lineOfSight(ox, oy, oz, tx, oy - 0.4, tz)) { vis = r; break; }
+          }
+          ranges.push(vis);
+        }
+      }
+      ranges.sort((a, b) => a - b);
+      medians.push(ranges[ranges.length >> 1]);
+    }
+    const worst = Math.min(...medians);
+    assert(worst >= 10,
+      `${LAYOUT_NAMES[L]}: median sightline is ${worst} blocks — a wave ends by search, not by fighting`);
+  }
+});
+
+check('the Forge is bought and kept by one class at a time', async () => {
+  const { Profile } = await import('../src/core/save.js');
+  const { PERMANENT, permanentMods } = await import('../src/data/permanent.js');
+  const p = new Profile();
+  const track = PERMANENT[0];
+
+  p.forgeLevels('hunter')[track.id] = track.max;
+  assert(!(track.id in p.forgeLevels('warrior')),
+    'a Forge track bought on one class appeared on another');
+  const hunter = permanentMods(p.forgeLevels('hunter'));
+  const warrior = permanentMods(p.forgeLevels('warrior'));
+  assert(Object.keys(hunter).length > 0, 'the hunter got nothing for a maxed track');
+  assert(Object.keys(warrior).length === 0, 'the warrior inherited the hunter\'s Forge');
+
+  // And the run reads the same bag the menu writes. Account-wide, the Forge was
+  // the one system that made a fresh class start strong — every point of it
+  // arrived the moment you picked one, which is what made nine classes play the
+  // same.
+  const { readFile } = await import('node:fs/promises');
+  const game = await readFile(new URL('../src/game/game.js', import.meta.url), 'utf8');
+  assert(game.includes('permanentMods(this.profile.forgeLevels(classDef.id))'),
+    'a run no longer reads the per-class Forge');
+});
+
 check('every raid room keeps the promises the mechanics rely on', async () => {
   const { Game } = await import('../src/game/game.js');
   const { RAIDS } = await import('../src/data/raids.js');

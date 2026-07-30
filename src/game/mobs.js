@@ -299,7 +299,8 @@ export class Mob extends Entity {
     // will not close — a survivor that has taken no damage for a long time
     // while gating the next wave is relocated into the player's lap. Distance
     // heuristics cannot cover every cause; "cannot be hurt" covers all of them.
-    if (game.director.state === 'clearing' && this.age - this.lastDamagedAge > 25) {
+    if (game.director.state === 'clearing'
+      && this.age - this.lastDamagedAge > (game.mobs.length <= 3 ? 12 : 25)) {
       this.relocateNear(game, target);
       return;
     }
@@ -318,14 +319,19 @@ export class Mob extends Entity {
       return;
     }
 
+    // The leash tightens as a wave empties. Twelve seconds of no progress is a
+    // reasonable grace period while thirty things are converging on you; with
+    // two left on a big floor it is the player walking laps. Same rule, shorter
+    // fuse, exactly when the waiting is most obvious.
+    const few = game.mobs.length <= 3;
     this.windowTimer = (this.windowTimer || 0) + dt;
-    if (this.windowTimer < 4) return;
+    if (this.windowTimer < (few ? 2.5 : 4)) return;
     this.windowTimer = 0;
 
     const improved = this.windowDist === undefined || dist < this.windowDist - 1.5;
     this.windowDist = dist;
     this.strikes = improved ? 0 : (this.strikes || 0) + 1;
-    if (this.strikes < 3) return;         // 12s of no progress
+    if (this.strikes < (few ? 2 : 3)) return;        // 5s when few are left, 12s otherwise
 
     this.strikes = 0;
     this.relocateNear(game, target);

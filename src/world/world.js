@@ -497,9 +497,12 @@ export class World {
 
     // Tall thin spires — cover from ranged fire, and something to break line
     // of sight while you reposition.
-    for (let i = 0; i < 22; i++) {
+    // Twelve, not twenty-two. Cover you reposition behind is the point of this
+    // layout; cover you cannot see past is how a wave ends with the player
+    // walking laps looking for one husk.
+    for (let i = 0; i < 12; i++) {
       const a = hash2(i, 31, seed) * Math.PI * 2;
-      const r = 7 + hash2(i, 37, seed) * 17;
+      const r = 9 + hash2(i, 37, seed) * 15;
       const px = Math.round(cx + Math.cos(a) * r);
       const pz = Math.round(cz + Math.sin(a) * r);
       if (!inArena(px, pz)) continue;
@@ -527,9 +530,14 @@ export class World {
    */
   layoutColosseum({ P, FLOOR_Y, cx, cz, R, seed, inArena }) {
     // Tiered banks stepping down toward the middle, like seating rows.
+    // One block high, all four. They were 4/3/2/1, which put four walls
+    // between the pit and the rim: from the middle you could see four blocks,
+    // and finding the last enemy of a wave meant walking the whole arena. A
+    // one-block step still reads as a tier, still costs a jump to cross, and
+    // is below eye height so the fight stays visible from anywhere in it.
     for (let tier = 0; tier < 4; tier++) {
       const inner = R - 6 - tier * 4;
-      const h = 4 - tier;
+      const h = 1;
       if (inner < 6) break;
       for (let x = cx - R; x <= cx + R; x++) {
         for (let z = cz - R; z <= cz + R; z++) {
@@ -577,19 +585,21 @@ export class World {
         // Each cell drops one or two of its four walls, so the grid is a maze
         // rather than a set of sealed boxes.
         const roll = hash2(gx, gz, seed);
-        if (roll > 0.82) continue;                       // open plaza
-        const len = 5;
+        // Two cells in five are open plazas rather than one in six. A maze is
+        // only interesting while you can still see where you are going.
+        if (roll > 0.52) continue;
+        const len = 3;
         const walls = [
           [1, 0], [0, 1],
         ];
         for (let w = 0; w < walls.length; w++) {
-          if (hash2(gx * 7 + w, gz * 13, seed + 5) > 0.62) continue;
+          if (hash2(gx * 7 + w, gz * 13, seed + 5) > 0.45) continue;
           const [dx, dz] = walls[w];
           for (let i = 0; i < len; i++) {
             const x = Math.round(bx + dx * i);
             const z = Math.round(bz + dz * i);
             if (!inArena(x, z)) continue;
-            if (Math.hypot(x - cx, z - cz) < 5) continue;   // keep the middle clear
+            if (Math.hypot(x - cx, z - cz) < 8) continue;   // keep the middle clear
             this.fill(x, FLOOR_Y, z, x, FLOOR_Y + 1, z, P.wall);
             if (hash2(x, z, seed + 11) > 0.88) this.set(x, FLOOR_Y + 2, z, B.GLOW);
           }

@@ -822,6 +822,12 @@ export class Hud {
       return { x: cx + right * k, y: cy - fwd * k, dist: Math.hypot(right, fwd) };
     };
 
+    // The end of a wave is where a big arena turns into a search. Once only a
+    // few are left, every one of them gets a boss's treatment: pinned to the
+    // rim when it is off the dish, drawn larger, and pulsing. Hunting the last
+    // husk across the whole floor is not difficulty, it is dead time.
+    const hunting = g.mobs.filter((m) => !m.dead).length <= 3;
+    const pulse = hunting ? 0.75 + 0.25 * Math.sin(g.time * 6) : 1;
     for (const m of g.mobs) {
       if (m.dead) continue;
       const q = project(m.x - p.x, m.z - p.z);
@@ -829,12 +835,13 @@ export class Hud {
       const outside = q.dist > range;
       if (outside) {
         // Pinned to the rim: an off-radar boss must still be findable.
-        if (!m.def.boss && !m.elite) continue;
+        if (!m.def.boss && !m.elite && !hunting) continue;
         const a = Math.atan2(py - cy, px - cx);
         px = cx + Math.cos(a) * (r - 5);
         py = cy + Math.sin(a) * (r - 5);
       }
-      const size = m.def.boss ? 4.5 : m.elite ? 3.2 : 2.1;
+      const base = m.def.boss ? 4.5 : m.elite ? 3.2 : 2.1;
+      const size = hunting && !m.def.boss ? Math.max(base, 3.6) * pulse : base;
       c.beginPath();
       c.arc(px, py, size, 0, Math.PI * 2);
       c.fillStyle = m.def.boss ? '#ff5a3c' : m.elite ? '#ffd24a' : '#ff9a7a';
