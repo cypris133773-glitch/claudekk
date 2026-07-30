@@ -314,7 +314,12 @@ export class Telegraph {
 
   draw(r) {
     const p = 1 - this.timer / this.duration;
-    const segs = Math.max(12, Math.round(this.radius * 6));
+    // Capped, because this runs every frame for the whole warning and raid
+    // telegraphs are large: at six segments a block a 9-block ring was 54 boxes
+    // a frame for 2.2 seconds, and a raid can have three of them up at once.
+    // Past about 40 the segments are closer together than they are wide and the
+    // extra ones are drawing on top of each other anyway.
+    const segs = Math.min(40, Math.max(12, Math.round(this.radius * 6)));
     const pulse = 0.5 + 0.5 * Math.sin(p * 18);
     // Two rings, and the outer one is the point.
     //
@@ -324,12 +329,18 @@ export class Telegraph {
     // up until it killed them. The dim boundary ring is drawn at the real
     // radius for the whole warning, so where it is safe to stand is known from
     // the first frame; the bright sweep is then just the clock running out.
+    //
+    // The boundary is drawn at half the density and reads as a dashed line,
+    // which costs a third of the frame budget the pair would otherwise want and
+    // also tells the two rings apart at a glance.
     const edge = Math.max(0.28, 0.34 - this.radius * 0.01);
+    const rr = this.radius * (0.35 + p * 0.65);
     for (let i = 0; i < segs; i++) {
       const a = (i / segs) * Math.PI * 2;
-      r.drawBox(this.x + Math.cos(a) * this.radius, this.y + 0.05, this.z + Math.sin(a) * this.radius,
-        edge, 0.05, edge, { tile: T.BLANK, color: this.color, emissive: 0.35, alpha: 0.42 });
-      const rr = this.radius * (0.35 + p * 0.65);
+      if (i % 2 === 0) {
+        r.drawBox(this.x + Math.cos(a) * this.radius, this.y + 0.05, this.z + Math.sin(a) * this.radius,
+          edge, 0.05, edge, { tile: T.BLANK, color: this.color, emissive: 0.35, alpha: 0.42 });
+      }
       r.drawBox(this.x + Math.cos(a) * rr, this.y + 0.06, this.z + Math.sin(a) * rr,
         0.34, 0.06, 0.34, { tile: T.BLANK, color: this.color, emissive: 0.7 + pulse * 0.3, alpha: 0.85 });
     }
