@@ -13,12 +13,39 @@ import {
 import {
   GEAR_SLOTS, GEAR_TIERS, MAX_TIER, canBuy, ownedTier, gearRating, setTier,
   maxTierForLevel, tierLevel, tierColor, gearName, slotDesc, slotSummary,
+  GEAR_BY_ID, gearCost,
 } from '../data/armor.js';
+import {
+  RAIDS, RAID_BY_ID, RAID_BY_TIER, MECHANICS, CORE_ORDER, coreSlotFor, bossGold,
+  raidAccess, nextBoss, isBossDead, isRaidCleared, bossesDown,
+} from '../data/raids.js';
+
 import { skillCost, skillCooldown } from '../game/skills.js';
 import { storage } from '../core/save.js';
 import { DIFFICULTIES } from '../data/difficulty.js';
 import { skillIconElement, iconElement, schoolFor, SCHOOLS } from './icons.js';
 import { QUEST_COUNT } from '../data/quests.js';
+
+// Presentation only, so it lives here and not in raids.js — the same reason
+// TALENT_GLYPHS does. One glyph per raid; the field colour comes from the
+// raid's own theme, so the icon is lit the way its arena is.
+const RAID_GLYPHS = {
+  zulgurub: '🐍', moltencore: '🌋', karazhan: '🕯', ulduar: '⚙',
+  blacktemple: '👁', firelands: '🔥', icecrown: '❄',
+};
+const raidSchool = (raid) => ({
+  base: raid.theme.fog, edge: raid.theme.accent, glow: raid.theme.accent,
+});
+
+// "Chestplate Core" and "Signet Core" are slot names run through a shop voice
+// they were never written for. Short labels here, used by the row chip, the
+// banner and the ledger alike, so the same Core is called the same thing
+// everywhere it appears.
+const CORE_LABEL = {
+  weapon: 'Weapon', chest: 'Chest', helm: 'Helm',
+  boots: 'Boots', ring: 'Signet', trinket: 'Trinket',
+};
+const coreName = (tier, slot) => `T${tier} ${CORE_LABEL[slot]} Core`;
 
 // Where each of a branch's six talent nodes sits, as [column, row] on a 3-wide
 // grid, and which earlier node gates it. The empty cells and the long arrows
@@ -97,6 +124,10 @@ export class Menus {
       quests: () => this.buildQuests(),
       forge: () => this.buildForge(),
       armoury: () => this.buildArmoury(),
+      raids: () => this.buildRaids(),
+      raid: () => this.buildRaid(),
+      raidkill: () => this.buildRaidGate('kill'),
+      raidwipe: () => this.buildRaidGate('wipe'),
       settings: () => this.buildSettings(),
       stats: () => this.buildStats(),
       pause: () => this.buildPause(),
@@ -229,6 +260,10 @@ export class Menus {
     const questDone = this.profile.questState.completed;
     const items = [
       { label: 'PLAY', hint: best ? `Best: wave ${best}` : 'Start your first run', primary: true, go: () => this.show('classes') },
+      // Second, beside PLAY, because it is the other thing you *do*. Not
+      // primary: the arena funds the raids — a boss pays half what its piece
+      // costs — and two gold buttons would say the two are interchangeable.
+      { label: 'RAID', hint: this.raidHint(this.selectedClass), go: () => this.show('raids') },
       { label: 'THE FORGE', hint: 'Permanent upgrades', go: () => this.show('forge') },
       { label: 'ARMOURY', hint: rating ? `${rating} of 42 pieces` : 'Buy and upgrade gear', go: () => this.show('armoury') },
       { label: 'TALENTS', hint: 'Spend talent points', go: () => this.show('talents') },
@@ -775,6 +810,298 @@ export class Menus {
     }));
     wrap.appendChild(p);
     return wrap;
+  }
+
+  // -------------------------------------------------------------------------
+  // Raids
+  // -------------------------------------------------------------------------
+
+  /**
+   * The RAID button's hint. The number leads and the raid's name follows: on a
+   * narrow phone the hint is clipped to one line, and the half worth keeping is
+   * the half that changes. "Icecrown Citadel · 5 of 6" truncates to the name of
+   * a place; "5 of 6 · Icecrown Cit…" truncates to the answer.
+   */
+  raidHint(classId) {
+    const st = this.profile.raidState(classId);
+    const gear = this.profile.gear(classId);
+    const raid = RAIDS.find((r) => !isRaidCleared(st, r));
+    if (!raid) return 'All 42 bosses down';
+
+    const access = raidAccess(raid, {
+      level: this.profile.level(classId), raidState: st, gear,
+    });
+    if (!access.ok) {
+      // The first *uncleared* raid always has a cleared predecessor, so only
+      // two of raidAccess's three gates can be the one that is shut here.
+      const prev = RAID_BY_TIER[raid.tier - 1];
+      const short = prev
+        ? CORE_ORDER.filter((sl) => ownedTier(gear, sl) < prev.tier).length
+        : 0;
+      return short
+        ? `${short} piece${short > 1 ? 's' : ''} short · ${raid.name}`
+        : `Level ${raid.level} · ${raid.name}`;
+    }
+    const down = bossesDown(st, raid);
+    return down ? `${down} of 6 · ${raid.name}` : `${raid.name} is open`;
+  }
+
+  buildRaids() {
+    const wrap = el('div', 'screen');
+    const cls = CLASSES.find((c) => c.id === this.selectedClass) || CLASSES[0];
+    // Progress is per class, so — like the Forge, the Armoury and the talent
+    // tree — the screen leads with whose progress you are reading.
+    const picker = el('div', 'class-picker');
+    for (const c of CLASSES) {
+      const b = el('button', 'pill' + (c.id === cls.id ? ' active' : ''), c.name);
+      b.style.setProperty('--accent', c.color);
+      this.click(b, () => { this.selectedClass = c.id; this.refresh(); });
+      picker.appendChild(b);
+    }
+    wrap.appendChild(this.backBar('title'));
+    wrap.appendChild(picker);
+
+    const st = this.profile.raidState(cls.id);
+    const level = this.profile.level(cls.id);
+    const gear = this.profile.gear(cls.id);
+    const total = RAIDS.reduce((n, r) => n + bossesDown(st, r), 0);
+    const p = this.panel('Raids', `${cls.name} · ${total} of 42 bosses down`);
+
+    const list = el('div', 'raid-list');
+    // Open on the page holding the raid you are actually running, not page
+    // one. From the fourth raid on, a list that always starts at the top makes
+    // the player page past cleared content every single time.
+    const perPage = byHeight(3, 4, 7);
+    const current = RAIDS.findIndex((r) => !isRaidCleared(st, r));
+    if (this.pages.raids === undefined && current >= 0) {
+      this.pages.raids = Math.floor(current / perPage);
+    }
+    p.appendChild(this.paged('raids', RAIDS, perPage, list, (raid) => {
+      const down = bossesDown(st, raid);
+      const cleared = down === raid.bosses.length;
+      const access = raidAccess(raid, { level, raidState: st, gear });
+      const isNext = !cleared && access.ok && raid === RAIDS[current];
+
+      const row = el('button', 'forge-card raid-row' + (isNext ? ' next' : ''));
+      row.style.setProperty('--quality', tierColor(raid.tier));
+
+      const icon = el('div', 'forge-icon');
+      // Lit only when you can walk in. Readiness is already a property of the
+      // art here — a raid you cannot enter is drawn flat, the same way a skill
+      // short of resource is, and that costs no words.
+      icon.appendChild(iconElement(RAID_GLYPHS[raid.id], 34,
+        { school: raidSchool(raid), ready: access.ok }));
+      row.appendChild(icon);
+
+      const body = el('div', 'forge-body');
+      body.innerHTML = `
+        <div class="forge-name">${raid.name}
+          <span class="dim">${down}/${raid.bosses.length}</span>
+          <span class="quality-tag">T${raid.tier}</span></div>`;
+      if (cleared) {
+        body.appendChild(el('div', 'forge-desc',
+          `Every Core taken. T${raid.tier} gear is buyable.`));
+      } else if (!access.ok) {
+        // Not a tooltip and not a grey box. The sentence raidAccess already
+        // wrote, at full contrast, in the colour this game uses everywhere
+        // else for the thing that is stopping you.
+        body.appendChild(el('div', 'raid-need', access.reason));
+      } else if (down) {
+        body.appendChild(el('div', 'forge-desc', `Next · ${nextBoss(st, raid).name}`));
+      } else {
+        body.appendChild(el('div', 'forge-desc', raid.blurb));
+      }
+      body.innerHTML += `<div class="forge-pips">${raid.bosses
+        .map((b) => `<i class="${isBossDead(st, b.id) ? 'on' : ''}"></i>`).join('')}</div>`;
+      row.appendChild(body);
+
+      row.appendChild(el('div', 'raid-go', cleared ? '✓' : (access.ok ? '›' : '🔒')));
+      this.click(row, () => { this.raidId = raid.id; this.show('raid'); });
+      return row;
+    }));
+
+    // One tap from the title to the fight, for a player who already knows
+    // where they are. Only when there is a fight: a blue primary button
+    // labelled with a raid you cannot enter is a lie the rows underneath it
+    // have already contradicted, and it is worse than no button. Once
+    // everything is down there is nothing to point at either.
+    const go = RAIDS[current];
+    const canGo = go && raidAccess(go, { level, raidState: st, gear }).ok;
+    if (go && canGo) {
+      const actions = el('div', 'actions');
+      actions.appendChild(this.click(el('button', 'big-btn', `▶ ${go.name.toUpperCase()}`),
+        () => { this.raidId = go.id; this.show('raid'); }));
+      p.appendChild(actions);
+    } else {
+      p.appendChild(el('p', 'footnote', go
+        ? `${go.name} is the next one open to ${cls.name}. Tap it to see what it drops.`
+        : `Every raid cleared on ${cls.name}. Progress is per class — another one starts over.`));
+    }
+    wrap.appendChild(p);
+    return wrap;
+  }
+
+  buildRaid() {
+    const raid = RAID_BY_ID[this.raidId] || RAIDS[0];
+    const cls = CLASSES.find((c) => c.id === this.selectedClass) || CLASSES[0];
+    const st = this.profile.raidState(cls.id);
+    const gear = this.profile.gear(cls.id);
+    const level = this.profile.level(cls.id);
+    const access = raidAccess(raid, { level, raidState: st, gear });
+    const next = nextBoss(st, raid);
+    const down = bossesDown(st, raid);
+    const pay = bossGold(raid, 0, gearCost(raid.tier));
+
+    const wrap = el('div', 'screen');
+    wrap.appendChild(this.backBar('raids'));
+    // No class picker here. It is one screen deep from the one that has it,
+    // and switching class mid-list would be a different raid as well as a
+    // different progress bar. The subtitle carries the answer instead.
+    const p = this.panel(raid.name,
+      `${cls.name} · ${down} of ${raid.bosses.length} down · T${raid.tier} Cores`);
+
+    const list = el('div', 'raid-list');
+    const perPage = byHeight(3, 4, 6);
+    if (this.pages[`raid:${raid.id}`] === undefined && next) {
+      this.pages[`raid:${raid.id}`] = Math.floor(next.index / perPage);
+    }
+    p.appendChild(this.paged(`raid:${raid.id}`, raid.bosses, perPage, list, (boss) => {
+      const i = raid.bosses.indexOf(boss);
+      const slot = GEAR_BY_ID[coreSlotFor(i)];
+      const dead = isBossDead(st, boss.id);
+      const isNext = next && next.id === boss.id;
+      const m = MECHANICS[boss.mechanic];
+
+      const row = el('div', 'forge-card' + (isNext ? ' next' : ''));
+      row.style.setProperty('--quality', tierColor(raid.tier));
+
+      // The Core's own slot icon, drawn lit once you hold that Core. What the
+      // boss drops is the first thing the eye reaches and it needs no words.
+      const icon = el('div', 'forge-icon');
+      icon.appendChild(iconElement(slot.icon, 34,
+        { school: SCHOOLS[slot.school], ready: dead }));
+      row.appendChild(icon);
+
+      const body = el('div', 'forge-body');
+      body.innerHTML = `
+        <div class="forge-name">${dead ? '✓ ' : ''}${boss.name}
+          ${isNext ? '<span class="set-chip on">NEXT</span>' : ''}</div>
+        <div class="forge-desc"><b>${m.name}</b> — ${m.blurb}</div>
+        <div class="set-bar">
+          <span class="set-chip${isNext ? ' on' : ''}">${slot.icon} ${coreName(raid.tier, slot.id)}</span>
+          <span class="set-chip">🪙 ${pay.toLocaleString()}${dead ? ' paid' : ''}</span>
+        </div>`;
+      row.appendChild(body);
+      return row;
+    }));
+
+    p.appendChild(el('p', 'footnote', next
+      ? 'Six bosses, each pays half a piece. A full clear funds half the set it unlocks; the rest comes from the arena.'
+      : `${raid.name} is cleared on ${cls.name}. Every T${raid.tier} Core is yours.`));
+
+    const actions = el('div', 'actions');
+    if (!access.ok) {
+      // A locked screen whose primary button goes to the place that unlocks
+      // it. "Requires level 51" and then nothing to press is a dead end; the
+      // level gate sends you to the arena and the set gate to the Armoury,
+      // which are the two things that actually move the number.
+      actions.appendChild(el('span', 'raid-need', access.reason));
+      const byLevel = /level/i.test(access.reason);
+      actions.appendChild(this.click(el('button', 'big-btn', byLevel ? '▶ ARENA' : '🛡 ARMOURY'),
+        () => this.show(byLevel ? 'classes' : 'armoury')));
+    } else if (next) {
+      actions.appendChild(this.click(
+        el('button', 'big-btn', `▶ FIGHT ${next.name.toUpperCase()}`),
+        () => this.ctx.startRaid(cls, raid)));
+    } else {
+      actions.appendChild(this.click(el('button', 'big-btn', '🛡 ARMOURY'),
+        () => this.show('armoury')));
+    }
+    p.appendChild(actions);
+    wrap.appendChild(p);
+    return wrap;
+  }
+
+  /**
+   * One window, two outcomes. A kill and a wipe are the same decision in the
+   * same place with the same geometry — the thumb lands where it landed last
+   * time whichever way the fight went, and the game does not need two layouts
+   * to say two things.
+   */
+  buildRaidGate(outcome) {
+    const g = this.ctx.game;
+    const raid = g.raid;
+    const cls = g.cls;
+    const st = this.profile.raidState(cls.id);
+    const down = bossesDown(st, raid);
+    const boss = g.lastBoss;               // the one just fought, dead or not
+    const next = nextBoss(st, raid);
+    const kill = outcome === 'kill';
+    const done = kill && !next;
+
+    const wrap = el('div', 'screen overlay raid-gate');
+    const p = done
+      ? this.panel(`${raid.name} cleared`, `${cls.name} · 6 of 6 · T${raid.tier}`)
+      : this.panel(kill ? `${boss.name} down` : `${boss.name} still stands`,
+        `${raid.name} · ${down} of ${raid.bosses.length} · ${cls.name}`);
+
+    // The ledger. Same component as the results screen's "what you are closest
+    // to" rows — icon, fact, number — because it answers the same question in
+    // the same shape, and a fourth list component would be a fourth list
+    // component.
+    const box = el('div', 'goals');
+    for (const row of this.gateRows(outcome, raid, boss, next, st)) {
+      const r = el('div', 'goal');
+      r.innerHTML = `<span class="goal-icon">${row.icon}</span>`
+        + `<span class="goal-text">${row.label}</span>`
+        + `<span class="goal-need">${row.need}</span>`;
+      box.appendChild(r);
+    }
+    p.appendChild(box);
+    p.appendChild(el('p', 'footnote', kill
+      ? (done
+        ? `Every T${raid.tier} Core is yours. The gold is not — buy the set in the Armoury.`
+        : `Continue restores your health, your ${cls.resource.name} and every cooldown.`)
+      : 'A boss is only spent when it dies. Take it again as many times as you need.'));
+
+    // Two buttons, stacked, full width, with a real gap. The one pressed nine
+    // times out of ten is the lower one, because that is the easiest place on a
+    // phone to reach; the gap is there so an overshoot lands on nothing rather
+    // than on the other button. Neither is destructive — the Core and the gold
+    // were written to the save the instant the boss died, before this window
+    // was built, so "stop here" is literally true.
+    const acts = el('div', 'gate-actions');
+    acts.appendChild(this.click(el('button', 'ghost-btn wide', 'Stop here · keep everything'),
+      () => this.ctx.leaveRaid()));
+    acts.appendChild(this.click(el('button', 'big-btn wide',
+      done ? '🛡 ARMOURY' : (kill ? 'CONTINUE ▶' : 'TRY AGAIN ▶')),
+      () => (done ? this.ctx.leaveRaid('armoury') : this.ctx.continueRaid())));
+    p.appendChild(acts);
+    wrap.appendChild(p);
+    return wrap;
+  }
+
+  gateRows(outcome, raid, boss, next, st) {
+    const pay = bossGold(raid, 0, gearCost(raid.tier));
+    const slot = GEAR_BY_ID[coreSlotFor(raid.bosses.indexOf(boss))];
+    if (outcome === 'kill') {
+      const rows = [
+        { icon: slot.icon, label: coreName(raid.tier, slot.id), need: 'unlocked' },
+        { icon: '🪙', label: 'Gold', need: `+${pay.toLocaleString()}` },
+      ];
+      rows.push(next
+        ? {
+          icon: GEAR_BY_ID[coreSlotFor(next.index)].icon,
+          label: `Next · ${next.name}`, need: MECHANICS[next.mechanic].name,
+        }
+        : { icon: '🛡', label: `T${raid.tier} gear`, need: 'buyable now' });
+      return rows;
+    }
+    return [
+      { icon: '🛡', label: 'Your Cores', need: `${bossesDown(st, raid)} of 6 kept` },
+      { icon: '↻', label: boss.name, need: 'back to full' },
+      { icon: '🪙', label: 'This attempt cost', need: 'nothing' },
+    ];
   }
 
   // -------------------------------------------------------------------------

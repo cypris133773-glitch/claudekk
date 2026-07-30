@@ -209,6 +209,9 @@ export class Game {
     this.raid = raid;
     this.raidBossIndex = bossIndex;
     this.raidCleared = false;
+    // Kept after the kill so the window between fights can name what was just
+    // fought. `raidBoss` is nulled on death; this is not.
+    this.lastBoss = boss;
     // No wave director, no rank-up cards, no affixes: a raid boss is already
     // carrying three mechanics and a phase model, and a wave affix on top of
     // that is a rule nobody has room left to read.
@@ -274,6 +277,76 @@ export class Game {
     this.notify(`T${raid.tier} ${GEAR_BY_ID[slot].name.toUpperCase()} CORE`, 3.2);
     this.notify(`+${Math.round(gold)} 🪙`, 2.4);
     this.coreDrop = { tier: raid.tier, slot, gold: Math.round(gold) };
+  }
+
+  /**
+   * Stand the fight down without ending the run, so the between-fights window
+   * has something to sit on top of. The player keeps everything: the Core and
+   * the gold were written to the save the instant the boss died, before this
+   * is ever called.
+   */
+  holdRaid() {
+    this.paused = true;
+  }
+
+  /**
+   * The next boss, with health, resource and cooldowns restored. Not a fresh
+   * run: the arena, the mods and every rank earned so far stay exactly as they
+   * are, because a raid is one sitting and re-rolling the room between bosses
+   * would make it six unrelated fights.
+   */
+  continueRaid() {
+    const next = this.raid.bosses[this.raidBossIndex + 1];
+    if (!next) return false;
+    this.raidBossIndex++;
+    this.raidCleared = false;
+    this.coreDrop = null;
+    this.lastBoss = next;
+    this.restoreForNextBoss();
+    const pt = this.world.pickSpawn(this.player.x, this.player.z, 18);
+    this.raidBoss = createRaidBoss(this.raid, next, pt.x, pt.y + 0.4, pt.z);
+    this.mobs.push(this.raidBoss);
+    this.notify(next.name, 3.0);
+    this.notify(MECHANICS[next.mechanic].blurb, 3.4);
+    this.paused = false;
+    return true;
+  }
+
+  /** The same boss, from the top. A wipe costs nothing, so nothing is taken. */
+  retryRaid() {
+    const boss = this.raid.bosses[this.raidBossIndex];
+    this.over = false;
+    this.running = true;
+    this.raidCleared = false;
+    this.coreDrop = null;
+    // Everything the last attempt left on the floor. A retry that begins
+    // inside the previous attempt's bombs is not the same fight.
+    this.mobs.length = 0;
+    this.zones.length = 0;
+    this.telegraphs.length = 0;
+    this.projectiles.length = 0;
+    this.timers.length = 0;
+    this.player.dead = false;
+    this.restoreForNextBoss();
+    const pt = this.world.pickSpawn(this.player.x, this.player.z, 18);
+    this.raidBoss = createRaidBoss(this.raid, boss, pt.x, pt.y + 0.4, pt.z);
+    this.mobs.push(this.raidBoss);
+    this.notify(boss.name, 3.0);
+    this.paused = false;
+    return true;
+  }
+
+  restoreForNextBoss() {
+    const p = this.player;
+    p.hp = p.maxHp;
+    p.resource = p.resourceDef.startFull ? p.resourceMax : 0;
+    p.cooldowns = p.cooldowns.map(() => 0);
+    p.absorb = 0;
+    p.dots.length = 0;
+    p.slow = 0;
+    p.root = 0;
+    p.freeze = 0;
+    this.raidPotion = 25;
   }
 
   beginIntermission(duration = INTERMISSION) {
@@ -361,6 +434,21 @@ export class Game {
     this.notify(`${up.skill.name} — rank ${rank}${bonus ? '  (Fortune!)' : ''}`, 2.2);
     if (mastered) this.notify('All skills +1 rank', 2.4);
     this.beginIntermission();
+  }
+
+  /**
+   * Dying ends an arena run. It does not end a raid.
+   *
+   * A raid wipe is free and repeatable, and `endRun` banks the run — gold, XP,
+   * quest progress, the lot. Calling it on a wipe and then retrying would bank
+   * the same attempt twice, once per death, which is the one way a system
+   * built on "wipes cost nothing" could quietly pay out for failing. So a raid
+   * death only stops the fight; the window between fights decides what happens
+   * next, and the run is banked when the player chooses to stop.
+   */
+  onPlayerDeath() {
+    if (this.mode === 'raid') { this.audio.play('death'); this.paused = true; return; }
+    this.endRun();
   }
 
   endRun() {
@@ -1144,7 +1232,7 @@ export class Game {
     }
 
     this.player.update(dt, this, input);
-    if (this.player.dead) { this.endRun(); return; }
+    if (this.player.dead) { this.onPlayerDeath(); return; }
 
     for (const m of this.mobs) if (!m.dead) m.update(dt, this);
     for (const p of this.pets) if (!p.dead) p.update(dt, this);
@@ -1207,7 +1295,7 @@ export class Game {
     // times a second, and armour would soak a tick that is already tuned.
     const scale = waveScaling(this.wave, this.difficulty);
     this.player.damage(this.grievous * 1.7 * scale.damage * dt, { isDot: true, source: null });
-    if (this.player.dead) this.endRun();
+    if (this.player.dead) this.onPlayerDeath();
   }
 
   /** Demonic Rebirth: a fiend killed in combat claws its way back, on a timer. */

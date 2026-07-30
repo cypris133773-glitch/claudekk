@@ -78,8 +78,9 @@ function startServer() {
 /** Every screen, including the three that only appear during a run. */
 const SCREENS = [
   'title', 'classes', 'loadout', 'talents', 'forge', 'armoury',
+  'raids', 'raid',
   'stats', 'settings', 'howto', 'diag',
-  'pause', 'upgrade', 'results',
+  'pause', 'upgrade', 'results', 'raidkill', 'raidwipe',
 ];
 
 /**
@@ -105,6 +106,25 @@ function primeRun() {
   B.game.result = {
     reachedWave: 7, wave: 6, kills: 88, souls: 420, duration: 305, damageDealt: 12345,
   };
+
+  // The raid screens, primed to their widest case rather than their middle
+  // one, for the same reason the souls badge is measured at seven figures:
+  //   longest raid name   Icecrown Citadel
+  //   longest boss name   High Warlord Naj'entus, which is also the FIGHT label
+  //   longest lock reason "Buy the full T4 set first — 6 pieces short."
+  //   longest Core chip   T6 Trinket Core
+  // Black Temple at level 41 with no T4 gear is shut on the *set* gate, which
+  // is the longest sentence raidAccess ever writes.
+  B.menus.raidId = 'blacktemple';
+  B.profile.data.classes[cls.id].xp = 3.2e6;         // comfortably past level 41
+  const st = B.profile.raidState(cls.id);
+  for (const b of B.RAID_BY_ID.zulgurub.bosses) st.killed[b.id] = true;
+  st.killed.najentus = true;      // one Core taken, so both row states draw
+  // The between-fights window reads the live game, so it needs one.
+  B.game.mode = 'raid';
+  B.game.raid = B.RAID_BY_ID.blacktemple;
+  B.game.raidBossIndex = 0;
+  B.game.lastBoss = B.RAID_BY_ID.blacktemple.bosses[0];
 }
 
 const VIEWPORTS = [

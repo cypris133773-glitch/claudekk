@@ -10,6 +10,7 @@ import { Hud } from './ui/hud.js';
 import { Menus } from './ui/menus.js';
 import { CLASSES } from './data/classes.js';
 import { AFFIXES } from './data/affixes.js';
+import { nextBoss, RAID_BY_ID } from './data/raids.js';
 import { GEAR_SLOT_IDS } from './data/armor.js';
 import { clamp } from './core/math.js';
 
@@ -114,6 +115,9 @@ const menus = new Menus(uiRoot, {
     toggle: () => { if (isFullscreen()) exitFullscreen(); else enterFullscreen(); },
   },
   startRun: (cls) => startRun(cls),
+  startRaid: (cls, raid) => startRaid(cls, raid),
+  continueRaid: () => continueRaid(),
+  leaveRaid: (to) => leaveRaid(to),
   resumeRun: () => resumeRun(),
   quitRun: () => quitRun(),
   onSettingsChanged: () => {
@@ -265,6 +269,61 @@ async function startRun(cls) {
   requestLock();
 }
 
+/**
+ * Enter a raid at whatever boss this class has left standing. Shares startRun's
+ * whole preamble — audio, fullscreen, the loading screen — because the failure
+ * it guards against is the same one: generating an arena blocks for a moment on
+ * a phone, and a frozen black screen reads as a crash.
+ */
+async function startRaid(cls, raid) {
+  audio.ensure();
+  if (profile.settings.fullscreenOnPlay && fullscreenUsable) enterFullscreen();
+  document.getElementById('rotate-hint').classList.add('hidden');
+
+  const st = profile.raidState(cls.id);
+  const next = nextBoss(st, raid);
+  if (!next) return;
+
+  menus.show(null);
+  showLoading('Opening the gates…', 15);
+  await nextPaint();
+  try {
+    game.startRaid(cls, raid, next.index);
+    applyAimAssist();
+  } catch (err) {
+    hideLoading();
+    fatal('The raid failed to build.', String(err && err.message ? err.message : err));
+    console.error(err);
+    return;
+  }
+  showLoading('Entering…', 100);
+  await nextPaint();
+  hideLoading();
+  input.setEnabled(true);
+  requestLock();
+}
+
+/** Yes, from the window between fights: the next boss, everything restored. */
+function continueRaid() {
+  if (game.raidCleared ? !game.continueRaid() : !game.retryRaid()) { leaveRaid(); return; }
+  menus.show(null);
+  input.setEnabled(true);
+  requestLock();
+}
+
+/**
+ * No. The run ends and banks what it earned, exactly as a normal run does —
+ * the Cores and their gold were already written when each boss died, so this
+ * only decides which screen comes next.
+ */
+function leaveRaid(to) {
+  game.paused = false;
+  game.endRun();
+  input.setEnabled(false);
+  document.exitPointerLock?.();
+  menus.show(to || 'results');
+}
+
 function resumeRun() {
   if (!game.running) return;
   game.paused = false;
@@ -387,7 +446,17 @@ function frame(now) {
     }
     if (steps >= 5) acc = 0;
 
-    if (game.over) {
+    // In a raid the run does not end on a kill or on a death — both open the
+    // same window, and the window is what decides whether there is another
+    // fight. Results only ever comes from "stop here".
+    if (game.mode === 'raid' && (game.raidCleared || game.player.dead)
+      && menus.screen !== 'raidkill' && menus.screen !== 'raidwipe') {
+      const won = game.raidCleared;
+      game.holdRaid();
+      input.setEnabled(false);
+      document.exitPointerLock?.();
+      menus.show(won ? 'raidkill' : 'raidwipe');
+    } else if (game.over) {
       showResults();
     } else if (game.pendingUpgrades && menus.screen !== 'upgrade') {
       input.setEnabled(false);
@@ -444,4 +513,5 @@ document.addEventListener('gesturestart', (e) => e.preventDefault());
 // shipped build is a single file, so there is nothing else to inspect with.
 window.CRAFTARENA = {
   game, profile, renderer, audio, menus, input, CLASSES, AFFIXES, GEAR_SLOT_IDS,
+  RAID_BY_ID,
 };

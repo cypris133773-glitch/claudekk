@@ -1538,6 +1538,45 @@ check('a wipe costs nothing and a kill is recorded once', async () => {
   assert(isBossDead(h2.profile.raidState(CLASSES[0].id), boss.id), 'a kill was not recorded');
 });
 
+check('a raid wipe never banks the run twice', async () => {
+  const { Game } = await import('../src/game/game.js');
+  const { RAIDS } = await import('../src/data/raids.js');
+  const { makeHarness } = await import('./harness.js');
+  const raid = RAIDS[0];
+
+  const h = makeHarness({ gear: 0 });
+  let banked = 0;
+  h.profile.finishRun = () => { banked++; };
+  const g = new Game(h.renderer, h.audio, h.profile);
+  g.startRaid(CLASSES[0], raid, 0);
+
+  // Three wipes and three retries. Each death must stop the fight and bank
+  // nothing: `endRun` pays out gold, XP and quest progress, and a system whose
+  // whole premise is "wipes cost nothing" must never pay out for one.
+  for (let i = 0; i < 3; i++) {
+    g.player.hp = 0;
+    g.player.dead = true;
+    g.onPlayerDeath();
+    assert(banked === 0, `a wipe banked the run (attempt ${i + 1})`);
+    assert(!g.over, 'a wipe ended the run');
+    assert(g.retryRaid(), 'a wipe could not be retried');
+    assert(!g.player.dead && g.player.hp === g.player.maxHp, 'a retry did not restore the player');
+    assert(g.raidBoss && g.raidBoss.hp === g.raidBoss.maxHp, 'a retry did not reset the boss');
+  }
+  // Stopping banks it, exactly once.
+  g.endRun();
+  assert(banked === 1, `stopping banked the run ${banked} times`);
+
+  // And an arena death still ends an arena run, which is the behaviour the
+  // raid path was carved out of.
+  const h2 = makeHarness();
+  const g2 = new Game(h2.renderer, h2.audio, h2.profile);
+  g2.startRun(CLASSES[0], { layout: 0 });
+  g2.player.dead = true;
+  g2.onPlayerDeath();
+  assert(g2.over, 'an arena death no longer ends the run');
+});
+
 check('a raid needs level, the previous clear, and the previous set', async () => {
   const { RAIDS, raidAccess, emptyRaidState, CORE_ORDER } = await import('../src/data/raids.js');
   const t0 = RAIDS[0], t1 = RAIDS[1];
