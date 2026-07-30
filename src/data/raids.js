@@ -258,7 +258,12 @@ export const RAIDS = [
       { id: 'deathwhisper', name: 'Lady Deathwhisper', mechanic: 'adds', power: 1.20, color: '#a35cff' },
       { id: 'saurfang', name: 'Deathbringer Saurfang', mechanic: 'enrage', power: 1.40, color: '#c0392b' },
       { id: 'festergut', name: 'Festergut', mechanic: 'shadow', power: 1.60, color: '#8ce06a' },
-      { id: 'sindragosa', name: 'Sindragosa', mechanic: 'frost', power: 1.82, color: '#8fe3ff' },
+      // Near-white rather than the mid-cyan it was: #8fe3ff is now the colour
+      // of frost *on the floor*, and a frost boss wearing the colour of its own
+      // hazard is the one collision this whole separation exists to prevent.
+      // Value, not hue, does the separating — the patches stay cyan, the dragon
+      // is nearly white, and the two never read as the same thing.
+      { id: 'sindragosa', name: 'Sindragosa', mechanic: 'frost', power: 1.82, color: '#dff2ff' },
       { id: 'lichking', name: 'The Lich King', mechanic: 'frost', power: 2.20, color: '#7ef0ff' },
     ],
   },

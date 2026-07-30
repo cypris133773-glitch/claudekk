@@ -1,6 +1,7 @@
 // Enemy definitions and AI.
 
 import { Entity, TEAM, drawHumanoid } from './entity.js';
+import { Particle, Gib } from './effects.js';
 import { T } from '../render/atlas.js';
 import { clamp, rand, pick } from '../core/math.js';
 import { MECHANICS, PHASES, phaseFor, raidScaling, bossStance } from '../data/raids.js';
@@ -19,10 +20,22 @@ import { bossSkin, bossSize } from '../data/bossskins.js';
  * casts is amber-on-orange, ice-outline, or this violet.
  */
 export const TELL_COLOR = {
-  burst: '#ff9a3c',
-  linger: '#7ec8ff',
-  aimed: '#c06cff',
+  burst: '#ff7a3c',
+  linger: '#8fe3ff',
+  aimed: '#b06cff',
 };
+
+/**
+ * The rule that keeps flavour and safety apart, and the reason a boss can be
+ * red while its attacks are violet:
+ *
+ *   **The danger colour is on the ground. The boss's own colour is in the air.**
+ *
+ * Every ground ring, zone and shockwave uses the mechanic's colour class; every
+ * mote, gib, projectile and trail uses the boss's own. The player reads the
+ * floor to survive and the air to know what they are fighting, and neither read
+ * is ever contaminated by the other.
+ */
 
 const hex = (h) => [
   parseInt(h.slice(1, 3), 16) / 255,
@@ -619,6 +632,14 @@ export class Mob extends Entity {
     game.sfx('roar');
     game.screenShake = Math.max(game.screenShake, 0.5);
     game.burst(this.x, this.centerY, this.z, 40, '#ff5a3c');
+    // A phase you noticed once and then forgot is a difficulty spike. The boss
+    // stays visibly hotter for the rest of the fight — clamped, because two of
+    // them already sit near the ceiling where anything brighter stops reading
+    // as lit and starts reading as white.
+    if (this.def.skin) {
+      this.def = { ...this.def, skin: { ...this.def.skin,
+        emissive: Math.min(0.40, (this.def.skin.emissive || 0) + 0.08) } };
+    }
     return true;
   }
 
@@ -872,9 +893,20 @@ export class Mob extends Entity {
       this.chargeTime -= dt;
       this.vx = this.chargeVX;
       this.vz = this.chargeVZ;
+      // A wake. Without it a fast voxel reads as teleporting rather than as
+      // moving, and the player cannot tell which way it went.
+      if (game.r.fancy) {
+        for (let i = 0; i < 2; i++) {
+          game.particles.push(new Particle(
+            this.x + rand(0.5, -0.5), this.y + 0.3, this.z + rand(0.5, -0.5),
+            rand(1, -1), rand(1.5, 0), rand(1, -1),
+            this.raidColor || '#ff8a3c', 0.35, 0.22, 0));
+        }
+      }
       if (dist < 2.8 && this.attackTimer <= 0) {
         this.attackTimer = 0.6;
         this.meleeHit(game, target, MECHANICS.charge.dmg, 10);
+        game.shockwave(this.x, this.y + 0.4, this.z, 2.5, TELL_COLOR.aimed);
       }
       if (this.chargeTime <= 0 || this.hitWallX || this.hitWallZ) this.state = 'chase';
       return;
@@ -1001,6 +1033,11 @@ export class Mob extends Entity {
           game.explode(this.x, this.y + 0.4, this.z, radius, this.damageAmount * k, {
             team: TEAM.ENEMY, source: this, color: TELL_COLOR.burst, knockback: 8,
           });
+          // Debris in the boss's own material, thrown from the ring it just
+          // made. The blast is amber because amber means "this is about to go
+          // off"; the rubble is basalt or ice or bone because that is what the
+          // thing standing in front of you is made of.
+          this.throwDebris(game, radius, 10);
           game.sfx('stomp');
         }, TELL_COLOR.burst);
       });
@@ -1015,6 +1052,16 @@ export class Mob extends Entity {
   mechBreath(game, mech, target) {
     const dx = target.x - this.x, dz = target.z - this.z;
     const d = Math.hypot(dx, dz) || 1;
+    // The wind-up, drawn where the stream will come from. There is no ground
+    // telegraph for a cone and deliberately no new shape for one — the tell is
+    // the boss gathering at head height, which reads from any angle you can see
+    // the boss from, and the safe place for this mechanic is behind it anyway.
+    for (let i = 0; i < 7; i++) {
+      game.delay(i * 0.2, () => {
+        if (this.dead) return;
+        game.burst(this.x, this.eyeY, this.z, 6, this.raidColor || '#ff8a3c');
+      });
+    }
     game.delay(mech.cast, () => {
       if (this.dead) return;
       // Aim is sampled once, here, and frozen. A cone that keeps tracking is
@@ -1053,6 +1100,13 @@ export class Mob extends Entity {
       : tier <= 3 ? ['stalker', 'skele']
         : ['hexer', 'wraith'];
     const count = this.power > 1.3 ? 4 : 3;
+    // A ring where each one will appear. The add itself looks like an ordinary
+    // mob, so the violet is the only thing that says one is coming.
+    for (let i = 0; i < count; i++) {
+      const a = (i / count) * Math.PI * 2 + this.age;
+      game.telegraph(this.x + Math.cos(a) * mech.radius, this.y,
+        this.z + Math.sin(a) * mech.radius, 1.6, mech.cast, () => {}, TELL_COLOR.aimed);
+    }
     game.delay(mech.cast, () => {
       if (this.dead) return;
       for (let i = 0; i < count; i++) {
@@ -1138,6 +1192,15 @@ export class Mob extends Entity {
           radius: mech.radius, dps: this.damageAmount * mech.dmg, duration: 8,
           team: TEAM.ENEMY, source: this, color: TELL_COLOR.linger, slow: 0.35,
         });
+        // Shards rather than sparks: drawn on the ice tile so the material is
+        // the message, and heavy enough to fall rather than drift.
+        for (let i = 0; i < 10; i++) {
+          const a = Math.random() * Math.PI * 2;
+          game.particles.push(new Particle(
+            px, py + 0.4, pz,
+            Math.cos(a) * rand(4, 1), rand(7, 3), Math.sin(a) * rand(4, 1),
+            TELL_COLOR.linger, rand(0.9, 0.5), 0.20, 20, T.ICE));
+        }
         game.sfx('shatter');
       }, TELL_COLOR.linger);
     }
@@ -1160,8 +1223,40 @@ export class Mob extends Entity {
       if (Math.hypot(p.x - cx, p.z - cz) < mech.radius) {
         p.applyDot(this.damageAmount * 0.30, 6, 'shadow', this);
         game.notify('AFFLICTED', 1.4);
+        // The only visual the player wears, and it is deliberately sparse:
+        // one rising mote every quarter second for six seconds. A dot
+        // indicator that fills the bottom of the frame is the thing that hides
+        // the next telegraph.
+        for (let i = 0; i < 24; i++) {
+          game.delay(i * 0.25, () => {
+            if (p.dead) return;
+            game.particles.push(new Particle(
+              p.x + rand(0.4, -0.4), p.y + 0.2, p.z + rand(0.4, -0.4),
+              0, 0.6, 0, TELL_COLOR.aimed, 0.8, 0.16, -2));
+          });
+        }
       }
     }, TELL_COLOR.aimed);
+  }
+
+  /**
+   * Rubble in the boss's own material. `bodyTile` and `body` are what the thing
+   * in front of you is built from, so a Molten Core slam throws basalt and an
+   * Icecrown slam throws ice, without a per-raid table anywhere.
+   */
+  throwDebris(game, radius, count) {
+    if (!game.r.fancy) return;
+    const skin = this.def.skin || {};
+    const tile = skin.bodyTile ?? T.STONE;
+    const color = skin.body || [0.5, 0.5, 0.5];
+    for (let i = 0; i < count; i++) {
+      const a = (i / count) * Math.PI * 2 + Math.random();
+      const sp = radius * rand(1.8, 0.8);
+      game.gibs.push(new Gib(
+        this.x + Math.cos(a) * 0.8, this.y + 0.5, this.z + Math.sin(a) * 0.8,
+        Math.cos(a) * sp, rand(10, 5), Math.sin(a) * sp,
+        color, rand(0.30, 0.14), rand(2.0, 1.1), tile));
+    }
   }
 
   mechNova(game, mech) {

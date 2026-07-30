@@ -111,13 +111,19 @@ export class Projectile {
 }
 
 export class Particle {
-  constructor(x, y, z, vx, vy, vz, color, life, size, gravity = 14) {
+  /**
+   * `tile` is optional and almost always BLANK — a mote is a lit dot and a
+   * texture on it is noise. It exists for the one case where the material is
+   * the message: frost shards want to be seen as ice rather than as sparks.
+   */
+  constructor(x, y, z, vx, vy, vz, color, life, size, gravity = 14, tile = T.BLANK) {
     this.x = x; this.y = y; this.z = z;
     this.vx = vx; this.vy = vy; this.vz = vz;
-    this.color = hexToRgb(color);
+    this.color = Array.isArray(color) ? color : hexToRgb(color);
     this.life = life; this.maxLife = life;
     this.size = size;
     this.gravity = gravity;
+    this.tile = tile;
     this.dead = false;
   }
 
@@ -133,7 +139,7 @@ export class Particle {
     const t = this.life / this.maxLife;
     const s = this.size * (0.35 + t * 0.65);
     r.drawBox(this.x, this.y, this.z, s, s, s, {
-      tile: T.BLANK, color: this.color, emissive: 0.85, alpha: Math.min(1, t * 2),
+      tile: this.tile, color: this.color, emissive: 0.85, alpha: Math.min(1, t * 2),
     });
   }
 }

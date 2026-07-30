@@ -1538,6 +1538,33 @@ check('a wipe costs nothing and a kill is recorded once', async () => {
   assert(isBossDead(h2.profile.raidState(CLASSES[0].id), boss.id), 'a kill was not recorded');
 });
 
+check('the danger colour is on the ground and the boss colour is in the air', async () => {
+  const { TELL_COLOR } = await import('../src/game/mobs.js');
+  const { RAIDS, MECHANICS } = await import('../src/data/raids.js');
+
+  // The three telegraph languages, and they are keyed to the action rather than
+  // to the boss. A player learns three colours once; if a boss could recolour
+  // them, they would have to relearn the floor every raid.
+  assert(Object.keys(TELL_COLOR).length === 3, 'there are not three telegraph colours');
+  for (const [k, v] of Object.entries(TELL_COLOR)) {
+    assert(/^#[0-9a-f]{6}$/i.test(v), `${k} is not a usable colour`);
+  }
+  const tells = new Set(Object.values(MECHANICS).map((m) => m.tell));
+  for (const t of tells) assert(TELL_COLOR[t], `mechanic tell '${t}' has no colour`);
+
+  // No boss may wear a telegraph colour. The whole separation rests on the
+  // floor never being the same hue as the thing standing on it.
+  const danger = new Set(Object.values(TELL_COLOR).map((c) => c.toLowerCase()));
+  for (const raid of RAIDS) {
+    for (const b of raid.bosses) {
+      assert(!danger.has(b.color.toLowerCase()),
+        `${b.id} is the same colour as a telegraph`);
+    }
+    assert(!danger.has(raid.theme.accent.toLowerCase()),
+      `${raid.id}'s room is lit in a telegraph colour`);
+  }
+});
+
 check('every boss has a silhouette and a skin that can be read', async () => {
   const { BOSS_SKINS, BOSS_SIZES } = await import('../src/data/bossskins.js');
   const { RAIDS } = await import('../src/data/raids.js');
