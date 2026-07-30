@@ -316,8 +316,19 @@ export class Telegraph {
     const p = 1 - this.timer / this.duration;
     const segs = Math.max(12, Math.round(this.radius * 6));
     const pulse = 0.5 + 0.5 * Math.sin(p * 18);
+    // Two rings, and the outer one is the point.
+    //
+    // The sweeping ring alone was a lie for most of its life: it starts at 35%
+    // of the radius and only reaches the true edge on the frame the blast goes
+    // off, so a player standing at 80% of a big telegraph saw clear floor right
+    // up until it killed them. The dim boundary ring is drawn at the real
+    // radius for the whole warning, so where it is safe to stand is known from
+    // the first frame; the bright sweep is then just the clock running out.
+    const edge = Math.max(0.28, 0.34 - this.radius * 0.01);
     for (let i = 0; i < segs; i++) {
       const a = (i / segs) * Math.PI * 2;
+      r.drawBox(this.x + Math.cos(a) * this.radius, this.y + 0.05, this.z + Math.sin(a) * this.radius,
+        edge, 0.05, edge, { tile: T.BLANK, color: this.color, emissive: 0.35, alpha: 0.42 });
       const rr = this.radius * (0.35 + p * 0.65);
       r.drawBox(this.x + Math.cos(a) * rr, this.y + 0.06, this.z + Math.sin(a) * rr,
         0.34, 0.06, 0.34, { tile: T.BLANK, color: this.color, emissive: 0.7 + pulse * 0.3, alpha: 0.85 });
