@@ -153,6 +153,10 @@ export function phaseFor(hpFraction) {
  * The seven raids. `tier` is the gear tier it unlocks, `level` the character
  * level required to enter, and `theme` is what the arena is built and lit from.
  *
+ * Boss `id`s are never renamed. They are the keys a class's raid record is
+ * written under, so changing one would silently un-kill a boss on every save
+ * that had already put it down. Display names are free to move; ids are not.
+ *
  * Boss `power` is a multiplier on the tier's baseline, so the sixth boss of a
  * raid is meaningfully harder than the first without each one needing its own
  * hand-tuned health pool.
@@ -170,12 +174,12 @@ export const RAIDS = [
     theme: { sky: '#1e3016', fog: '#3f5c33', stone: '#3a4234', accent: '#c9a227', hazard: '#6edc3c', lava: false, fogNear: 26, fogFar: 62 },
     trial: 'bombs',
     bosses: [
-      { id: 'venoxis', name: 'High Priest Venoxis', mechanic: 'shadow', power: 1.00, color: '#8ce06a' },
-      { id: 'mandokir', name: 'Bloodlord Mandokir', mechanic: 'charge', power: 1.10, color: '#e0473c' },
-      { id: 'arlokk', name: 'High Priestess Arlokk', mechanic: 'adds', power: 1.20, color: '#a35cff' },
-      { id: 'jindo', name: "Jin'do the Hexxer", mechanic: 'shadow', power: 1.30, color: '#6ec8ff' },
-      { id: 'gahzranka', name: "Gahz'ranka", mechanic: 'slam', power: 1.42, color: '#4aa3ff' },
-      { id: 'hakkar', name: 'Hakkar the Soulflayer', mechanic: 'enrage', power: 1.60, color: '#c0392b' },
+      { id: 'venoxis', name: 'High Priest Venocraft', mechanic: 'shadow', power: 1.00, color: '#8ce06a' },
+      { id: 'mandokir', name: 'Bloodlord Craftokir', mechanic: 'charge', power: 1.10, color: '#e0473c' },
+      { id: 'arlokk', name: 'High Priestess Craflokk', mechanic: 'adds', power: 1.20, color: '#a35cff' },
+      { id: 'jindo', name: "Craft'do the Hexxer", mechanic: 'shadow', power: 1.30, color: '#6ec8ff' },
+      { id: 'gahzranka', name: "Gahz'crafta", mechanic: 'slam', power: 1.42, color: '#4aa3ff' },
+      { id: 'hakkar', name: 'Crafkar the Soulflayer', mechanic: 'enrage', power: 1.60, color: '#c0392b' },
     ],
   },
   {
@@ -184,12 +188,12 @@ export const RAIDS = [
     theme: { sky: '#120806', fog: '#40140a', stone: '#3e3e44', stoneHi: '#6e6e74', accent: '#9fd0ff', hazard: '#ff8a3c', lava: true, fogNear: 22, fogFar: 58 },
     trial: 'frost',
     bosses: [
-      { id: 'lucifron', name: 'Lucifron', mechanic: 'shadow', power: 1.00, color: '#ff8a3c' },
-      { id: 'magmadar', name: 'Magmadar', mechanic: 'breath', power: 1.12, color: '#ff5a3c' },
-      { id: 'gehennas', name: 'Gehennas', mechanic: 'adds', power: 1.22, color: '#ffb27a' },
-      { id: 'garr', name: 'Garr', mechanic: 'bombs', power: 1.34, color: '#c9a06a' },
-      { id: 'geddon', name: 'Baron Geddon', mechanic: 'bombs', power: 1.46, color: '#ffd24a' },
-      { id: 'ragnaros1', name: 'Ragnaros', mechanic: 'enrage', power: 1.70, color: '#ff3c14' },
+      { id: 'lucifron', name: 'Lucicraft', mechanic: 'shadow', power: 1.00, color: '#ff8a3c' },
+      { id: 'magmadar', name: 'Magmacraft', mechanic: 'breath', power: 1.12, color: '#ff5a3c' },
+      { id: 'gehennas', name: 'Crafthennas', mechanic: 'adds', power: 1.22, color: '#ffb27a' },
+      { id: 'garr', name: 'Crafgarr', mechanic: 'bombs', power: 1.34, color: '#c9a06a' },
+      { id: 'geddon', name: 'Baron Craftdon', mechanic: 'bombs', power: 1.46, color: '#ffd24a' },
+      { id: 'ragnaros1', name: 'Ragnacraft', mechanic: 'enrage', power: 1.70, color: '#ff3c14' },
     ],
   },
   {
@@ -198,12 +202,12 @@ export const RAIDS = [
     theme: { sky: '#140f22', fog: '#2a2036', stone: '#3a3348', stoneAlt: '#2e2840', accent: '#ffbf6a', hazard: '#d0491a', lava: false, fogNear: 30, fogFar: 70 },
     trial: 'shadow',
     bosses: [
-      { id: 'attumen', name: 'Attumen the Huntsman', mechanic: 'charge', power: 1.00, color: '#cfd6e6' },
-      { id: 'moroes', name: 'Moroes', mechanic: 'adds', power: 1.12, color: '#a35cff' },
+      { id: 'attumen', name: 'Craftumen the Huntsman', mechanic: 'charge', power: 1.00, color: '#cfd6e6' },
+      { id: 'moroes', name: 'Morocraft', mechanic: 'adds', power: 1.12, color: '#a35cff' },
       { id: 'maiden', name: 'Maiden of Virtue', mechanic: 'slam', power: 1.24, color: '#ffe9a8' },
       { id: 'bigbadwolf', name: 'The Big Bad Wolf', mechanic: 'charge', power: 1.36, color: '#8b5a2b' },
       { id: 'curator', name: 'The Curator', mechanic: 'adds', power: 1.48, color: '#7ef0ff' },
-      { id: 'malchezaar', name: 'Prince Malchezaar', mechanic: 'bombs', power: 1.72, color: '#ff5a3c' },
+      { id: 'malchezaar', name: 'Prince Craftchezaar', mechanic: 'bombs', power: 1.72, color: '#ff5a3c' },
     ],
   },
   {
@@ -212,12 +216,12 @@ export const RAIDS = [
     theme: { sky: '#0e1a26', fog: '#1c3040', stone: '#3e4048', stoneHi: '#949aa0', accent: '#ffa62b', accentHi: '#7ef0ff', hazard: '#ff8a3c', lava: true, fogNear: 34, fogFar: 86 },
     trial: 'slam',
     bosses: [
-      { id: 'leviathan', name: 'Flame Leviathan', mechanic: 'charge', power: 1.00, color: '#ff8a3c' },
-      { id: 'razorscale', name: 'Razorscale', mechanic: 'breath', power: 1.14, color: '#c9a06a' },
-      { id: 'ignis', name: 'Ignis the Furnace Master', mechanic: 'bombs', power: 1.26, color: '#ff5a3c' },
-      { id: 'kologarn', name: 'Kologarn', mechanic: 'slam', power: 1.40, color: '#8b93a5' },
-      { id: 'thorim', name: 'Thorim', mechanic: 'adds', power: 1.54, color: '#7ef0ff' },
-      { id: 'yogg', name: 'Yogg-Saron', mechanic: 'shadow', power: 1.80, color: '#7dff9d' },
+      { id: 'leviathan', name: 'Flame Craftathan', mechanic: 'charge', power: 1.00, color: '#ff8a3c' },
+      { id: 'razorscale', name: 'Razorcraft', mechanic: 'breath', power: 1.14, color: '#c9a06a' },
+      { id: 'ignis', name: 'Craftnis the Furnace Master', mechanic: 'bombs', power: 1.26, color: '#ff5a3c' },
+      { id: 'kologarn', name: 'Crafogarn', mechanic: 'slam', power: 1.40, color: '#8b93a5' },
+      { id: 'thorim', name: 'Craftorim', mechanic: 'adds', power: 1.54, color: '#7ef0ff' },
+      { id: 'yogg', name: 'Yogg-Craftron', mechanic: 'shadow', power: 1.80, color: '#7dff9d' },
     ],
   },
   {
@@ -226,12 +230,12 @@ export const RAIDS = [
     theme: { sky: '#060a07', fog: '#101a12', stone: '#22261f', daisStone: '#3a4038', accent: '#a8ff5c', hazard: '#a8ff5c', lava: false, fogNear: 18, fogFar: 52 },
     trial: 'frost',
     bosses: [
-      { id: 'najentus', name: "High Warlord Naj'entus", mechanic: 'bombs', power: 1.00, color: '#4aa3ff' },
-      { id: 'supremus', name: 'Supremus', mechanic: 'charge', power: 1.16, color: '#ff5a3c' },
-      { id: 'akama', name: 'Shade of Akama', mechanic: 'adds', power: 1.30, color: '#a35cff' },
-      { id: 'teron', name: 'Teron Gorefiend', mechanic: 'shadow', power: 1.46, color: '#6a2fb5' },
-      { id: 'bloodboil', name: 'Gurtogg Bloodboil', mechanic: 'enrage', power: 1.62, color: '#c0392b' },
-      { id: 'illidan', name: 'Illidan Stormrage', mechanic: 'breath', power: 1.90, color: '#9dff7a' },
+      { id: 'najentus', name: "High Warlord Craft'entus", mechanic: 'bombs', power: 1.00, color: '#4aa3ff' },
+      { id: 'supremus', name: 'Craftremus', mechanic: 'charge', power: 1.16, color: '#ff5a3c' },
+      { id: 'akama', name: 'Shade of Crafama', mechanic: 'adds', power: 1.30, color: '#a35cff' },
+      { id: 'teron', name: 'Craferon Gorefiend', mechanic: 'shadow', power: 1.46, color: '#6a2fb5' },
+      { id: 'bloodboil', name: 'Crafttogg Bloodboil', mechanic: 'enrage', power: 1.62, color: '#c0392b' },
+      { id: 'illidan', name: 'Craftidan Stormrage', mechanic: 'breath', power: 1.90, color: '#9dff7a' },
     ],
   },
   {
@@ -240,12 +244,12 @@ export const RAIDS = [
     theme: { sky: '#ff7a24', fog: '#3a0e06', stone: '#1e1614', accent: '#ffb03c', hazard: '#ff8a3c', lava: true, fogNear: 30, fogFar: 74 },
     trial: 'bombs',
     bosses: [
-      { id: 'bethtilac', name: "Beth'tilac", mechanic: 'adds', power: 1.00, color: '#ff8a3c' },
-      { id: 'rhyolith', name: 'Lord Rhyolith', mechanic: 'slam', power: 1.18, color: '#8b5a2b' },
-      { id: 'alysrazor', name: 'Alysrazor', mechanic: 'breath', power: 1.34, color: '#ffd24a' },
-      { id: 'shannox', name: 'Shannox', mechanic: 'charge', power: 1.50, color: '#c9a06a' },
-      { id: 'baleroc', name: 'Baleroc', mechanic: 'bombs', power: 1.68, color: '#ff5a3c' },
-      { id: 'ragnaros2', name: 'Ragnaros, Firelord', mechanic: 'enrage', power: 2.00, color: '#ff3c14' },
+      { id: 'bethtilac', name: "Craft'tilac", mechanic: 'adds', power: 1.00, color: '#ff8a3c' },
+      { id: 'rhyolith', name: 'Lord Craftolith', mechanic: 'slam', power: 1.18, color: '#8b5a2b' },
+      { id: 'alysrazor', name: 'Craftsrazor', mechanic: 'breath', power: 1.34, color: '#ffd24a' },
+      { id: 'shannox', name: 'Craftnox', mechanic: 'charge', power: 1.50, color: '#c9a06a' },
+      { id: 'baleroc', name: 'Craferoc', mechanic: 'bombs', power: 1.68, color: '#ff5a3c' },
+      { id: 'ragnaros2', name: 'Ragnacraft, Firelord', mechanic: 'enrage', power: 2.00, color: '#ff3c14' },
     ],
   },
   {
@@ -254,17 +258,17 @@ export const RAIDS = [
     theme: { sky: '#0a1424', fog: '#16304c', stone: '#1a2230', stoneHi: '#b9dcf0', accent: '#e8d6a0', hazard: '#cfeeff', lava: false, fogNear: 28, fogFar: 78 },
     trial: 'frost',
     bosses: [
-      { id: 'marrowgar', name: 'Lord Marrowgar', mechanic: 'bombs', power: 1.00, color: '#cfd6e6' },
-      { id: 'deathwhisper', name: 'Lady Deathwhisper', mechanic: 'adds', power: 1.20, color: '#a35cff' },
-      { id: 'saurfang', name: 'Deathbringer Saurfang', mechanic: 'enrage', power: 1.40, color: '#c0392b' },
-      { id: 'festergut', name: 'Festergut', mechanic: 'shadow', power: 1.60, color: '#8ce06a' },
+      { id: 'marrowgar', name: 'Lord Craftowgar', mechanic: 'bombs', power: 1.00, color: '#cfd6e6' },
+      { id: 'deathwhisper', name: 'Lady Craftwhisper', mechanic: 'adds', power: 1.20, color: '#a35cff' },
+      { id: 'saurfang', name: 'Craftbringer Saurfang', mechanic: 'enrage', power: 1.40, color: '#c0392b' },
+      { id: 'festergut', name: 'Craftergut', mechanic: 'shadow', power: 1.60, color: '#8ce06a' },
       // Near-white rather than the mid-cyan it was: #8fe3ff is now the colour
       // of frost *on the floor*, and a frost boss wearing the colour of its own
       // hazard is the one collision this whole separation exists to prevent.
       // Value, not hue, does the separating — the patches stay cyan, the dragon
       // is nearly white, and the two never read as the same thing.
-      { id: 'sindragosa', name: 'Sindragosa', mechanic: 'frost', power: 1.82, color: '#dff2ff' },
-      { id: 'lichking', name: 'The Lich King', mechanic: 'frost', power: 2.20, color: '#7ef0ff' },
+      { id: 'sindragosa', name: 'Craftragosa', mechanic: 'frost', power: 1.82, color: '#dff2ff' },
+      { id: 'lichking', name: 'The Craft King', mechanic: 'frost', power: 2.20, color: '#7ef0ff' },
     ],
   },
 ];
