@@ -161,3 +161,40 @@ That gives each currency exactly one job:
 - **XP → levels → talents** — your character build
 - **Gold → Armoury** — geared to your level, ~470 runs, per class
 - **Gold → Forge** — a short finite set of account-wide conveniences
+
+---
+
+# Raids — agreed rules so far
+
+Not built yet. This records the decisions already made, so they are not
+re-litigated when the work starts.
+
+**Seven raids, one per tier.** Zul'Gurub (T0), Molten Core (T1), Karazhan (T2),
+Ulduar (T3), Black Temple (T4), Firelands (T5), Icecrown Citadel (T6). Six
+bosses each, because a T set has six pieces.
+
+**Each boss drops one Core**, in slot order: weapon, chest, helm, boots, ring,
+trinket. A Core is not the item — it is permission to *buy* that item, and the
+gold still has to be earned. Bosses pay about half the gold the piece costs;
+the rest comes from the arena and from quests.
+
+**Progress is per class**, like levels, talents and gear. Only gold is shared.
+
+**Two gates, both of which must be open.** The previous raid must be cleared
+*and* its set fully bought, and the character must be at the tier's level: T0
+from 1, T1 from 11, T2 from 21, T3 from 31, T4 from 41, T5 from 51, T6 at 60.
+A level-45 Warrior who has cleared T4 and bought the set still waits until 51
+for Firelands.
+
+**A boss is consumed by killing it, not by fighting it.** Wiping is free and the
+attempt can be repeated as often as needed; only the kill removes the boss from
+that class's raid. Without this a player who out-levels their gear could lock
+themselves out of the rest of the game permanently, and a system that can
+deadlock is not a challenge, it is a bug with a difficulty setting.
+
+**Between bosses: "Continue?"** Yes spawns the next boss and restores health,
+resource and cooldowns. No returns to the menu with everything kept. A raid is
+cleared when the sixth Core is taken.
+
+**Each kill is announced** — "T5 Chest Core unlocked!" — in the same register as
+the boss-slain banner, with its own cue.
