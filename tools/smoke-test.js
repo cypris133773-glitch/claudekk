@@ -1749,6 +1749,34 @@ check('every boss has a silhouette and a skin that can be read', async () => {
   for (const k of PARTS) assert(counts[k] > 0, `no boss uses '${k}'`);
 });
 
+check('a keyboard can play the whole game', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const src = await readFile(new URL('../src/core/input.js', import.meta.url), 'utf8');
+
+  // The touch controls were designed first and the game shipped to a browser,
+  // so the keyboard has to be able to do everything a thumb can. A binding
+  // that quietly stops existing is invisible until someone tries to play on a
+  // desktop and finds one of their four skills does nothing.
+  for (let i = 1; i <= 4; i++) {
+    assert(src.includes(`'Digit${i}'`), `skill ${i} has no number key`);
+  }
+  for (const key of ['KeyQ', 'KeyE', 'KeyR', 'KeyF']) {
+    assert(src.includes(`'${key}'`), `${key} is no longer a skill binding`);
+  }
+  for (const key of ['KeyW', 'KeyA', 'KeyS', 'KeyD']) {
+    assert(src.includes(`'${key}'`), `${key} no longer moves`);
+  }
+  assert(src.includes("keys.has('Space')"), 'Space no longer jumps');
+  assert(src.includes("'Escape'"), 'Escape no longer pauses');
+  assert(src.includes('ShiftLeft'), 'Shift no longer sprints');
+
+  // And the arrow keys, because a laptop without WASD muscle memory is still a
+  // laptop.
+  for (const key of ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']) {
+    assert(src.includes(`'${key}'`), `${key} does nothing`);
+  }
+});
+
 check('every sound the game asks for exists', async () => {
   const { readFile } = await import('node:fs/promises');
   const audio = await readFile(new URL('../src/core/audio.js', import.meta.url), 'utf8');
