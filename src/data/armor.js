@@ -194,55 +194,67 @@ export const CLASS_GEAR = {
  */
 export const SET_BONUSES = {
   warrior: {
-    2: { effect: { meleeDamage: 0.04 }, desc: '+4% melee damage' },
-    4: { effect: { maxHpPct: 0.05, thorns: 0.08 }, desc: '+5% health, +8% thorns' },
-    6: { effect: { bleedPct: 0.35, onHitGain: 1.5 }, desc: 'Crits bleed for 35%, +1.5 Rage a hit' },
+    2: { effect: { meleeDamage: 0.06, maxHpPct: 0.04 }, desc: '+6% melee damage, +4% health' },
+    4: { effect: { bloodsurge: 0.26 }, desc: 'Up to +26% melee damage, scaling with the Rage you hold' },
+    6: { effect: { bleedBurst: 1.0, bleedPct: 0.25 },
+      desc: 'Bleeds hit 25% harder, and a bleeding enemy that dies detonates the rest' },
   },
   mage: {
-    2: { effect: { spellDamage: 0.04 }, desc: '+4% spell damage' },
-    4: { effect: { aoeRadius: 0.08, critChance: 0.03 }, desc: '+8% area, +3% crit' },
-    6: { effect: { critCdr: 0.5, burnDamage: 0.20 }, desc: 'Crits cut cooldowns 0.5s, +20% burn' },
+    2: { effect: { spellDamage: 0.06, critChance: 0.02 }, desc: '+6% spell damage, +2% crit' },
+    4: { effect: { critCdr: 0.5, burnDamage: 0.20 }, desc: 'Crits cut cooldowns 0.5s, +20% burn' },
+    6: { effect: { spellEcho: 0.25 }, desc: '25% chance a damaging skill casts itself again for half' },
   },
   warlock: {
-    2: { effect: { dotDamage: 0.05 }, desc: '+5% damage over time' },
-    4: { effect: { petPower: 0.10, dotDuration: 0.6 }, desc: '+10% pet power, dots last 0.6s longer' },
-    6: { effect: { dotLifesteal: 0.05, maxPets: 1 }, desc: 'Dots heal you 5%, +1 demon' },
+    2: { effect: { dotDamage: 0.09, petPower: 0.08 }, desc: '+9% damage over time, +8% demon power' },
+    4: { effect: { dotDuration: 1, dotLifesteal: 0.05 },
+      desc: 'Rot lasts 1s longer and heals you for 5%' },
+    6: { effect: { dotBurst: 0.30, maxPets: 1 },
+      desc: '+1 demon, and rot that runs its full course detonates for 30% of its total' },
   },
   shaman: {
-    2: { effect: { spellDamage: 0.04 }, desc: '+4% spell damage' },
-    4: { effect: { totemDuration: 2, moveSpeed: 0.05 }, desc: 'Totems last 2s longer, +5% speed' },
-    6: { effect: { jumps: 1, maelstrom: 0.6 }, desc: '+1 chain jump, autos cut Chain Lightning 0.6s' },
+    2: { effect: { spellDamage: 0.06, totemDuration: 1.5 },
+      desc: '+6% spell damage, totems last 1.5s longer' },
+    4: { effect: { overload: 0.25 }, desc: '25% chance your chain skills fire a second time' },
+    6: { effect: { jumps: 1, maelstrom: 0.6, moveSpeed: 0.06 },
+      desc: '+1 chain jump, melee hits cut Chain Lightning 0.6s, +6% speed' },
   },
   priest: {
-    2: { effect: { healing: 0.05 }, desc: '+5% healing' },
-    4: { effect: { absorb: 10, spellDamage: 0.04 }, desc: '+10 shield, +4% spell damage' },
-    // Sustain rather than damage. +15% damage over time put the Priest's set
-    // at 20% of its own gear against 5% for everyone else — and a healer's
-    // six-piece paying out in rot was the wrong answer twice over.
-    6: { effect: { absorb: 14, resourceRegen: 2.5, killHeal: 10 },
-      desc: '+14 shield, +2.5 mana regen, 10 health a kill' },
+    2: { effect: { spellDamage: 0.05, healing: 0.08, absorb: 10 },
+      desc: '+5% spell damage, +8% healing, +10 shield' },
+    4: { effect: { wardedDamage: 0.18 },
+      desc: '+18% spell damage while a shield of yours is holding' },
+    6: { effect: { absorb: 20, rapture: 15, resourceRegen: 2 },
+      desc: '+20 shield, a breaking shield refunds 15 mana, +2 mana regen' },
   },
   rogue: {
-    2: { effect: { critMult: 0.08 }, desc: '+8% crit damage' },
-    4: { effect: { attackSpeed: 0.07, dodge: 0.03 }, desc: '+7% attack speed, +3% dodge' },
-    6: { effect: { doubleStrike: 0.15, critCdr: 0.4 }, desc: '15% chance to strike twice, crits cut cooldowns' },
+    2: { effect: { critMult: 0.12, attackSpeed: 0.04 }, desc: '+12% crit damage, +4% attack speed' },
+    4: { effect: { exposeWeakness: 0.22 },
+      desc: '+22% damage to anything already carrying one of your poisons' },
+    6: { effect: { doubleStrike: 0.18, critCdr: 0.4 },
+      desc: '18% chance to strike twice, crits cut every cooldown' },
   },
   demonslayer: {
-    2: { effect: { meleeDamage: 0.04 }, desc: '+4% melee damage' },
-    4: { effect: { lifesteal: 0.03, moveSpeed: 0.05 }, desc: '+3% lifesteal, +5% speed' },
-    6: { effect: { aoeRadius: 0.15, onHitGain: 1.5 }, desc: '+15% area, +1.5 Hatred a hit' },
+    2: { effect: { meleeDamage: 0.06, moveSpeed: 0.05, onHitGain: 0.5 },
+      desc: '+6% melee damage, +5% speed, +0.5 Hatred a hit' },
+    4: { effect: { momentumDamage: 0.22 }, desc: '+22% damage for 4s after any dash' },
+    6: { effect: { aoeRadius: 0.18, lifesteal: 0.06, onKillGain: 6 },
+      desc: '+18% area, +6% lifesteal, +6 Hatred a kill' },
   },
   paladin: {
-    2: { effect: { armor: 0.03 }, desc: '+3% armor' },
-    4: { effect: { maxHpPct: 0.06, healing: 0.06 }, desc: '+6% health, +6% healing' },
-    6: { effect: { damageReduction: 0.06, killHeal: 12 }, desc: '-6% damage taken, 12 health a kill' },
+    2: { effect: { meleeDamage: 0.05, armor: 0.03 }, desc: '+5% melee damage, +3% armor' },
+    4: { effect: { zeal: 0.04 },
+      desc: 'Each hit you take: +4% melee damage, stacking 5 times' },
+    6: { effect: { damageReduction: 0.08, killHeal: 14, healing: 0.15 },
+      desc: '-8% damage taken, 14 health a kill, +15% healing' },
   },
   hunter: {
-    2: { effect: { spellDamage: 0.04 }, desc: '+4% ranged damage' },
-    4: { effect: { petPower: 0.10, critMult: 0.05 }, desc: '+10% pet power, +5% crit damage' },
-    6: { effect: { pierce: 1, extraProjectiles: 1 }, desc: '+1 pierce, +1 extra shot' },
+    2: { effect: { spellDamage: 0.06, petPower: 0.08 }, desc: '+6% ranged damage, +8% beast power' },
+    4: { effect: { sharpshooter: 0.25 }, desc: '+25% damage beyond 12 blocks' },
+    6: { effect: { pierce: 1, extraProjectiles: 1, maxPets: 1 },
+      desc: '+1 pierce, +1 extra shot, +1 beast' },
   },
 };
+
 
 export const SET_THRESHOLDS = [2, 4, 6];
 

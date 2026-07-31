@@ -95,6 +95,9 @@ export class Player extends Entity {
     this.onDotDamage = (dealt) => {
       if (this.mods.dotLifesteal && dealt > 0) this.heal(dealt * this.mods.dotLifesteal);
     };
+    // Warlock six-piece: a rot allowed to run its course detonates. Set by
+    // the game once it exists, because it needs somewhere to put an explosion.
+    this.onDotExpired = null;
   }
 
   /** Recompute derived stats; call after talents/upgrades change. */
@@ -134,6 +137,46 @@ export class Player extends Entity {
     this.lifesteal = m.lifesteal || 0;
     this.thorns = m.thorns || 0;
     this.hp = Math.min(this.hp, this.maxHp);
+  }
+
+  /**
+   * Damage multipliers that depend on the *situation* rather than the build.
+   *
+   * `stats.meleeMult` is computed once when the build changes, which is right
+   * for everything that comes from gear and talents and wrong for a set bonus
+   * that only pays out while your Rage is high, or your shield is holding, or
+   * the target is already poisoned. Those have to be asked per hit, so they
+   * live here rather than in the cached bag.
+   *
+   * This is what makes the six-piece sets worth wearing without being a flat
+   * percentage: a conditional worth 22% to a player who plays the class as
+   * designed is worth much less to one who does not, which is the opposite of
+   * how a flat +22% behaves.
+   */
+  situationalMult(melee, target) {
+    const m = this.mods;
+    let mult = 1;
+    // Warrior: fight angry. Scaled by how much Rage you are holding rather
+    // than gated at a threshold — measured, a Warrior's Rage is bimodal, full
+    // or empty and almost never in between, so any threshold is a coin flip on
+    // timing rather than a thing the player can play toward. Scaling makes
+    // holding Rage worth something continuously, which is the intent.
+    if (melee && m.bloodsurge) {
+      mult += m.bloodsurge * clamp(this.resource / Math.max(1, this.resourceMax), 0, 1);
+    }
+    // Priest: a shield that is holding is a shield you are fighting behind.
+    if (!melee && m.wardedDamage && this.absorb > 0) mult += m.wardedDamage;
+    // Rogue: everything hurts more once it is already bleeding or poisoned.
+    if (m.exposeWeakness && target && target.dots
+      && target.dots.some((d) => d.source === this)) mult += m.exposeWeakness;
+    // Demonslayer: keep moving.
+    if (m.momentumDamage && this.momentum > 0) mult += m.momentumDamage;
+    // Hunter: reward the range the class is built around.
+    if (m.sharpshooter && target
+      && (target.x - this.x) ** 2 + (target.z - this.z) ** 2 > 144) mult += m.sharpshooter;
+    // Paladin: the longer they hit you, the harder you hit back.
+    if (melee && m.zeal && this.zealStacks) mult += m.zeal * this.zealStacks;
+    return mult;
   }
 
   get isMelee() { return this.cls.base.attackRange < 6; }
@@ -311,6 +354,13 @@ export class Player extends Entity {
       this.cooldowns[i] = Math.max(0, this.cooldowns[i] - dt);
     }
     this.gainResource(this.resourceRegen * dt);
+    // Set-bonus timers. Momentum runs down after a dash; Zeal stacks decay
+    // one at a time so a lull bleeds the bonus off rather than dropping it.
+    this.momentum = Math.max(0, (this.momentum || 0) - dt);
+    if (this.zealStacks) {
+      this.zealDecay = (this.zealDecay || 0) - dt;
+      if (this.zealDecay <= 0) { this.zealStacks--; this.zealDecay = 6; }
+    }
     if (this.mods.regen && game.timeSinceCombat > 3) this.heal(this.mods.regen * dt);
 
     // Lava
@@ -347,7 +397,14 @@ export class Player extends Entity {
       }
     }
 
-    if (this.hp < wasHp) game.timeSinceCombat = 0;
+    if (this.hp < wasHp) {
+      game.timeSinceCombat = 0;
+      // Paladin: the longer they hit you, the harder you hit back.
+      if (this.mods.zeal) {
+        this.zealStacks = Math.min(5, (this.zealStacks || 0) + 1);
+        this.zealDecay = 6;
+      }
+    }
     if (this.mods.vanish && wasHp / this.maxHp >= 0.3 && this.hp / this.maxHp < 0.3) {
       const idx = this.skills.findIndex((s) => s.id === 'ambush');
       if (idx >= 0) this.cooldowns[idx] = 0;
@@ -432,11 +489,14 @@ export class Player extends Entity {
       for (const m of hits) {
         const dx = m.x - this.x, dz = m.z - this.z;
         const d = Math.hypot(dx, dz) || 1;
-        let dealt = game.dealDamage(this, m, this.attackDamage * this.stats.meleeMult, {
+        let dealt = game.dealDamage(this, m,
+          this.attackDamage * this.stats.meleeMult * this.situationalMult(true, m), {
           knockback: 3.5, kx: dx / d, kz: dz / d, melee: true,
         });
         if (this.mods.doubleStrike && Math.random() < this.mods.doubleStrike) {
-          dealt += game.dealDamage(this, m, this.attackDamage * this.stats.meleeMult * 0.6, { melee: true });
+          dealt += game.dealDamage(this, m,
+            this.attackDamage * this.stats.meleeMult * this.situationalMult(true, m) * 0.6,
+            { melee: true });
         }
         this.applyWeaponRider(game, m, dealt);
       }
@@ -458,7 +518,9 @@ export class Player extends Entity {
         game.fireProjectile({
           owner: this, team: TEAM.PLAYER,
           x: this.x, y: this.eyeY - 0.15, z: this.z, dir: d,
-          speed: w.speed, damage: this.attackDamage * this.stats.spellMult * (i === 0 ? 1 : 0.5),
+          speed: w.speed,
+          damage: this.attackDamage * this.stats.spellMult
+            * this.situationalMult(false, this.aimLock) * (i === 0 ? 1 : 0.5),
           size: w.size, color: w.color, gravity: w.gravity || 0,
           // Ranged riders travel with the shot: the rider belongs to the
           // weapon, and for a bow the weapon's contact with the target is the

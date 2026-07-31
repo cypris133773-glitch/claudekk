@@ -177,6 +177,16 @@ export class Game {
     this.r.setTheme(this.theme);
 
     this.player = new Player(classDef, this.baseMods(), this.world, this.loadout);
+    // Set-bonus payloads that need somewhere to put an explosion. Wired here
+    // rather than inside Player because the player has no idea the world it
+    // is standing in exists.
+    this.player.onDotExpired = (victim, dot) => {
+      const k = this.player.mods.dotBurst;
+      if (!k || victim.dead) return;
+      this.explode(victim.x, victim.centerY, victim.z, 4,
+        (dot.total || dot.dps * 4) * k,
+        { team: TEAM.PLAYER, source: this.player, color: '#a35cff', knockback: 0 });
+    };
     // The weapon in your hands is the visible half of the gear system, so the
     // tier is resolved once here rather than looked up every frame by the view
     // model. `-1` is "no weapon bought" and draws the class's plain starting
@@ -911,6 +921,16 @@ export class Game {
 
     this.affixesOnKill(mob);
     this.onMobKilled(mob);
+    // Warrior six-piece: whatever the bleed had left to do, it does at once.
+    const burst = this.player.mods.bleedBurst;
+    if (burst && mob.dots && mob.dots.length) {
+      let left = 0;
+      for (const d of mob.dots) if (d.source === this.player) left += d.dps * d.remaining;
+      if (left > 0) {
+        this.explode(mob.x, mob.centerY, mob.z, 5, left * burst,
+          { team: TEAM.PLAYER, source: this.player, color: '#e0473c', knockback: 3 });
+      }
+    }
     this.rollPotionDrop(mob);
     if (mob.def.boss) this.tally.bossKills++;
     else if (mob.elite) this.tally.eliteKills++;

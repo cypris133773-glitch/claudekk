@@ -34,9 +34,14 @@ function power(player, skill, rank = 0) {
   // other branches happen to add.
   const sm = player.skillMods(skill.id);
   const rk = rankDamageMult(rank) * (1 + (sm.skillDamage || 0));
-  const dmgMult = skill.kind === 'strike' || skill.kind === 'dash'
-    ? player.stats.meleeMult
-    : player.stats.spellMult;
+  const melee = skill.kind === 'strike' || skill.kind === 'dash';
+  // The situational half of the set bonuses: conditions the build cannot know
+  // about ahead of time, asked at the moment the skill actually resolves.
+  const dmgMult = (melee ? player.stats.meleeMult : player.stats.spellMult)
+    * player.situationalMult(melee, player.aimLock)
+    * (player.echoDamage || 1);
+  // Demonslayer: a dash opens a window rather than being one hit.
+  if (skill.kind === 'dash' && player.mods.momentumDamage) player.momentum = 4;
   if (p.damage) p.damage *= dmgMult * rk;
   if (p.chainDamage) p.chainDamage *= dmgMult * rk;
   if (p.instant) p.instant *= rk;
@@ -384,5 +389,26 @@ export function castSkill(game, player, index) {
   player.resource -= cost;
   player.cooldowns[index] = skillCooldown(player, skill, rank);
   player.lastCast = skill.id;
+
+  // Mage six-piece: the spell casts itself again, half strength, a beat later.
+  //
+  // Guarded by `echoing` rather than by a cooldown: without it an echo rolls
+  // its own echo and a lucky streak becomes an infinite cast. One roll per
+  // real cast, and the copy is free of cost and cooldown because it is not a
+  // cast the player made.
+  if (player.mods.spellEcho && !player.echoing && Math.random() < player.mods.spellEcho) {
+    game.delay(0.4, () => {
+      if (player.dead) return;
+      player.echoing = true;
+      const keep = player.cooldowns[index];
+      const res = player.resource;
+      player.echoDamage = 0.5;
+      castSkill(game, player, index);
+      player.echoDamage = 0;
+      player.cooldowns[index] = keep;
+      player.resource = res;
+      player.echoing = false;
+    });
+  }
   return true;
 }

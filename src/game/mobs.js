@@ -1131,18 +1131,23 @@ export class Mob extends Entity {
     if (this.castTimer <= 0 && this.casting <= 0) {
       const id = this.pickRaidMechanic(game);
       const mech = MECHANICS[id];
-      if (!this.raidCastAllowed(game, mech)) {
+      if (!this.raidCastAllowed(game, mech) && this.castStall <= 1.5) {
         // Postponed, not skipped, and only for a moment. A mechanic that waits
         // out a permanent slow never fires at all.
+        //
+        // The retry is a third of a second — but the line that rearmed the
+        // cadence used to run in this branch too, and `Math.max(0.35, 8)` is
+        // 8. So a cast postponed because the player happened to be slowed was
+        // not retried shortly, it was lost and the boss waited a full cadence
+        // again. Against a boss whose own mechanics slow you — the Warden, or
+        // anything casting frost — that was most of its casts.
         this.castStall = (this.castStall || 0) + dt;
         this.castTimer = 0.35;
-        if (this.castStall > 1.5) { this.castStall = 0; this.castRaid(id, game, target); }
       } else {
         this.castStall = 0;
         this.castRaid(id, game, target);
+        this.castTimer = (this.cadence || mech.cd) * phase.rate * (crowded ? 1.3 : 1);
       }
-      this.castTimer = Math.max(this.castTimer,
-        (this.cadence || mech.cd) * phase.rate * (crowded ? 1.3 : 1));
     }
 
     if (this.casting > 0) {

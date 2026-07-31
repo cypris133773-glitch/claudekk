@@ -91,7 +91,7 @@ export class Entity {
       existing.dps = Math.max(existing.dps, dps);
       existing.remaining = Math.max(existing.remaining, duration);
     } else {
-      this.dots.push({ dps, remaining: duration, type, source });
+      this.dots.push({ dps, remaining: duration, total: dps * duration, type, source });
     }
   }
 
@@ -123,7 +123,13 @@ export class Entity {
       const dealt = this.damage(d.dps * tick, { source: d.source, isDot: true });
       if (d.source && d.source.onDotDamage) d.source.onDotDamage(dealt);
       d.remaining -= dt;
-      if (d.remaining <= 0) this.dots.splice(i, 1);
+      if (d.remaining <= 0) {
+        this.dots.splice(i, 1);
+        // Warlock: rot that is allowed to run its full course pays out. Only
+        // on natural expiry — a dot cut short by the target dying has already
+        // done its job, and rewarding both would make it the only play.
+        if (d.source && d.source.onDotExpired) d.source.onDotExpired(this, d);
+      }
     }
 
     if (!this.noGravity) this.vy -= this.gravity * dt;
