@@ -323,4 +323,102 @@ export function drawHumanoid(r, e, skin) {
         { ...common, tile: skin.pauldronTile ?? T.METAL, color: pc, yaw });
     }
   }
+
+  // ---------------------------------------------------------------------
+  // Silhouette parts
+  // ---------------------------------------------------------------------
+  //
+  // Everything above builds a person out of six boxes, and forty-two raid
+  // bosses built that way are one enemy in forty-two palettes. What a player
+  // actually recognises across a dark room is the *outline* — so these five
+  // are all outline and nothing else, and every one of them is optional.
+  //
+  // None of them touch the hitbox. A tail you can walk through is correct: the
+  // collision box is what the fight is fought against, and widening it because
+  // a model grew a wing would change every escape distance in the game.
+
+  // Tail. Tapering segments trailing down and back, swaying with the walk —
+  // the single cheapest way to say "this is a beast, not a man".
+  if (skin.tail) {
+    const tc = col(skin.tail);
+    const segs = skin.tailSegs || 5;
+    const sway = Math.sin(e.walkPhase * 0.9) * 0.22;
+    for (let i = 0; i < segs; i++) {
+      const t = i / segs;
+      const back = bodyD * 0.5 + unit * (0.10 + t * 0.62);
+      const drop = legTop + bodyH * 0.35 - unit * t * t * 0.55;
+      const w = limbW * (0.62 - t * 0.34);
+      const p = at(Math.sin(sway * (0.4 + t)) * unit * 0.22 * t, drop, -back);
+      r.drawBox(p[0], p[1], p[2], w, w, unit * 0.17,
+        { ...common, tile: skin.tailTile ?? skin.bodyTile ?? T.SKIN, color: tc, yaw });
+    }
+  }
+
+  // Wings. Two swept panels stepping out and up from the shoulders. Drawn as
+  // three chunks a side rather than a fan: a voxel wing reads by its stepped
+  // edge, and a smooth one just looks like a plank.
+  if (skin.wings) {
+    const wc = col(skin.wings);
+    const beat = Math.sin(e.walkPhase * 1.4) * 0.10;
+    for (let i = 0; i < 2; i++) {
+      const side = i === 0 ? -1 : 1;
+      for (let seg = 0; seg < 3; seg++) {
+        const t = seg / 3;
+        const out = bodyW * 0.5 + unit * (0.22 + t * 0.52);
+        const up = legTop + bodyH * (0.72 + t * 0.34) + beat * unit * t;
+        const p = at(side * out, up, -bodyD * 0.4 - unit * t * 0.16);
+        r.drawBox(p[0], p[1], p[2],
+          unit * (0.34 - t * 0.06), unit * (0.30 + t * 0.22), unit * 0.05,
+          { ...common, tile: skin.wingTile ?? T.CLOTH, color: wc, yaw, alpha: skin.wingAlpha ?? common.alpha });
+      }
+    }
+  }
+
+  // A weapon in the hand. The largest silhouette win available: a boss holding
+  // something is read as a boss before its colour, its size or its name has
+  // registered, and it costs three boxes.
+  if (skin.weapon) {
+    const wc = col(skin.weapon);
+    const grip = at(bodyW / 2 + limbW / 2, legTop + bodyH - limbH * 0.62, limbW * 0.4);
+    const len = unit * (skin.weaponLen || 0.9);
+    const tilt = swingPitch * 0.8 - 0.25;
+    const ux = Math.sin(yaw) * Math.sin(tilt);
+    const uy = Math.cos(tilt);
+    const uz = Math.cos(yaw) * Math.sin(tilt);
+    // Haft, then head. Two boxes with different proportions is enough for an
+    // axe, a hammer and a blade to tell apart at range.
+    r.drawBox(grip[0] - ux * len * 0.3, grip[1] + uy * len * 0.3, grip[2] - uz * len * 0.3,
+      unit * 0.07, len, unit * 0.07,
+      { ...common, tile: skin.weaponTile ?? T.LOG_SIDE, color: wc, yaw, pitch: tilt });
+    const headAt = len * 0.62;
+    r.drawBox(grip[0] - ux * headAt, grip[1] + uy * headAt, grip[2] - uz * headAt,
+      unit * (skin.weaponWide || 0.20), unit * 0.22, unit * 0.11,
+      { ...common, tile: skin.weaponHeadTile ?? T.METAL, color: col(skin.weaponHead || skin.weapon),
+        emissive: skin.weaponGlow || common.emissive, yaw, pitch: tilt });
+  }
+
+  // A crest or spine row down the back. Reads from behind and from the side,
+  // which is where a humanoid box is otherwise completely featureless.
+  if (skin.spines) {
+    const sc = col(skin.spines);
+    const n = skin.spineCount || 5;
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1 || 1);
+      const h = unit * (0.20 - Math.abs(t - 0.35) * 0.14);
+      const p = at(0, legTop + bodyH * (1.02 - t * 0.62), -bodyD * 0.5 - unit * 0.02);
+      r.drawBox(p[0], p[1], p[2], unit * 0.07, h, unit * 0.09,
+        { ...common, tile: skin.spineTile ?? T.BONE, color: sc, yaw });
+    }
+  }
+
+  // Cloak. One slab behind the body, kicking out as the thing moves — casters
+  // and commanders, and the only part here that is pure theatre.
+  if (skin.cloak) {
+    const cc = col(skin.cloak);
+    const kick = Math.abs(Math.sin(e.walkPhase)) * 0.18;
+    const p = at(0, legTop + bodyH * 0.30 - unit * kick * 0.3,
+      -bodyD * 0.5 - unit * (0.06 + kick * 0.3));
+    r.drawBox(p[0], p[1], p[2], bodyW * 1.08, bodyH * 1.35, unit * 0.05,
+      { ...common, tile: skin.cloakTile ?? T.CLOTH, color: cc, yaw, pitch: kick * 0.5 });
+  }
 }

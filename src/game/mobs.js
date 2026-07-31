@@ -58,13 +58,13 @@ export const MOB_TYPES = {
     name: 'Crawler', weight: 7, minWave: 2, cost: 1,
     hp: 42, damage: 7, speed: 5.4, range: 1.8, attackSpeed: 1.4, souls: 3,
     height: 1.2, width: 0.7, behavior: 'leaper',
-    skin: { head: hex('#3b2b3f'), body: hex('#2a1e2e'), arm: hex('#4a3550'), leg: hex('#2a1e2e'), face: T.FACE_CRAWLER },
+    skin: { head: hex('#3b2b3f'), body: hex('#2a1e2e'), arm: hex('#4a3550'), leg: hex('#2a1e2e'), face: T.FACE_CRAWLER, horns: hex('#6a4a75'), tail: hex('#2a1e2e'), tailSegs: 4 },
   },
   skele: {
     name: 'Bonecaster', weight: 6, minWave: 3, cost: 2,
     hp: 50, damage: 10, speed: 2.9, range: 18, attackSpeed: 0.6, souls: 5,
     height: 1.8, width: 0.55, behavior: 'ranged', projectile: { speed: 22, gravity: 6, color: '#e8e4d0', size: 0.22 },
-    skin: { head: hex('#e0dcc4'), body: hex('#cfcab0'), arm: hex('#e0dcc4'), leg: hex('#cfcab0'), face: T.FACE_SKELE, headTile: T.BONE, bodyTile: T.BONE },
+    skin: { head: hex('#e0dcc4'), body: hex('#cfcab0'), arm: hex('#e0dcc4'), leg: hex('#cfcab0'), face: T.FACE_SKELE, headTile: T.BONE, bodyTile: T.BONE, spines: hex('#cfcab0'), spineCount: 5 },
   },
   bomber: {
     name: 'Bomber', weight: 5, minWave: 4, cost: 2,
@@ -76,37 +76,37 @@ export const MOB_TYPES = {
     name: 'Brute', weight: 4, minWave: 6, cost: 3,
     hp: 190, damage: 19, speed: 2.6, range: 2.8, attackSpeed: 0.6, souls: 12,
     height: 2.6, width: 0.9, behavior: 'slammer', knockResist: 0.7,
-    skin: { head: hex('#8a6a4a'), body: hex('#6f5138'), arm: hex('#8a6a4a'), leg: hex('#5a4330'), face: T.FACE_HUSK, hat: hex('#3a2c20') },
+    skin: { head: hex('#8a6a4a'), body: hex('#6f5138'), arm: hex('#8a6a4a'), leg: hex('#5a4330'), face: T.FACE_HUSK, hat: hex('#3a2c20'), weapon: hex('#5a4330'), weaponHead: hex('#8a6a4a'), weaponWide: 0.24, spines: hex('#6f5138'), spineCount: 4 },
   },
   reaper: {
     name: 'Reaper', weight: 3, minWave: 9, cost: 4,
     hp: 130, damage: 17, speed: 4.6, range: 2.4, attackSpeed: 1.1, souls: 15,
     height: 2.0, width: 0.6, behavior: 'blinker',
-    skin: { head: hex('#3a2050'), body: hex('#221338'), arm: hex('#4a2a66'), leg: hex('#221338'), face: T.FACE_BOSS, emissive: 0.18 },
+    skin: { head: hex('#3a2050'), body: hex('#221338'), arm: hex('#4a2a66'), leg: hex('#221338'), face: T.FACE_BOSS, emissive: 0.18, cloak: hex('#1a0f28'), weapon: hex('#2a1838'), weaponHead: hex('#a35cff'), weaponGlow: 0.8, weaponLen: 1.1 },
   },
   stalker: {
     name: 'Stalker', weight: 5, minWave: 7, cost: 2,
     hp: 78, damage: 13, speed: 6.2, range: 2.2, attackSpeed: 1.6, souls: 8,
     height: 1.9, width: 0.5, behavior: 'leaper',
-    skin: { head: hex('#2a3f2a'), body: hex('#1c2b1c'), arm: hex('#38543a'), leg: hex('#1c2b1c'), face: T.FACE_CRAWLER, horns: hex('#c9d6b0') },
+    skin: { head: hex('#2a3f2a'), body: hex('#1c2b1c'), arm: hex('#38543a'), leg: hex('#1c2b1c'), face: T.FACE_CRAWLER, horns: hex('#c9d6b0'), tail: hex('#1c2b1c'), tailSegs: 5, spines: hex('#c9d6b0'), spineCount: 5 },
   },
   hexer: {
     name: 'Hexer', weight: 4, minWave: 11, cost: 3,
     hp: 95, damage: 15, speed: 3.4, range: 20, attackSpeed: 0.7, souls: 14,
     height: 1.9, width: 0.6, behavior: 'ranged', projectile: { speed: 20, gravity: 3, color: '#b06cff', size: 0.3 },
-    skin: { head: hex('#4a2a5e'), body: hex('#2c1838'), arm: hex('#5e3575'), leg: hex('#241629'), face: T.FACE_BOSS, hat: hex('#7a3f9e'), emissive: 0.2, horns: hex('#c98fff') },
+    skin: { head: hex('#4a2a5e'), body: hex('#2c1838'), arm: hex('#5e3575'), leg: hex('#241629'), face: T.FACE_BOSS, hat: hex('#7a3f9e'), emissive: 0.2, horns: hex('#c98fff'), cloak: hex('#2c1838'), weapon: hex('#241629'), weaponHead: hex('#c98fff'), weaponGlow: 0.85 },
   },
   juggernaut: {
     name: 'Juggernaut', weight: 3, minWave: 14, cost: 4,
     hp: 320, damage: 26, speed: 2.9, range: 3.0, attackSpeed: 0.5, souls: 22,
     height: 3.0, width: 1.05, behavior: 'slammer', knockResist: 0.85,
-    skin: { head: hex('#5a5a62'), body: hex('#3e3e46'), arm: hex('#5a5a62'), leg: hex('#2e2e36'), face: T.FACE_HUSK, headTile: T.METAL, bodyTile: T.METAL, hat: hex('#8a2f22'), horns: hex('#c9c9d2'), pauldrons: hex('#6f6f7a') },
+    skin: { head: hex('#5a5a62'), body: hex('#3e3e46'), arm: hex('#5a5a62'), leg: hex('#2e2e36'), face: T.FACE_HUSK, headTile: T.METAL, bodyTile: T.METAL, hat: hex('#8a2f22'), horns: hex('#c9c9d2'), pauldrons: hex('#6f6f7a'), weapon: hex('#2e2e36'), weaponHead: hex('#8a2f22'), weaponWide: 0.28, weaponHeadTile: T.METAL },
   },
   wraith: {
     name: 'Wraith', weight: 3, minWave: 18, cost: 4,
     hp: 150, damage: 21, speed: 5.2, range: 2.4, attackSpeed: 1.2, souls: 26,
     height: 2.2, width: 0.55, behavior: 'blinker',
-    skin: { head: hex('#10303a'), body: hex('#0a1e26'), arm: hex('#164654'), leg: hex('#0a1e26'), face: T.FACE_BOSS, emissive: 0.35, alpha: 0.82, horns: hex('#7ef0ff') },
+    skin: { head: hex('#10303a'), body: hex('#0a1e26'), arm: hex('#164654'), leg: hex('#0a1e26'), face: T.FACE_BOSS, emissive: 0.35, alpha: 0.82, horns: hex('#7ef0ff'), cloak: hex('#0a1e26'), tail: hex('#0a1e26'), tailSegs: 4, wings: hex('#164654'), wingAlpha: 0.5 },
   },
   // --- Bosses. One is drawn per boss wave, rotating so the fight changes. ---
   colossus: {
@@ -114,7 +114,7 @@ export const MOB_TYPES = {
     hp: 520, damage: 28, speed: 2.5, range: 4.0, attackSpeed: 0.55, souls: 90,
     height: 4.2, width: 1.5, behavior: 'boss', knockResist: 1,
     tagline: 'Slow, enormous, hits like a landslide.',
-    skin: { head: hex('#9a3f2f'), body: hex('#6d2a20'), arm: hex('#9a3f2f'), leg: hex('#4d1d16'), face: T.FACE_BOSS, hat: hex('#c9a227'), emissive: 0.12 },
+    skin: { head: hex('#9a3f2f'), body: hex('#6d2a20'), arm: hex('#9a3f2f'), leg: hex('#4d1d16'), face: T.FACE_BOSS, hat: hex('#c9a227'), emissive: 0.12, weapon: hex('#4d1d16'), weaponHead: hex('#c9a227'), weaponWide: 0.30, weaponLen: 1.2, spines: hex('#c9a227'), spineCount: 6 },
   },
   warden: {
     name: 'Warden', weight: 0, minWave: 10, cost: 0, boss: true,
@@ -122,14 +122,14 @@ export const MOB_TYPES = {
     height: 3.4, width: 1.0, behavior: 'boss_warden', knockResist: 1,
     tagline: 'Keeps its distance, burns the ground you stand on.',
     projectile: { speed: 26, gravity: 2, color: '#7ef0ff', size: 0.3 },
-    skin: { head: hex('#2f6f9a'), body: hex('#1d4a6d'), arm: hex('#2f6f9a'), leg: hex('#153549'), face: T.FACE_BOSS, hat: hex('#7ef0ff'), emissive: 0.22 },
+    skin: { head: hex('#2f6f9a'), body: hex('#1d4a6d'), arm: hex('#2f6f9a'), leg: hex('#153549'), face: T.FACE_BOSS, hat: hex('#7ef0ff'), emissive: 0.22, cloak: hex('#153549'), wings: hex('#2f6f9a'), wingAlpha: 0.6, spines: hex('#7ef0ff'), spineTile: T.CRYSTAL },
   },
   broodmother: {
     name: 'Broodmother', weight: 0, minWave: 15, cost: 0, boss: true,
     hp: 620, damage: 24, speed: 3.0, range: 3.2, attackSpeed: 0.7, souls: 110,
     height: 2.8, width: 1.4, behavior: 'boss_brood', knockResist: 0.9,
     tagline: 'Never fights alone. Kill it before the swarm buries you.',
-    skin: { head: hex('#4a2a5e'), body: hex('#33203f'), arm: hex('#5e3575'), leg: hex('#241629'), face: T.FACE_CRAWLER, emissive: 0.14 },
+    skin: { head: hex('#4a2a5e'), body: hex('#33203f'), arm: hex('#5e3575'), leg: hex('#241629'), face: T.FACE_CRAWLER, emissive: 0.14, tail: hex('#241629'), tailSegs: 7, spines: hex('#5e3575'), spineCount: 7 },
   },
 };
 

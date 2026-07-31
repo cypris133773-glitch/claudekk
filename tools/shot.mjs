@@ -117,10 +117,11 @@ fs.mkdirSync(OUT, { recursive: true });
 // raid, close the menus, and let a few frames run so the fog and the boss are
 // where they will be when a player walks in.
 if (process.env.SHOT_RAID) {
+  await frame.evaluate((n) => { window.__shotBoss = n; }, Number(process.env.SHOT_BOSS || 0));
   await frame.evaluate((id) => {
     const B = window.CRAFTARENA;
     B.menus.show(null);
-    B.game.startRaid(B.CLASSES[0], B.RAID_BY_ID[id], 0);
+    B.game.startRaid(B.CLASSES[0], B.RAID_BY_ID[id], Number(window.__shotBoss || 0));
   }, process.env.SHOT_RAID);
   await page.waitForTimeout(900);
   // Walk the aim lock onto the boss so the outline is in the shot.

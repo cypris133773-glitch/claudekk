@@ -37,6 +37,7 @@ venoxis: {          // High Priest Venoxis — plum robes, first mask
   leg:  hex('#241a2e'), legTile: T.CLOTH,
   horns: hex('#ded7ba'), hornTile: T.BONE,
   emissive: 0.10,
+  cloak: hex('#2a1a34'), spines: hex('#ded7ba'), spineCount: 4,
 },
 mandokir: {         // Bloodlord Mandokir — crimson hide, bone shoulders
   head: hex('#d8cfae'), headTile: T.BONE, faceTile: T.FACE_MASK,
@@ -46,6 +47,7 @@ mandokir: {         // Bloodlord Mandokir — crimson hide, bone shoulders
   horns: hex('#cfc6a4'), hornTile: T.BONE,
   pauldrons: hex('#c4bb98'), pauldronTile: T.BONE,
   emissive: 0.12,
+  weapon: hex('#6a4a2a'), weaponHead: hex('#c4bb98'), weaponHeadTile: T.BONE, weaponWide: 0.24,
 },
 arlokk: {           // High Priestess Arlokk — black hide, violet trim, small
   head: hex('#3a2c40'), headTile: T.SCALE, faceTile: T.FACE_CRAWLER,
@@ -54,6 +56,7 @@ arlokk: {           // High Priestess Arlokk — black hide, violet trim, small
   leg:  hex('#241c2a'), legTile: T.SCALE,
   horns: hex('#b8a8c8'), hornTile: T.BONE,
   emissive: 0.14,
+  tail: hex('#2e2434'), tailSegs: 6,
 },
 jindo: {            // Jin'do the Hexxer — cold mask, headdress
   head: hex('#cfd6d0'), headTile: T.BONE, faceTile: T.FACE_MASK,
@@ -63,6 +66,7 @@ jindo: {            // Jin'do the Hexxer — cold mask, headdress
   hat:  hex('#3a6a84'), hatTile: T.CLOTH,
   horns: hex('#a8c4cf'), hornTile: T.BONE,
   emissive: 0.16,
+  cloak: hex('#243440'), weapon: hex('#4a3a2a'), weaponHead: hex('#a8c4cf'), weaponHeadTile: T.BONE,
 },
 gahzranka: {        // Gahz'ranka — the beast; no mask, no ritual
   head: hex('#5a7e98'), headTile: T.SCALE, faceTile: T.FACE_BOSS,
@@ -71,6 +75,7 @@ gahzranka: {        // Gahz'ranka — the beast; no mask, no ritual
   leg:  hex('#2c4456'), legTile: T.SCALE,
   horns: hex('#cfd2c0'), hornTile: T.BONE,
   emissive: 0.10,
+  tail: hex('#3e5e76'), tailSegs: 7, spines: hex('#cfd2c0'), spineCount: 6,
 },
 hakkar: {           // Hakkar the Soulflayer — crowned, the sixth
   head: hex('#e0d6b4'), headTile: T.BONE, faceTile: T.FACE_MASK,
@@ -81,6 +86,7 @@ hakkar: {           // Hakkar the Soulflayer — crowned, the sixth
   horns: hex('#efe6c8'), hornTile: T.BONE,
   pauldrons: hex('#cfc4a0'), pauldronTile: T.BONE,
   emissive: 0.24,
+  wings: hex('#6a1c12'), wingTile: T.SCALE, tail: hex('#521810'), spines: hex('#efe6c8'),
 },
 lucifron: {         // Lucifron — the plain one, the reference
   head: hex('#ff9a5c'), headTile: T.BASALT, faceTile: T.FACE_SLOT,
@@ -88,6 +94,7 @@ lucifron: {         // Lucifron — the plain one, the reference
   arm:  hex('#c0a294'), armTile: T.BASALT,
   leg:  hex('#8f7a6e'), legTile: T.BASALT,
   emissive: 0.22,
+  weapon: hex('#3a2a24'), weaponHead: hex('#ff8a3c'), weaponHeadTile: T.BASALT, weaponGlow: 0.8,
 },
 magmadar: {         // Magmadar — low, wide, hottest crust
   head: hex('#ff7a3c'), headTile: T.BASALT, faceTile: T.FACE_SLOT,
@@ -95,6 +102,7 @@ magmadar: {         // Magmadar — low, wide, hottest crust
   arm:  hex('#d8a88c'), armTile: T.BASALT,
   leg:  hex('#a08070'), legTile: T.BASALT,
   emissive: 0.26,
+  tail: hex('#2a1a16'), tailSegs: 6, spines: hex('#ff8a3c'), spineTile: T.BASALT,
 },
 gehennas: {         // Gehennas — ashed over, the dullest and smallest
   head: hex('#c8a894'), headTile: T.BASALT, faceTile: T.FACE_SLOT,
@@ -102,6 +110,7 @@ gehennas: {         // Gehennas — ashed over, the dullest and smallest
   arm:  hex('#a89e98'), armTile: T.BASALT,
   leg:  hex('#8a827e'), legTile: T.BASALT,
   emissive: 0.20,
+  weapon: hex('#3a2a24'), weaponHead: hex('#ff6a2c'), weaponHeadTile: T.BASALT, weaponGlow: 0.9,
 },
 garr: {             // Garr — obsidian body, crystal crown
   head: hex('#b0a0c0'), headTile: T.OBSIDIAN, faceTile: T.FACE_SLOT,
@@ -110,6 +119,7 @@ garr: {             // Garr — obsidian body, crystal crown
   leg:  hex('#786a88'), legTile: T.OBSIDIAN,
   hat:  hex('#ffb46a'), hatTile: T.CRYSTAL,
   emissive: 0.24,
+  spines: hex('#ffb27a'), spineCount: 7, spineTile: T.BASALT,
 },
 geddon: {           // Baron Geddon — the bright one; brightest crust in the raid
   head: hex('#ffd24a'), headTile: T.BASALT, faceTile: T.FACE_SLOT,
@@ -117,6 +127,7 @@ geddon: {           // Baron Geddon — the bright one; brightest crust in the r
   arm:  hex('#ffc490'), armTile: T.BASALT,
   leg:  hex('#c8a078'), legTile: T.BASALT,
   emissive: 0.38,
+  cloak: hex('#3a1a10'), cloakTile: T.BASALT,
 },
 ragnaros1: {        // Ragnaros — at the height cap; nothing added, nothing needed
   head: hex('#ff5a28'), headTile: T.BASALT, faceTile: T.FACE_SLOT,
@@ -124,6 +135,7 @@ ragnaros1: {        // Ragnaros — at the height cap; nothing added, nothing ne
   arm:  hex('#ffb090'), armTile: T.BASALT,
   leg:  hex('#c08a70'), legTile: T.BASALT,
   emissive: 0.34,
+  weapon: hex('#4a2a1a'), weaponHead: hex('#ff5a1c'), weaponHeadTile: T.BASALT, weaponGlow: 1, weaponLen: 1.25, weaponWide: 0.30, spines: hex('#ff8a3c'),
 },
 attumen: {          // Attumen the Huntsman — the most solid of them
   head: hex('#b4bccc'), headTile: T.SPECTRAL, faceTile: T.FACE_HOLLOW,
@@ -133,6 +145,7 @@ attumen: {          // Attumen the Huntsman — the most solid of them
   hat:  hex('#8f98a8'), hatTile: T.METAL,
   pauldrons: hex('#7f8898'), pauldronTile: T.METAL,
   alpha: 0.88, emissive: 0.12,
+  weapon: hex('#3a2f28'), weaponHead: hex('#8e8478'), weaponLen: 1.15, cloak: hex('#2a2230'),
 },
 moroes: {           // Moroes — thinnest model in the game
   head: hex('#c0b0cc'), headTile: T.SPECTRAL, faceTile: T.FACE_HOLLOW,
@@ -141,6 +154,7 @@ moroes: {           // Moroes — thinnest model in the game
   leg:  hex('#6e5a7e'), legTile: T.SPECTRAL,
   hat:  hex('#6e5a7e'), hatTile: T.CLOTH,
   alpha: 0.70, emissive: 0.16,
+  cloak: hex('#22202c'), weapon: hex('#2e2a2e'), weaponHead: hex('#c9c4b4'), weaponWide: 0.12,
 },
 maiden: {           // Maiden of Virtue — ivory, gilt halo, stands still
   head: hex('#cfc4a8'), headTile: T.SPECTRAL, faceTile: T.FACE_HOLLOW,
@@ -149,6 +163,7 @@ maiden: {           // Maiden of Virtue — ivory, gilt halo, stands still
   leg:  hex('#9a9078'), legTile: T.SPECTRAL,
   hat:  hex('#e8c86a'), hatTile: T.GOLD,
   alpha: 0.85, emissive: 0.18,
+  wings: hex('#d8d2c0'), wingAlpha: 0.55, cloak: hex('#cfc8b8'),
 },
 bigbadwolf: {       // The Big Bad Wolf — the only Karazhan boss with horns
   head: hex('#a8794a'), headTile: T.SCALE, faceTile: T.FACE_CRAWLER,
@@ -158,6 +173,7 @@ bigbadwolf: {       // The Big Bad Wolf — the only Karazhan boss with horns
   hat:  hex('#4e3620'), hatTile: T.CLOTH,
   horns: hex('#6e4e30'), hornTile: T.SCALE,     // ears, not horns
   alpha: 0.90, emissive: 0.08,
+  tail: hex('#3a2f2a'), tailSegs: 6, spines: hex('#cfc4a8'), spineCount: 6,
 },
 curator: {          // The Curator — a machine, and it shows
   head: hex('#a8dcf0'), headTile: T.CRYSTAL, faceTile: T.FACE_VISOR,
@@ -166,6 +182,7 @@ curator: {          // The Curator — a machine, and it shows
   leg:  hex('#7a8c9c'), legTile: T.RUNEPLATE,
   hat:  hex('#d8b46a'), hatTile: T.GOLD,
   alpha: 0.78, emissive: 0.24,
+  wings: hex('#8fa4b8'), wingTile: T.RUNEPLATE, spines: hex('#7ec8ff'), spineTile: T.CRYSTAL,
 },
 malchezaar: {       // Prince Malchezaar — tallest, darkest, crowned
   head: hex('#a086c0'), headTile: T.SPECTRAL, faceTile: T.FACE_SLOT,
@@ -176,6 +193,7 @@ malchezaar: {       // Prince Malchezaar — tallest, darkest, crowned
   horns: hex('#d8c8e8'), hornTile: T.BONE,
   pauldrons: hex('#4a3a60'), pauldronTile: T.CLOTH,
   alpha: 0.82, emissive: 0.20,
+  wings: hex('#3a2444'), wingTile: T.SCALE, weapon: hex('#2a1e30'), weaponHead: hex('#c98fff'), weaponGlow: 0.7,
 },
 leviathan: {        // Flame Leviathan — a vehicle with arms
   head: hex('#ff8a3c'), headTile: T.RUNEPLATE, faceTile: T.FACE_VISOR,
@@ -184,6 +202,7 @@ leviathan: {        // Flame Leviathan — a vehicle with arms
   leg:  hex('#3a3630'), legTile: T.RUNEPLATE,
   pauldrons: hex('#6e5a3a'), pauldronTile: T.RUNEPLATE,
   emissive: 0.18,
+  weapon: hex('#4a4038'), weaponHead: hex('#ffa62b'), weaponHeadTile: T.RUNEPLATE, weaponWide: 0.28, weaponGlow: 0.5,
 },
 razorscale: {       // Razorscale — plate over scale, bronze
   head: hex('#c9a06a'), headTile: T.RUNEPLATE, faceTile: T.FACE_VISOR,
@@ -193,6 +212,7 @@ razorscale: {       // Razorscale — plate over scale, bronze
   pauldrons: hex('#8a6a3a'), pauldronTile: T.RUNEPLATE,
   horns: hex('#c4b088'), hornTile: T.BONE,
   emissive: 0.16,
+  wings: hex('#6a5a3a'), wingTile: T.SCALE, tail: hex('#4a4038'), tailSegs: 6,
 },
 ignis: {            // Ignis the Furnace Master — a furnace wearing plate
   head: hex('#ff6a3c'), headTile: T.BASALT, faceTile: T.FACE_SLOT,
@@ -201,6 +221,7 @@ ignis: {            // Ignis the Furnace Master — a furnace wearing plate
   leg:  hex('#4a4640'), legTile: T.RUNEPLATE,
   pauldrons: hex('#7a6a4a'), pauldronTile: T.RUNEPLATE,
   emissive: 0.30,
+  weapon: hex('#3a3028'), weaponHead: hex('#ff8a3c'), weaponHeadTile: T.BASALT, weaponGlow: 0.85, weaponWide: 0.26,
 },
 kologarn: {         // Kologarn — stone, not machine; widest hitbox in the game
   head: hex('#5a5654'), headTile: T.STONE, faceTile: T.FACE_BOSS,
@@ -209,6 +230,7 @@ kologarn: {         // Kologarn — stone, not machine; widest hitbox in the gam
   leg:  hex('#3a3634'), legTile: T.STONE,
   pauldrons: hex('#605a56'), pauldronTile: T.STONE,
   emissive: 0.10,
+  spines: hex('#949aa0'), spineCount: 7, spineTile: T.RUNEPLATE,
 },
 thorim: {           // Thorim — the small fast one; the raid's only cool trim
   head: hex('#9fd0ff'), headTile: T.RUNEPLATE, faceTile: T.FACE_VISOR,
@@ -218,6 +240,7 @@ thorim: {           // Thorim — the small fast one; the raid's only cool trim
   hat:  hex('#c9a860'), hatTile: T.GOLD,
   pauldrons: hex('#7a8494'), pauldronTile: T.METAL,
   emissive: 0.22,
+  weapon: hex('#4a4a52'), weaponHead: hex('#7ef0ff'), weaponHeadTile: T.RUNEPLATE, weaponGlow: 0.9, cloak: hex('#2a3038'),
 },
 yogg: {             // Yogg-Saron — no plate, no pauldrons, no right angles
   head: hex('#9dffb4'), headTile: T.SPECTRAL, faceTile: T.FACE_SLOT,
@@ -225,6 +248,7 @@ yogg: {             // Yogg-Saron — no plate, no pauldrons, no right angles
   arm:  hex('#8ae0a8'), armTile: T.SPECTRAL,
   leg:  hex('#5aa878'), legTile: T.SPECTRAL,
   alpha: 0.90, emissive: 0.26,
+  tail: hex('#2e3a2a'), tailSegs: 7, spines: hex('#a8ff5c'), spineCount: 6, cloak: hex('#1e2820'),
 },
 najentus: {         // High Warlord Naj'entus — cold blue, spined
   head: hex('#4aa3ff'), headTile: T.SCALE, faceTile: T.FACE_SLOT,
@@ -234,6 +258,7 @@ najentus: {         // High Warlord Naj'entus — cold blue, spined
   horns: hex('#6fb8ff'), hornTile: T.BONE,
   pauldrons: hex('#262e3c'), pauldronTile: T.METAL,
   emissive: 0.16,
+  spines: hex('#7ec8ff'), spineCount: 8, spineTile: T.CRYSTAL,
 },
 supremus: {         // Supremus — the big one, second in
   head: hex('#ff6a3c'), headTile: T.BASALT, faceTile: T.FACE_SLOT,
@@ -242,6 +267,7 @@ supremus: {         // Supremus — the big one, second in
   leg:  hex('#806860'), legTile: T.BASALT,
   pauldrons: hex('#a08878'), pauldronTile: T.BASALT,
   emissive: 0.28,
+  spines: hex('#ff6a2c'), spineCount: 7, spineTile: T.BASALT,
 },
 akama: {            // Shade of Akama — small, hooded, faded
   head: hex('#a35cff'), headTile: T.SPECTRAL, faceTile: T.FACE_SLOT,
@@ -250,6 +276,7 @@ akama: {            // Shade of Akama — small, hooded, faded
   leg:  hex('#221a30'), legTile: T.SPECTRAL,
   hat:  hex('#1e1828'), hatTile: T.CLOTH,
   alpha: 0.78, emissive: 0.18,
+  cloak: hex('#1a2018'), tail: hex('#20261e'), tailSegs: 5,
 },
 teron: {            // Teron Gorefiend — robed, reads as floating
   head: hex('#8a5cff'), headTile: T.CLOTH, faceTile: T.FACE_SLOT,
@@ -259,6 +286,7 @@ teron: {            // Teron Gorefiend — robed, reads as floating
   hat:  hex('#1a1424'), hatTile: T.CLOTH,
   horns: hex('#6a4a9a'), hornTile: T.BONE,
   alpha: 0.86, emissive: 0.20,
+  cloak: hex('#161a14'), weapon: hex('#1a1e18'), weaponHead: hex('#a8ff5c'), weaponGlow: 0.9,
 },
 bloodboil: {        // Gurtogg Bloodboil — swollen, the widest here
   head: hex('#ff4a3c'), headTile: T.SCALE, faceTile: T.FACE_SLOT,
@@ -267,6 +295,7 @@ bloodboil: {        // Gurtogg Bloodboil — swollen, the widest here
   leg:  hex('#33221c'), legTile: T.SCALE,
   pauldrons: hex('#3a2420'), pauldronTile: T.SCALE,
   emissive: 0.14,
+  wings: hex('#26301f'), wingTile: T.SCALE, spines: hex('#a8ff5c'), spineCount: 6,
 },
 illidan: {          // Illidan Stormrage — fel, and the darkest body in the game
   head: hex('#9dff7a'), headTile: T.CLOTH, faceTile: T.FACE_SLOT,
@@ -276,6 +305,7 @@ illidan: {          // Illidan Stormrage — fel, and the darkest body in the ga
   horns: hex('#7ade5a'), hornTile: T.BONE,
   pauldrons: hex('#262a24'), pauldronTile: T.METAL,
   emissive: 0.18,
+  wings: hex('#1e2a18'), wingTile: T.SCALE, weapon: hex('#20281c'), weaponHead: hex('#a8ff5c'), weaponGlow: 1, weaponLen: 1.15, tail: hex('#1a2216'),
 },
 bethtilac: {        // Beth'tilac — low and splayed; scale 1.10
   head: hex('#ded2bc'), headTile: T.BONE, faceTile: T.FACE_CRAWLER,
@@ -283,6 +313,7 @@ bethtilac: {        // Beth'tilac — low and splayed; scale 1.10
   arm:  hex('#4a3e36'), armTile: T.SCALE,
   leg:  hex('#2e2622'), legTile: T.SCALE,
   scale: 1.10, emissive: 0.08,
+  tail: hex('#2a201c'), tailSegs: 7, spines: hex('#e8d8c0'), spineCount: 8,
 },
 rhyolith: {         // Lord Rhyolith — a walking outcrop
   head: hex('#ff8a4a'), headTile: T.BASALT, faceTile: T.FACE_SLOT,
@@ -290,6 +321,7 @@ rhyolith: {         // Lord Rhyolith — a walking outcrop
   arm:  hex('#b09080'), armTile: T.BASALT,
   leg:  hex('#a08070'), legTile: T.BASALT,
   emissive: 0.14,
+  spines: hex('#ff8a3c'), spineCount: 7, spineTile: T.BASALT,
 },
 alysrazor: {        // Alysrazor — the lean one, gilded
   head: hex('#ffd24a'), headTile: T.BONE, faceTile: T.FACE_SLOT,
@@ -299,6 +331,7 @@ alysrazor: {        // Alysrazor — the lean one, gilded
   horns: hex('#f0e8d0'), hornTile: T.BONE,
   pauldrons: hex('#e8c86a'), pauldronTile: T.GOLD,
   emissive: 0.12,
+  wings: hex('#ffb03c'), wingTile: T.BASALT, wingAlpha: 0.8, tail: hex('#3a2a1e'), tailSegs: 6,
 },
 shannox: {          // Shannox — bone armour, masked
   head: hex('#d8c8a8'), headTile: T.BONE, faceTile: T.FACE_MASK,
@@ -308,6 +341,7 @@ shannox: {          // Shannox — bone armour, masked
   horns: hex('#efe6cc'), hornTile: T.BONE,
   pauldrons: hex('#ded2b8'), pauldronTile: T.BONE,
   emissive: 0.10,
+  weapon: hex('#3a2a1e'), weaponHead: hex('#e8d8c0'), weaponHeadTile: T.BONE, weaponWide: 0.26,
 },
 baleroc: {          // Baleroc — a column with a lit face
   head: hex('#ff5a3c'), headTile: T.BASALT, faceTile: T.FACE_SLOT,
@@ -315,6 +349,7 @@ baleroc: {          // Baleroc — a column with a lit face
   arm:  hex('#423830'), armTile: T.BASALT,
   leg:  hex('#302822'), legTile: T.BASALT,
   emissive: 0.16,
+  weapon: hex('#2a2018'), weaponHead: hex('#ffb03c'), weaponHeadTile: T.BASALT, weaponGlow: 0.85, spines: hex('#ffb03c'),
 },
 ragnaros2: {        // Ragnaros, Firelord — the exception, and the reveal
   head: hex('#ff3c14'), headTile: T.BASALT, faceTile: T.FACE_SLOT,
@@ -322,6 +357,7 @@ ragnaros2: {        // Ragnaros, Firelord — the exception, and the reveal
   arm:  hex('#ffb494'), armTile: T.BASALT,
   leg:  hex('#d8a088'), legTile: T.BASALT,
   emissive: 0.38,
+  weapon: hex('#3a2214'), weaponHead: hex('#ff5a1c'), weaponHeadTile: T.BASALT, weaponGlow: 1, weaponLen: 1.3, weaponWide: 0.32, wings: hex('#5a2a12'), wingTile: T.BASALT,
 },
 marrowgar: {        // Lord Marrowgar — bone lattice, ice spikes
   head: hex('#9aa4ae'), headTile: T.BONE, faceTile: T.FACE_HOLLOW,
@@ -331,6 +367,7 @@ marrowgar: {        // Lord Marrowgar — bone lattice, ice spikes
   horns: hex('#cfeaff'), hornTile: T.ICE,
   pauldrons: hex('#b4d8ee'), pauldronTile: T.ICE,
   emissive: 0.16,
+  spines: hex('#e8e2d0'), spineCount: 8, spineTile: T.BONE, weapon: hex('#cfc8b4'), weaponHead: hex('#e8e2d0'), weaponHeadTile: T.BONE,
 },
 deathwhisper: {     // Lady Deathwhisper — robed, smallest, translucent
   head: hex('#c8b4e0'), headTile: T.CLOTH, faceTile: T.FACE_HOLLOW,
@@ -340,6 +377,7 @@ deathwhisper: {     // Lady Deathwhisper — robed, smallest, translucent
   hat:  hex('#3a2e4e'), hatTile: T.CLOTH,
   horns: hex('#dcecff'), hornTile: T.ICE,
   alpha: 0.85, emissive: 0.22,
+  cloak: hex('#1e2a3a'),
 },
 saurfang: {         // Deathbringer Saurfang — plate soldier, red trim
   head: hex('#d4564a'), headTile: T.RUNEPLATE, faceTile: T.FACE_SLOT,
@@ -349,6 +387,7 @@ saurfang: {         // Deathbringer Saurfang — plate soldier, red trim
   hat:  hex('#6e2420'), hatTile: T.CLOTH,
   pauldrons: hex('#b4d8ee'), pauldronTile: T.ICE,
   emissive: 0.14,
+  weapon: hex('#2a3038'), weaponHead: hex('#b9dcf0'), weaponHeadTile: T.ICE, weaponGlow: 0.6, weaponWide: 0.24, cloak: hex('#22303c'),
 },
 festergut: {        // Festergut — bloated, sickly, the widest here
   head: hex('#9aae84'), headTile: T.SCALE, faceTile: T.FACE_SLOT,
@@ -357,6 +396,7 @@ festergut: {        // Festergut — bloated, sickly, the widest here
   leg:  hex('#6e7a5e'), legTile: T.SCALE,
   pauldrons: hex('#cfe4ee'), pauldronTile: T.ICE,
   emissive: 0.12,
+  spines: hex('#8fa4b8'), spineCount: 6,
 },
 sindragosa: {       // Sindragosa — dark ice under white rime; scale 1.06
   head: hex('#9fd8ff'), headTile: T.BLACKICE, faceTile: T.FACE_HOLLOW,
@@ -366,6 +406,7 @@ sindragosa: {       // Sindragosa — dark ice under white rime; scale 1.06
   horns: hex('#e8f6ff'), hornTile: T.ICE,
   pauldrons: hex('#d8ecff'), pauldronTile: T.ICE,
   alpha: 0.88, scale: 1.06, emissive: 0.24,
+  wings: hex('#b9dcf0'), wingTile: T.ICE, wingAlpha: 0.85, tail: hex('#8fa4b8'), tailSegs: 7, spines: hex('#dff2ff'), spineTile: T.ICE,
 },
 lichking: {         // The Lich King — crowned, upright, the last one; scale 1.04
   head: hex('#cfe0f0'), headTile: T.RUNEPLATE, faceTile: T.FACE_SLOT,
@@ -376,6 +417,7 @@ lichking: {         // The Lich King — crowned, upright, the last one; scale 1
   horns: hex('#cfe8ff'), hornTile: T.ICE,
   pauldrons: hex('#6e7e96'), pauldronTile: T.RUNEPLATE,
   scale: 1.04, emissive: 0.30,
+  weapon: hex('#2a303a'), weaponHead: hex('#b9dcf0'), weaponHeadTile: T.ICE, weaponGlow: 0.9, weaponLen: 1.2, cloak: hex('#1a2230'),
 },
 };
 

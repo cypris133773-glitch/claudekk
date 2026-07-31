@@ -1657,6 +1657,24 @@ check('every boss has a silhouette and a skin that can be read', async () => {
   assert(lastIsTallest < RAIDS.length,
     'every raid makes its last boss the tallest, so size says nothing');
   assert(Object.keys(BOSS_SKINS).length === 42, 'not every boss has a skin');
+
+  // Silhouette. Six boxes in forty-two palettes is one enemy forty-two times,
+  // and what a player recognises across a dark room is the outline — so every
+  // boss carries at least one part that changes it.
+  const PARTS = ['weapon', 'wings', 'tail', 'spines', 'cloak', 'horns', 'pauldrons'];
+  const counts = Object.fromEntries(PARTS.map((k) => [k, 0]));
+  for (const [id, skin] of Object.entries(BOSS_SKINS)) {
+    const has = PARTS.filter((k) => skin[k]);
+    assert(has.length > 0, `${id} is a plain humanoid`);
+    for (const k of has) counts[k]++;
+    for (const [k, v] of Object.entries(skin)) {
+      if (!k.endsWith('Tile')) continue;
+      assert(tiles.has(v), `${id}'s ${k} is not a real atlas tile`);
+    }
+  }
+  // And every part is actually in use somewhere. A silhouette option nothing
+  // takes is a branch in the renderer that has never run.
+  for (const k of PARTS) assert(counts[k] > 0, `no boss uses '${k}'`);
 });
 
 check('every sound the game asks for exists', async () => {
