@@ -5,6 +5,7 @@ precision highp float;
 layout(location=0) in vec3 aPos;
 layout(location=1) in vec2 aUV;
 layout(location=2) in float aLight;
+layout(location=3) in float aGlow;
 
 uniform mat4 uProj;
 uniform mat4 uView;
@@ -14,6 +15,7 @@ uniform vec2 uUVScale;
 
 out vec2 vUV;
 out float vLight;
+out float vGlow;
 out float vDepth;
 
 void main() {
@@ -22,6 +24,7 @@ void main() {
   gl_Position = uProj * eye;
   vUV = uUVOffset + aUV * uUVScale;
   vLight = aLight;
+  vGlow = aGlow;
   vDepth = length(eye.xyz);
 }`;
 
@@ -29,6 +32,7 @@ const FRAG = `#version 300 es
 precision highp float;
 in vec2 vUV;
 in float vLight;
+in float vGlow;
 in float vDepth;
 
 uniform sampler2D uAtlas;
@@ -42,6 +46,7 @@ uniform float uCutoff;
 uniform vec3 uSunColor;
 uniform vec3 uSkyColor;
 uniform vec3 uGroundColor;
+uniform vec3 uGlowColor;
 
 out vec4 outColor;
 
@@ -59,8 +64,13 @@ void main() {
   // the whole arena, and on a software rasteriser that alone was measurable.
   float up = clamp((vLight - 0.55) * 2.2222, 0.0, 1.0);
   vec3 lightCol = mix(uGroundColor, uSkyColor, up) + uSunColor * (up * up);
+  // Emissive light thrown by the room itself, flooded through the air at mesh
+  // time and coloured here by the room's own hue. This is what makes the rock
+  // beside a lake of fire look like it is beside a lake of fire, and it is the
+  // difference between a lit room and an evenly lit one.
+  lightCol += uGlowColor * vGlow * vGlow;
   lightCol = mix(lightCol, vec3(1.0), uEmissive);
-  rgb *= lightCol * mix(vLight, 1.0, uEmissive);
+  rgb *= lightCol * mix(max(vLight, vGlow * 0.85), 1.0, uEmissive);
 
   rgb = mix(rgb, vec3(1.0, 0.55, 0.55), uFlash);
   float fog = clamp((vDepth - uFogNear) / max(uFogFar - uFogNear, 0.001), 0.0, 1.0);
@@ -145,7 +155,7 @@ export function createProgram(gl) {
   const u = {};
   for (const name of ['uProj', 'uView', 'uModel', 'uAtlas', 'uTint', 'uFogColor',
     'uFogNear', 'uFogFar', 'uEmissive', 'uUVOffset', 'uUVScale', 'uFlash',
-    'uCutoff', 'uSunColor', 'uSkyColor', 'uGroundColor']) {
+    'uCutoff', 'uSunColor', 'uSkyColor', 'uGroundColor', 'uGlowColor']) {
     u[name] = gl.getUniformLocation(prog, name);
   }
   return { prog, u };
@@ -172,7 +182,7 @@ export function createSkyProgram(gl) {
 }
 
 /** Vertex layout shared by every mesh: pos(3) uv(2) light(1) = 6 floats. */
-export const STRIDE = 6 * 4;
+export const STRIDE = 7 * 4;
 
 export function createMesh(gl, floats) {
   const vao = gl.createVertexArray();
@@ -186,6 +196,8 @@ export function createMesh(gl, floats) {
   gl.vertexAttribPointer(1, 2, gl.FLOAT, false, STRIDE, 12);
   gl.enableVertexAttribArray(2);
   gl.vertexAttribPointer(2, 1, gl.FLOAT, false, STRIDE, 20);
+  gl.enableVertexAttribArray(3);
+  gl.vertexAttribPointer(3, 1, gl.FLOAT, false, STRIDE, 24);
   gl.bindVertexArray(null);
   return { vao, vbo, count: floats.length / 6 };
 }

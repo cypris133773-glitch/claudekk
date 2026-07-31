@@ -37,22 +37,22 @@ const THEMES = [
   { // temperate noon
     top: SKY_TOP, bottom: SKY_BOT,
     sun: [0.30, 0.24, 0.14], sky: [0.80, 0.86, 1.00], ground: [0.42, 0.40, 0.44],
-    sunPos: [0.35, 0.62],
+    sunPos: [0.35, 0.62], glow: [0.45, 0.36, 0.20],
   },
   { // desert afternoon
     top: [0.44, 0.56, 0.78], bottom: [0.90, 0.78, 0.56],
     sun: [0.40, 0.28, 0.12], sky: [0.94, 0.88, 0.76], ground: [0.50, 0.42, 0.34],
-    sunPos: [-0.42, 0.48],
+    sunPos: [-0.42, 0.48], glow: [0.50, 0.36, 0.16],
   },
   { // volcanic night
     top: [0.05, 0.05, 0.10], bottom: [0.26, 0.10, 0.08],
     sun: [0.34, 0.12, 0.03], sky: [0.34, 0.34, 0.48], ground: [0.30, 0.16, 0.14],
-    sunPos: [0.10, -0.30],
+    sunPos: [0.10, -0.30], glow: [0.85, 0.34, 0.10],
   },
   { // frozen dusk
     top: [0.20, 0.30, 0.48], bottom: [0.62, 0.72, 0.84],
     sun: [0.24, 0.22, 0.28], sky: [0.74, 0.84, 1.00], ground: [0.44, 0.48, 0.58],
-    sunPos: [0.55, 0.30],
+    sunPos: [0.55, 0.30], glow: [0.30, 0.44, 0.62],
   },
   // --- Raid rooms, 4..10, one per raid in RAIDS order. ---------------------
   //
@@ -64,37 +64,37 @@ const THEMES = [
   { // the sunken city — shafts of green-gold daylight through a canopy
     top: [0.12, 0.19, 0.09], bottom: [0.25, 0.36, 0.20],
     sun: [0.26, 0.30, 0.10], sky: [0.72, 0.82, 0.62], ground: [0.30, 0.34, 0.24],
-    sunPos: [0.20, 0.72], fogNear: 26, fogFar: 62,
+    sunPos: [0.20, 0.72], fogNear: 26, fogFar: 62, glow: [0.42, 0.52, 0.16],
   },
   { // grey stone over a lake of fire — lit from below, which is the whole read
     top: [0.07, 0.03, 0.02], bottom: [0.25, 0.08, 0.04],
     sun: [0.06, 0.03, 0.02], sky: [0.34, 0.34, 0.38], ground: [0.52, 0.22, 0.09],
-    sunPos: [0.00, 0.45], fogNear: 22, fogFar: 58,
+    sunPos: [0.00, 0.45], fogNear: 22, fogFar: 58, glow: [1.00, 0.38, 0.10],
   },
   { // a broken ballroom, candlelit
     top: [0.08, 0.06, 0.13], bottom: [0.16, 0.13, 0.21],
     sun: [0.10, 0.08, 0.16], sky: [0.62, 0.58, 0.80], ground: [0.24, 0.20, 0.30],
-    sunPos: [0.62, 0.70], fogNear: 30, fogFar: 70,
+    sunPos: [0.62, 0.70], fogNear: 30, fogFar: 70, glow: [0.72, 0.52, 0.22],
   },
   { // a machine hall — the only cold, clean, right-angled room
     top: [0.06, 0.10, 0.15], bottom: [0.11, 0.19, 0.25],
     sun: [0.16, 0.20, 0.26], sky: [0.76, 0.84, 0.96], ground: [0.30, 0.36, 0.42],
-    sunPos: [-0.50, 0.28], fogNear: 34, fogFar: 86,
+    sunPos: [-0.50, 0.28], fogNear: 34, fogFar: 86, glow: [0.80, 0.46, 0.14],
   },
   { // black stone and one green fire — the darkest room in the game
     top: [0.02, 0.04, 0.03], bottom: [0.06, 0.10, 0.07],
     sun: [0.02, 0.05, 0.02], sky: [0.26, 0.34, 0.26], ground: [0.10, 0.16, 0.10],
-    sunPos: [0.00, -0.60], fogNear: 18, fogFar: 52,
+    sunPos: [0.00, -0.60], fogNear: 18, fogFar: 52, glow: [0.42, 0.90, 0.26],
   },
   { // black rock under a burning sky — the only room whose sky is the light
     top: [1.00, 0.48, 0.14], bottom: [0.23, 0.06, 0.02],
     sun: [0.60, 0.20, 0.04], sky: [0.90, 0.46, 0.18], ground: [0.18, 0.08, 0.06],
-    sunPos: [0.00, 0.85], fogNear: 30, fogFar: 74,
+    sunPos: [0.00, 0.85], fogNear: 30, fogFar: 74, glow: [1.00, 0.42, 0.12],
   },
   { // the frost castle — pale stone, deep blue air, low hard light
     top: [0.04, 0.08, 0.14], bottom: [0.09, 0.19, 0.30],
     sun: [0.14, 0.18, 0.28], sky: [0.82, 0.90, 1.00], ground: [0.08, 0.12, 0.20],
-    sunPos: [0.55, 0.12], fogNear: 28, fogFar: 78,
+    sunPos: [0.55, 0.12], fogNear: 28, fogFar: 78, glow: [0.46, 0.72, 0.95],
   },
 ];
 
@@ -268,6 +268,7 @@ export class Renderer {
     gl.uniform3fv(this.u.uFogColor, sky);
     gl.uniform1f(this.u.uFogNear, this.fogNear);
     gl.uniform1f(this.u.uFogFar, this.fogFar);
+    gl.uniform3fv(this.u.uGlowColor, this.theme.glow || [0.5, 0.38, 0.18]);
     gl.uniform1f(this.u.uFlash, 0);
     gl.uniform1f(this.u.uCutoff, 0.35);
     if (this.fancy) {

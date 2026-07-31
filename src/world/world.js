@@ -17,6 +17,11 @@ const FACES = [
 ];
 
 // UV per corner index for each face quad (matches the corner winding above).
+/** The six axis neighbours, for the light flood. */
+const NEIGHBOURS = [
+  [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1],
+];
+
 const FACE_UV = [[0, 0], [0, 1], [1, 1], [1, 0]];
 
 export class World {
@@ -707,7 +712,67 @@ export class World {
     return 1 - (side1 + side2 + corner) * 0.15;
   }
 
+  /**
+   * Flood the emissive blocks' light through the open air around them.
+   *
+   * Before this, `emissive` lit the block's own faces and nothing else: a lake
+   * of fire glowed and the rock at its edge stayed the same flat grey as the
+   * rock forty blocks away. Every room in the game was evenly lit, which is
+   * why they all read as diagrams rather than as places.
+   *
+   * A plain BFS over air, one level of falloff a block, sixteen levels from a
+   * full-strength source. It runs once per arena — the world never changes
+   * after generation, so there is no propagation to maintain and no cost at
+   * all per frame.
+   */
+  buildLight() {
+    const n = SX * SY * SZ;
+    const light = new Uint8Array(n);
+    const queue = new Int32Array(n);
+    let head = 0, tail = 0;
+    for (let y = 0; y < SY; y++) {
+      for (let z = 0; z < SZ; z++) {
+        for (let x = 0; x < SX; x++) {
+          const b = BLOCKS[this.data[this.idx(x, y, z)]];
+          if (!b || !b.emissive) continue;
+          // The source itself is not lit by this — its own faces already are.
+          // What matters is what it throws onto its neighbours.
+          const lv = Math.round(b.emissive * 15);
+          for (const [dx, dy, dz] of NEIGHBOURS) {
+            const ax = x + dx, ay = y + dy, az = z + dz;
+            if (ax < 0 || ay < 0 || az < 0 || ax >= SX || ay >= SY || az >= SZ) continue;
+            const ai = this.idx(ax, ay, az);
+            const nb = BLOCKS[this.data[ai]];
+            if (nb && nb.opaque) continue;
+            if (light[ai] >= lv) continue;
+            light[ai] = lv;
+            queue[tail++] = ai;
+          }
+        }
+      }
+    }
+    while (head < tail) {
+      const i = queue[head++];
+      const lv = light[i];
+      if (lv <= 1) continue;
+      const x = i % SX, y = ((i / SX) | 0) % SY, z = (i / (SX * SY)) | 0;
+      for (const [dx, dy, dz] of NEIGHBOURS) {
+        const ax = x + dx, ay = y + dy, az = z + dz;
+        if (ax < 0 || ay < 0 || az < 0 || ax >= SX || ay >= SY || az >= SZ) continue;
+        const ai = this.idx(ax, ay, az);
+        const nb = BLOCKS[this.data[ai]];
+        if (nb && nb.opaque) continue;
+        if (light[ai] >= lv - 1) continue;
+        light[ai] = lv - 1;
+        queue[tail++] = ai;
+      }
+    }
+    this.light = light;
+    return light;
+  }
+
   buildMesh() {
+    const light = this.buildLight();
     const out = [];
     for (let y = 0; y < SY; y++) {
       for (let z = 0; z < SZ; z++) {
@@ -727,18 +792,25 @@ export class World {
             const tile = block.tiles[F.tile];
             const [u0, v0, du, dv] = tileUV(tile);
             const emissive = block.emissive || 0;
+            // What the air in front of this face is carrying. A face pointing
+            // into a lit pocket is lit; the same block's opposite face, in
+            // shadow, is not — which is the whole point of doing this per face
+            // rather than per block.
+            const inFront = (nx >= 0 && ny >= 0 && nz >= 0 && nx < SX && ny < SY && nz < SZ)
+              ? light[this.idx(nx, ny, nz)] / 15 : 0;
+            const glow = Math.max(emissive, inFront);
 
             const verts = [];
             for (let c = 0; c < 4; c++) {
               const co = F.corners[c];
-              const light = emissive
+              const shade = emissive
                 ? Math.max(F.shade, emissive)
                 : F.shade * this.ao(x, y, z, F.dir, co);
               const [uu, vv] = FACE_UV[c];
               verts.push([
                 x + co[0], y + co[1], z + co[2],
                 u0 + uu * du, v0 + vv * dv,
-                light,
+                shade, glow,
               ]);
             }
             // Two triangles: 0,1,2 and 0,2,3
