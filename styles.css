@@ -650,7 +650,7 @@ button:disabled { opacity: 0.35; cursor: default; }
    of the cell they point into — that way an arrow never needs a grid track of
    its own and cannot drift out of line with the icons it connects. */
 .talent-tree {
-  --cell: 52px;
+  --cell: 46px;
   --tgap: 14px;
   /* The branch's own colour, bled in behind the grid. Classic trees carry a
      painted backdrop per specialisation; this is the same idea at the budget
@@ -664,7 +664,7 @@ button:disabled { opacity: 0.35; cursor: default; }
     linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(0, 0, 0, 0.28));
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
   display: grid;
-  grid-template-columns: repeat(3, var(--cell));
+  grid-template-columns: repeat(4, var(--cell));
   grid-auto-rows: var(--cell);
   gap: var(--tgap);
   justify-content: center;
@@ -780,7 +780,7 @@ button:disabled { opacity: 0.35; cursor: default; }
 .tt-btns .tiny-btn { width: 42px; height: 34px; font-size: 19px; }
 
 @media (max-height: 600px) {
-  .talent-tree { --cell: 42px; --tgap: 11px; margin: 6px 0 2px; }
+  .talent-tree { --cell: 36px; --tgap: 8px; margin: 6px 0 2px; }
   .tt-detail { padding: 7px 10px; }
   .tt-detail-desc { font-size: 11px; min-height: 2.6em; }
   .tt-btns .tiny-btn { height: 30px; }
@@ -1998,4 +1998,17 @@ body.show-popout-btn #popout-btn { display: block; }
   /* Uniform row heights are what a two-column grid costs: one three-line hint
      inflates the whole row. */
   .menu-hint { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+
+/* Eleven nodes on four columns is a wider tree than the six-on-three it
+   replaced, and a 320px phone is where that stops fitting without help. The
+   cells shrink rather than the tree paging: the shape of a branch *is* the
+   information — seeing that a node is four tiers deep is what tells you what
+   it costs before you tap it — and a tree split across pages has lost that. */
+@media (max-width: 360px), (max-height: 600px) {
+  .talent-tree { --cell: 32px; --tgap: 6px; padding: 10px 12px 12px; }
+  .tt-node .tt-pip { font-size: 8.5px; }
+}
+@media (max-width: 340px) {
+  .talent-tree { --cell: 28px; --tgap: 5px; }
 }

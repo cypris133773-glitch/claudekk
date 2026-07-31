@@ -85,11 +85,11 @@ check('every class has a pool of 13 skills with valid kinds', () => {
   }
 });
 
-check('every class has 4 talent branches of 6 nodes', () => {
+check('every class has 4 talent branches of 11 nodes', () => {
   for (const c of CLASSES) {
     assert(c.talents.length === 4, `${c.id} has ${c.talents.length} branches`);
     for (const b of c.talents) {
-      assert(b.nodes.length === 6, `${c.id}/${b.name} has ${b.nodes.length} nodes`);
+      assert(b.nodes.length === 11, `${c.id}/${b.name} has ${b.nodes.length} nodes`);
       for (const n of b.nodes) {
         assert(n.max >= 1, `${n.id} max rank ${n.max}`);
         assert(Object.keys(n.effect).length > 0, `${n.id} has no effect`);
@@ -176,13 +176,31 @@ check('class base stats are sane', () => {
   }
 });
 
-check('a full talent tree is affordable at a reachable wave', () => {
+check('a talent tree costs more than a capped character has', async () => {
+  const { talentPointsForLevel, MAX_LEVEL } = await import('../src/data/levels.js');
+  const budget = talentPointsForLevel(MAX_LEVEL);
+
   for (const c of CLASSES) {
-    const total = c.talents.reduce((s, b) => s + b.nodes.reduce((t, n) => t + n.max, 0), 0);
-    // Points come from best wave; make sure the tree can be filled eventually.
-    let wave = 0;
-    while (talentPointsForBestWave(wave) < total && wave < 500) wave++;
-    assert(wave < 100, `${c.id} needs wave ${wave} to fully spec`);
+    const branches = c.talents.map((b) => b.nodes.reduce((t, n) => t + n.max, 0));
+    const total = branches.reduce((a, b) => a + b, 0);
+
+    // The whole point of the tree. A cap that fills it turns speccing into a
+    // waiting room: everyone ends up identical and the only question is when.
+    assert(total > budget * 2.5,
+      `${c.id}'s tree costs ${total} against a budget of ${budget} — too easy to own outright`);
+
+    // But one branch has to be finishable, or its capstone is decoration and
+    // the deep half of every tree is content nobody ever reaches.
+    const deepest = Math.max(...branches);
+    assert(deepest <= budget,
+      `${c.id}'s deepest branch costs ${deepest}, more than the ${budget} a capped character has`);
+
+    // And two branches must not be, or "specialise" means "take two and a bit"
+    // rather than a decision with a cost.
+    const twoCheapest = branches.slice().sort((a, b) => a - b).slice(0, 2)
+      .reduce((a, b) => a + b, 0);
+    assert(twoCheapest > budget,
+      `${c.id} can fill its two cheapest branches with ${budget} points`);
   }
 });
 

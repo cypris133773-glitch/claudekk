@@ -52,11 +52,24 @@ const coreName = (tier, slot) => `T${tier} ${CORE_LABEL[slot]} Core`;
 // that span them are the point: being able to read a tree's shape tells you
 // what a deep node costs before you tap it, which a flat list of cards never
 // did.
-const TALENT_LAYOUT = [[0, 0], [1, 0], [1, 1], [2, 1], [0, 2], [1, 3]];
-const TALENT_ARROWS = { 2: 1, 5: 2 };
+// Eleven nodes on a four-wide grid, five rows deep. Three columns would need
+// seven rows for the same count and a seven-row tree does not fit a phone —
+// and a tree that has to be scrolled has lost the thing it exists for, which
+// is that you can see how deep a node is before you tap it.
+const TALENT_LAYOUT = [
+  [1, 0], [2, 0],
+  [0, 1], [1, 1], [3, 1],
+  [1, 2], [2, 2],
+  [0, 3], [2, 3],
+  [1, 4], [2, 4],
+];
+// Which node gates which. Every arrow is vertical by construction — the source
+// is always in the same column and an earlier row, so the line can be drawn
+// upward out of the target's own cell and cannot fall out of alignment.
+const TALENT_ARROWS = { 3: 0, 5: 3, 6: 1, 8: 6, 9: 5, 10: 8 };
 // One glyph per tier, so the six cells of a branch are distinguishable at a
 // glance even before you know what they do.
-const TALENT_GLYPHS = ['⚔', '🛡', '✦', '⚡', '☘', '★'];
+const TALENT_GLYPHS = ['⚔', '🛡', '✦', '⚡', '☘', '★', '◈', '☄', '⌾', '⚑', '✹'];
 
 const el = (tag, cls, html) => {
   const n = document.createElement(tag);
@@ -599,7 +612,9 @@ export class Menus {
     const total = talentPointsForBestWave(cd.bestWave);
 
     const p = this.panel(`${cls.name} Talents`,
-      `${avail} of ${total} points available · deeper waves keep paying out`);
+      // Points come from levels, not from waves, and have for a while. The old
+      // line sent a player back to the arena to grind the wrong number.
+      `${avail} of ${total} points · one a level, and a tree costs far more`);
     p.appendChild(this.masteryBar(cls.id));
 
     // Branch tabs. Three full columns do not fit a phone, and a tab is a
