@@ -365,30 +365,40 @@ export class World {
 
   /** Central dais, four corner towers, cover pillars and lava spokes. */
   layoutFortress({ P, FLOOR_Y, cx, cz, seed, inArena }) {
-    const daisR = 7;
+    // Smaller and a step high rather than a wall. At radius 7 and two blocks
+    // this sat in the middle of the arena blocking every sightline across it,
+    // which is the worst possible place to put one.
+    const daisR = 5;
     for (let z = -daisR; z <= daisR; z++) {
       for (let x = -daisR; x <= daisR; x++) {
         const d = Math.hypot(x, z);
         if (d > daisR) continue;
-        const h = d > daisR - 1.6 ? 1 : 2;
+        const h = 1;
         this.fill(cx + x, FLOOR_Y, cz + z, cx + x, FLOOR_Y + h - 1, cz + z, P.trim);
         if (d > daisR - 1.2 && d <= daisR) this.set(cx + x, FLOOR_Y + h - 1, cz + z, B.RUNE);
       }
     }
-    this.set(cx, FLOOR_Y + 2, cz, B.CRYSTAL);
+    this.set(cx, FLOOR_Y + 1, cz, B.CRYSTAL);
 
     for (const [ox, oz] of [[-16, -16], [16, -16], [-16, 16], [16, 16]]) {
       const tx = Math.round(cx + ox), tz = Math.round(cz + oz);
-      const h = 6;
-      this.fill(tx - 3, FLOOR_Y, tz - 3, tx + 3, FLOOR_Y + h - 1, tz + 3, P.wall);
-      this.fill(tx - 2, FLOOR_Y + h, tz - 2, tx + 2, FLOOR_Y + h, tz + 2, P.trim);
+      // Slimmer and shorter. Four seven-by-seven towers six blocks tall are
+      // four buildings inside a thirty-block disc; as landmarks they only need
+      // to be tall enough to be worth climbing.
+      const h = 4;
+      this.fill(tx - 2, FLOOR_Y, tz - 2, tx + 2, FLOOR_Y + h - 1, tz + 2, P.wall);
+      this.fill(tx - 1, FLOOR_Y + h, tz - 1, tx + 1, FLOOR_Y + h, tz + 1, P.trim);
       this.set(tx, FLOOR_Y + h + 1, tz, B.GLOW);
       const dir = Math.sign(-ox) || 1;
-      this.staircase(tx + dir * 4, tz, dir, 0, h, 1, P.wall);
+      this.staircase(tx + dir * 3, tz, dir, 0, h, 1, P.wall);
       this.spawnPoints.push({ x: tx + 0.5, y: FLOOR_Y + h + 1, z: tz + 0.5 });
     }
 
-    for (let i = 0; i < 26; i++) {
+    // Ten, not twenty-six. Measured across four seeds, this field was putting
+    // 46% of all sightlines under eight blocks — a wave that ends with the
+    // player walking laps hunting one husk is a wave that stopped being a
+    // fight. Cover you can reposition behind is worth having; a forest is not.
+    for (let i = 0; i < 10; i++) {
       const a = hash2(i, 3, seed) * Math.PI * 2;
       const r = 10 + hash2(i, 7, seed) * 15;
       const px = Math.round(cx + Math.cos(a) * r);
@@ -451,8 +461,12 @@ export class World {
         const d = Math.hypot(x, z);
         if (d < ringInner || d > ringOuter) continue;
         if (!inArena(cx + x, cz + z)) continue;
-        this.fill(cx + x, FLOOR_Y, cz + z, cx + x, FLOOR_Y + 2, cz + z, P.wall);
-        if (d > ringOuter - 1) this.set(cx + x, FLOOR_Y + 2, cz + z, P.trim);
+        // One block, not three. At three this ring was a wall around the
+        // entire arena that you could neither see over nor shoot across, and
+        // every fight near the rim happened blind. At one it is still raised
+        // ground worth standing on and you can see the whole room from it.
+        this.fill(cx + x, FLOOR_Y, cz + z, cx + x, FLOOR_Y, cz + z, P.wall);
+        if (d > ringOuter - 1) this.set(cx + x, FLOOR_Y, cz + z, P.trim);
       }
     }
     // Cut four gaps in the ring and stair up into each.
@@ -467,11 +481,11 @@ export class World {
     }
     for (const [dx, dz] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
       const sx = Math.round(cx + dx * 12), sz = Math.round(cz + dz * 12);
-      this.staircase(sx, sz, dx, 0, 3, 1, P.wall);
-      this.spawnPoints.push({ x: sx + 0.5, y: FLOOR_Y + 3, z: sz + 0.5 });
+      this.staircase(sx, sz, dx, 0, 1, 1, P.wall);
+      this.spawnPoints.push({ x: sx + 0.5, y: FLOOR_Y + 1, z: sz + 0.5 });
     }
 
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < 5; i++) {
       const a = hash2(i, 5, seed) * Math.PI * 2;
       const r = 13 + hash2(i, 9, seed) * 3;
       const px = Math.round(cx + Math.cos(a) * r);
@@ -489,8 +503,12 @@ export class World {
    */
   layoutSpires({ P, FLOOR_Y, cx, cz, seed, inArena }) {
     // Elevated platforms at varied heights, each with its own stairs.
+    // Three pads, lower and narrower. Five cylinders of radius 4-6 and up to
+    // five blocks tall are five buildings inside a thirty-block disc: this
+    // layout is supposed to be the open one with high ground worth taking,
+    // and it measured as the most enclosed of the six.
     const pads = [
-      [-13, -9, 5, 4], [12, -12, 4, 5], [-11, 13, 4, 3], [14, 11, 5, 4], [0, 0, 6, 3],
+      [-13, -9, 4, 3], [13, 11, 4, 3], [0, 0, 5, 2],
     ];
     for (const [ox, oz, radius, height] of pads) {
       const px = Math.round(cx + ox), pz = Math.round(cz + oz);
@@ -505,15 +523,17 @@ export class World {
     // Twelve, not twenty-two. Cover you reposition behind is the point of this
     // layout; cover you cannot see past is how a wave ends with the player
     // walking laps looking for one husk.
-    for (let i = 0; i < 12; i++) {
+    // Five, and shorter. Twelve was already a cut from twenty-two and it was
+    // still half of every sightline in this layout dying inside eight blocks.
+    for (let i = 0; i < 5; i++) {
       const a = hash2(i, 31, seed) * Math.PI * 2;
       const r = 9 + hash2(i, 37, seed) * 15;
       const px = Math.round(cx + Math.cos(a) * r);
       const pz = Math.round(cz + Math.sin(a) * r);
       if (!inArena(px, pz)) continue;
       if (this.isSolid(px, FLOOR_Y, pz)) continue;      // do not grow out of a platform
-      const h = 4 + Math.floor(hash2(i, 41, seed) * 6);
-      const w = hash2(i, 43, seed) > 0.6 ? 1 : 0;
+      const h = 3 + Math.floor(hash2(i, 41, seed) * 4);
+      const w = 0;
       this.fill(px, FLOOR_Y, pz, px + w, FLOOR_Y + h - 1, pz + w, P.accent);
       this.set(px, FLOOR_Y + h, pz, hash2(i, 47, seed) > 0.5 ? B.CRYSTAL : P.trim);
     }
@@ -590,10 +610,14 @@ export class World {
         // Each cell drops one or two of its four walls, so the grid is a maze
         // rather than a set of sealed boxes.
         const roll = hash2(gx, gz, seed);
-        // Two cells in five are open plazas rather than one in six. A maze is
-        // only interesting while you can still see where you are going.
-        if (roll > 0.52) continue;
-        const len = 3;
+        // Four cells in five are open plazas. A maze is only interesting
+        // while you can still see where you are going, and at two in five
+        // this layout had sixty per cent of its sightlines dying inside eight
+        // blocks — the worst of the six by a wide margin, and the reason a
+        // wave here ended in a search rather than a fight. What is left reads
+        // as ruins you fight among rather than corridors you get lost in.
+        if (roll > 0.14) continue;
+        const len = 2;
         const walls = [
           [1, 0], [0, 1],
         ];
@@ -604,7 +628,7 @@ export class World {
             const x = Math.round(bx + dx * i);
             const z = Math.round(bz + dz * i);
             if (!inArena(x, z)) continue;
-            if (Math.hypot(x - cx, z - cz) < 8) continue;   // keep the middle clear
+            if (Math.hypot(x - cx, z - cz) < 11) continue;  // keep the middle clear
             this.fill(x, FLOOR_Y, z, x, FLOOR_Y + 1, z, P.wall);
             if (hash2(x, z, seed + 11) > 0.88) this.set(x, FLOOR_Y + 2, z, B.GLOW);
           }

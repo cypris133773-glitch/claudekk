@@ -66,16 +66,26 @@ function stubProfile(forgeLevel = 0, gearTier = -1, level = SIM_LEVEL) {
   return {
     data: { permanent, armor: {}, classes, souls: 0, stats: {} },
     settings: { showDamage: false, difficulty: DIFFICULTY },
-    classData: (id) => classes[id],
-    // The Forge moved into the per-class bag; the harness keeps one bag per
-    // class so a fixture can hand a single class a stocked Forge.
+    // The game addresses progress by character id. The sim keeps one
+    // character per class and uses the class id as the character id, so a
+    // fixture still says "run this as a Warrior" and gets exactly one.
+    resolveChar: (who) => (who && typeof who === 'object' ? who.id : who),
+    classOf: (id) => CLASSES.find((c) => c.id === id) || CLASSES[0],
+    character: (id) => classes[id],
+    // The Forge moved into the per-character bag; the sim keeps one bag per
+    // class so a fixture can hand a single one a stocked Forge.
     forgeLevels: (id) => (classes[id].forge || (classes[id].forge = {})),
     gear: (id) => (classes[id].gear || (classes[id].gear = {})),
     raidState: (id) => (classes[id].raid || (classes[id].raid = { killed: {} })),
     level: () => level,
     // The bot always fights with the default kit; unlockable skills are a
     // player choice, and simulating them would measure the harness's taste.
-    loadout: (cls) => resolveLoadout(cls, classes[cls.id].loadout, level),
+    loadout: (id) => resolveLoadout(
+      CLASSES.find((c) => c.id === id) || CLASSES[0], classes[id].loadout, level),
+    // No potion rack: a simulated run must not quietly heal itself off one.
+    potions: (id) => (classes[id].potions || (classes[id].potions = {})),
+    potionCount: () => 0,
+    consumePotion: () => false,
     finishRun() {},
     save() {},
   };
@@ -83,7 +93,7 @@ function stubProfile(forgeLevel = 0, gearTier = -1, level = SIM_LEVEL) {
 
 /** Spend talent points top-down, the way a new player usually does. */
 function autoSpendTalents(profile, cls, points) {
-  const ranks = profile.classData(cls.id).talents;
+  const ranks = profile.character(cls.id).talents;
   let left = points;
   for (const branch of cls.talents) {
     for (const node of branch.nodes) {

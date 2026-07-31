@@ -2057,6 +2057,69 @@ check('no talent promises a number its effect does not produce', async () => {
   assert(bad.length === 0, `talent text disagrees with talent effects:\n  ${bad.join('\n  ')}`);
 });
 
+check('an arena you can see across', async () => {
+  const { createArena, LAYOUT_COUNT, LAYOUT_NAMES } = await import('../src/world/world.js');
+
+  // Reported from play: "there are far too many blockades in the maps and you
+  // have to hunt too hard for enemies — that is not fun." Measured, that was
+  // true and specific: across the six layouts, 15.4% of the arena interior
+  // was wall you cannot see over, and 32% of all sightlines died inside eight
+  // blocks. In the worst two it was half of them.
+  //
+  // A wave that ends with the player walking laps looking for one husk has
+  // stopped being a fight, so both numbers are held here. `tools/arena-density.mjs`
+  // prints the full per-layout table; this only guards the ceiling.
+  const FLOOR_Y = 4, R = 22, MAX = 40;
+  let wallSum = 0, shortSum = 0;
+
+  for (let L = 0; L < LAYOUT_COUNT; L++) {
+    const w = createArena(0, 1000 + L * 977, L);
+    const cx = w.playerSpawn.x, cz = w.playerSpawn.z;
+    let floor = 0, wall = 0;
+    const stand = [];
+    for (let x = -R; x <= R; x++) {
+      for (let z = -R; z <= R; z++) {
+        if (x * x + z * z > R * R) continue;
+        const wx = cx + x, wz = cz + z;
+        floor++;
+        // Solid at chest height above the base floor. A one-block tier is
+        // terrain you walk across; a two-block wall is terrain you walk
+        // around, and only the second is a blockade.
+        if (w.isSolid(wx, FLOOR_Y + 1.2, wz)) wall++;
+        else stand.push([wx, wz]);
+      }
+    }
+    const wallPct = (wall / Math.max(1, floor)) * 100;
+
+    let rays = 0, short = 0;
+    const step = Math.max(1, Math.floor(stand.length / 120));
+    for (let i = 0; i < stand.length; i += step) {
+      const [x, z] = stand[i];
+      for (let a = 0; a < 16; a++) {
+        const th = (a / 16) * Math.PI * 2;
+        const dx = Math.cos(th), dz = Math.sin(th);
+        let hit = MAX;
+        for (let d = 0.5; d < MAX; d += 0.34) {
+          if (w.isSolid(x + dx * d, FLOOR_Y + 1.2, z + dz * d)) { hit = d; break; }
+        }
+        rays++;
+        if (hit < 8) short++;
+      }
+    }
+    const shortPct = (short / Math.max(1, rays)) * 100;
+    wallSum += wallPct; shortSum += shortPct;
+
+    assert(wallPct < 16,
+      `${LAYOUT_NAMES[L]} is ${wallPct.toFixed(1)}% wall inside the fighting area`);
+    assert(shortPct < 28,
+      `${LAYOUT_NAMES[L]}: ${shortPct.toFixed(0)}% of sightlines die inside eight blocks`);
+  }
+
+  const meanWall = wallSum / LAYOUT_COUNT, meanShort = shortSum / LAYOUT_COUNT;
+  assert(meanWall < 8, `arenas average ${meanWall.toFixed(1)}% wall, was 15.4% before the cut`);
+  assert(meanShort < 18, `${meanShort.toFixed(0)}% of sightlines are short, was 32%`);
+});
+
 check('every box goes through the batch', async () => {
   const { readFile } = await import('node:fs/promises');
   const src = await readFile(new URL('../src/render/renderer.js', import.meta.url), 'utf8');
