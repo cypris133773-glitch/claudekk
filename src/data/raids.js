@@ -88,6 +88,33 @@ export const MECHANICS = {
     name: 'Frenzy', blurb: 'Below a third health it hits far harder.',
     tell: 'burst', cue: 'roar', cast: 0.4, cd: 10, dmg: 0.75, radius: 5,
   },
+
+  // The four below were added because the first eight all ask the same
+  // question in different costumes: "something is about to happen here, be
+  // somewhere else". That is a good question and it is not the only one.
+  //
+  // A sweep asks you to move *with* it rather than away. A collapse asks you
+  // to move *toward* a specific place instead of away from a bad one — the
+  // inverse, and the only mechanic in the set that makes standing still
+  // correct once you are in the right spot. A tether asks you to keep running
+  // in one direction under pressure. A ward asks you to stop attacking the
+  // boss and deal with something else, which nothing else in the set does.
+  sweep: {
+    name: 'Sweep', blurb: 'A beam swings around the room. Run with it, not at it.',
+    tell: 'aimed', cue: 'beam', cast: 1.3, cd: 13, dmg: 1.9, radius: 22,
+  },
+  collapse: {
+    name: 'Collapse', blurb: 'The floor turns except for one circle. Get inside it.',
+    tell: 'linger', cue: 'quake', cast: 1.8, cd: 16, dmg: 2.4, radius: 5,
+  },
+  tether: {
+    name: 'Tether', blurb: 'A chain to you that drags you in. Run until it snaps.',
+    tell: 'aimed', cue: 'chain', cast: 1.0, cd: 14, dmg: 1.4, radius: 3,
+  },
+  ward: {
+    name: 'Ward', blurb: 'Shielded until its guards fall. Kill them first.',
+    tell: 'burst', cue: 'summon', cast: 1.2, cd: 22, dmg: 0, radius: 4,
+  },
 };
 
 /**
@@ -189,8 +216,8 @@ export const RAIDS = [
     trial: 'frost',
     bosses: [
       { id: 'lucifron', name: 'Lucicraft', mechanic: 'shadow', power: 1.00, color: '#ff8a3c' },
-      { id: 'magmadar', name: 'Magmacraft', mechanic: 'breath', power: 1.12, color: '#ff5a3c' },
-      { id: 'gehennas', name: 'Crafthennas', mechanic: 'adds', power: 1.22, color: '#ffb27a' },
+      { id: 'magmadar', name: 'Magmacraft', mechanic: 'frost', power: 1.12, color: '#ff5a3c' },
+      { id: 'gehennas', name: 'Crafthennas', mechanic: 'sweep', power: 1.22, color: '#ffb27a' },
       { id: 'garr', name: 'Crafgarr', mechanic: 'bombs', power: 1.34, color: '#c9a06a' },
       { id: 'geddon', name: 'Baron Craftdon', mechanic: 'bombs', power: 1.46, color: '#ffd24a' },
       { id: 'ragnaros1', name: 'Ragnacraft', mechanic: 'enrage', power: 1.70, color: '#ff3c14' },
@@ -203,10 +230,10 @@ export const RAIDS = [
     trial: 'shadow',
     bosses: [
       { id: 'attumen', name: 'Craftumen the Huntsman', mechanic: 'charge', power: 1.00, color: '#cfd6e6' },
-      { id: 'moroes', name: 'Morocraft', mechanic: 'adds', power: 1.12, color: '#a35cff' },
+      { id: 'moroes', name: 'Morocraft', mechanic: 'tether', power: 1.12, color: '#a35cff' },
       { id: 'maiden', name: 'Maiden of Virtue', mechanic: 'slam', power: 1.24, color: '#ffe9a8' },
       { id: 'bigbadwolf', name: 'The Big Bad Wolf', mechanic: 'charge', power: 1.36, color: '#8b5a2b' },
-      { id: 'curator', name: 'The Curator', mechanic: 'adds', power: 1.48, color: '#7ef0ff' },
+      { id: 'curator', name: 'The Curator', mechanic: 'sweep', power: 1.48, color: '#7ef0ff' },
       { id: 'malchezaar', name: 'Prince Craftchezaar', mechanic: 'bombs', power: 1.72, color: '#ff5a3c' },
     ],
   },
@@ -217,24 +244,24 @@ export const RAIDS = [
     trial: 'slam',
     bosses: [
       { id: 'leviathan', name: 'Flame Craftathan', mechanic: 'charge', power: 1.00, color: '#ff8a3c' },
-      { id: 'razorscale', name: 'Razorcraft', mechanic: 'breath', power: 1.14, color: '#c9a06a' },
+      { id: 'razorscale', name: 'Razorcraft', mechanic: 'frost', power: 1.14, color: '#c9a06a' },
       { id: 'ignis', name: 'Craftnis the Furnace Master', mechanic: 'bombs', power: 1.26, color: '#ff5a3c' },
-      { id: 'kologarn', name: 'Crafogarn', mechanic: 'slam', power: 1.40, color: '#8b93a5' },
-      { id: 'thorim', name: 'Craftorim', mechanic: 'adds', power: 1.54, color: '#7ef0ff' },
-      { id: 'yogg', name: 'Yogg-Craftron', mechanic: 'shadow', power: 1.80, color: '#7dff9d' },
+      { id: 'kologarn', name: 'Crafogarn', mechanic: 'ward', power: 1.40, color: '#8b93a5' },
+      { id: 'thorim', name: 'Craftorim', mechanic: 'sweep', power: 1.54, color: '#7ef0ff' },
+      { id: 'yogg', name: 'Yogg-Craftron', mechanic: 'collapse', power: 1.80, color: '#7dff9d' },
     ],
   },
   {
     id: 'blacktemple', tier: 4, level: 41,
     name: 'Black Temple', blurb: 'A fortress of fel green and black stone, and the one who kept it.',
     theme: { sky: '#060a07', fog: '#101a12', stone: '#22261f', daisStone: '#3a4038', accent: '#a8ff5c', hazard: '#a8ff5c', lava: false, fogNear: 18, fogFar: 52 },
-    trial: 'frost',
+    trial: 'sweep',
     bosses: [
-      { id: 'najentus', name: "High Warlord Craft'entus", mechanic: 'bombs', power: 1.00, color: '#4aa3ff' },
+      { id: 'najentus', name: "High Warlord Craft'entus", mechanic: 'frost', power: 1.00, color: '#4aa3ff' },
       { id: 'supremus', name: 'Craftremus', mechanic: 'charge', power: 1.16, color: '#ff5a3c' },
       { id: 'akama', name: 'Shade of Crafama', mechanic: 'adds', power: 1.30, color: '#a35cff' },
-      { id: 'teron', name: 'Craferon Gorefiend', mechanic: 'shadow', power: 1.46, color: '#6a2fb5' },
-      { id: 'bloodboil', name: 'Crafttogg Bloodboil', mechanic: 'enrage', power: 1.62, color: '#c0392b' },
+      { id: 'teron', name: 'Craferon Gorefiend', mechanic: 'tether', power: 1.46, color: '#6a2fb5' },
+      { id: 'bloodboil', name: 'Crafttogg Bloodboil', mechanic: 'collapse', power: 1.62, color: '#c0392b' },
       { id: 'illidan', name: 'Craftidan Stormrage', mechanic: 'breath', power: 1.90, color: '#9dff7a' },
     ],
   },
@@ -245,10 +272,10 @@ export const RAIDS = [
     trial: 'bombs',
     bosses: [
       { id: 'bethtilac', name: "Craft'tilac", mechanic: 'adds', power: 1.00, color: '#ff8a3c' },
-      { id: 'rhyolith', name: 'Lord Craftolith', mechanic: 'slam', power: 1.18, color: '#8b5a2b' },
-      { id: 'alysrazor', name: 'Craftsrazor', mechanic: 'breath', power: 1.34, color: '#ffd24a' },
+      { id: 'rhyolith', name: 'Lord Craftolith', mechanic: 'collapse', power: 1.18, color: '#8b5a2b' },
+      { id: 'alysrazor', name: 'Craftsrazor', mechanic: 'sweep', power: 1.34, color: '#ffd24a' },
       { id: 'shannox', name: 'Craftnox', mechanic: 'charge', power: 1.50, color: '#c9a06a' },
-      { id: 'baleroc', name: 'Craferoc', mechanic: 'bombs', power: 1.68, color: '#ff5a3c' },
+      { id: 'baleroc', name: 'Craferoc', mechanic: 'ward', power: 1.68, color: '#ff5a3c' },
       { id: 'ragnaros2', name: 'Ragnacraft, Firelord', mechanic: 'enrage', power: 2.00, color: '#ff3c14' },
     ],
   },
@@ -256,18 +283,18 @@ export const RAIDS = [
     id: 'icecrown', tier: 6, level: 60,
     name: 'Craftcrown Citadel', blurb: 'A frost keep at the top of the world, and the throne inside it.',
     theme: { sky: '#0a1424', fog: '#16304c', stone: '#1a2230', stoneHi: '#b9dcf0', accent: '#e8d6a0', hazard: '#cfeeff', lava: false, fogNear: 28, fogFar: 78 },
-    trial: 'frost',
+    trial: 'collapse',
     bosses: [
       { id: 'marrowgar', name: 'Lord Craftowgar', mechanic: 'bombs', power: 1.00, color: '#cfd6e6' },
-      { id: 'deathwhisper', name: 'Lady Craftwhisper', mechanic: 'adds', power: 1.20, color: '#a35cff' },
+      { id: 'deathwhisper', name: 'Lady Craftwhisper', mechanic: 'ward', power: 1.20, color: '#a35cff' },
       { id: 'saurfang', name: 'Craftbringer Saurfang', mechanic: 'enrage', power: 1.40, color: '#c0392b' },
-      { id: 'festergut', name: 'Craftergut', mechanic: 'shadow', power: 1.60, color: '#8ce06a' },
+      { id: 'festergut', name: 'Craftergut', mechanic: 'collapse', power: 1.60, color: '#8ce06a' },
       // Near-white rather than the mid-cyan it was: #8fe3ff is now the colour
       // of frost *on the floor*, and a frost boss wearing the colour of its own
       // hazard is the one collision this whole separation exists to prevent.
       // Value, not hue, does the separating — the patches stay cyan, the dragon
       // is nearly white, and the two never read as the same thing.
-      { id: 'sindragosa', name: 'Craftragosa', mechanic: 'frost', power: 1.82, color: '#dff2ff' },
+      { id: 'sindragosa', name: 'Craftragosa', mechanic: 'tether', power: 1.82, color: '#dff2ff' },
       { id: 'lichking', name: 'The Craft King', mechanic: 'frost', power: 2.20, color: '#7ef0ff' },
     ],
   },

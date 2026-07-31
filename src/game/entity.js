@@ -45,6 +45,10 @@ export class Entity {
   /** Damage entry point. Returns the amount actually applied. */
   damage(amount, opts = {}) {
     if (this.dead || this.invuln > 0) return 0;
+    // A warded boss takes nothing until its guards are down. Returning zero
+    // rather than skipping the call keeps every hit number, floater and
+    // on-hit rider agreeing that nothing landed.
+    if (this.warded) return 0;
     let dmg = amount;
     if (this.damageTakenMult) dmg *= this.damageTakenMult;
     if (this.absorb > 0) {

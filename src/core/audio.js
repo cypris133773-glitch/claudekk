@@ -241,6 +241,27 @@ export class Audio {
         this.tone({ freq: 300, type: 'sawtooth', dur: 0.42, gain: 0.16, sweep: -190 });
         this.tone({ freq: 154, type: 'sine', dur: 0.5, gain: 0.12, sweep: -60, delay: 0.05 });
         break;
+      // A focused beam: a held tone with a slow rise, so it reads as something
+      // sweeping rather than something landing.
+      case 'beam':
+        this.tone({ freq: 420, type: 'sawtooth', dur: 1.1, gain: 0.13, sweep: 240 });
+        this.tone({ freq: 840, type: 'sine', dur: 1.1, gain: 0.07, sweep: 300, delay: 0.04 });
+        this.noise({ dur: 0.9, gain: 0.07, freq: 2400, q: 3.5, sweep: 900 });
+        break;
+      // The floor going. Lower and longer than a stomp, which is one impact —
+      // this is the ground itself, so it is mostly low noise with no attack.
+      case 'quake':
+        this.tone({ freq: 44, type: 'sine', dur: 0.9, gain: 0.36, sweep: -16 });
+        this.noise({ dur: 0.85, gain: 0.26, freq: 120, q: 0.5, sweep: -60 });
+        this.noise({ dur: 0.5, gain: 0.14, freq: 300, q: 0.8, sweep: -180, delay: 0.18 });
+        break;
+      // Iron on iron, then tension. Three short metallic hits and a rising
+      // tone underneath them: the sound of something being attached to you.
+      case 'chain':
+        [0, 0.06, 0.13].forEach((d) =>
+          this.noise({ dur: 0.09, gain: 0.17, freq: 3200, q: 4, sweep: -800, delay: d }));
+        this.tone({ freq: 150, type: 'triangle', dur: 0.6, gain: 0.14, sweep: 90, delay: 0.05 });
+        break;
       case 'stomp':
         this.tone({ freq: 62, type: 'sine', dur: 0.34, gain: 0.34, sweep: -26 });
         this.noise({ dur: 0.26, gain: 0.24, freq: 180, q: 0.7, sweep: -90 });

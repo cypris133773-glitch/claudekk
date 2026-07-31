@@ -130,6 +130,56 @@ export const MOB_TYPES = {
     projectile: { speed: 26, gravity: 2, color: '#7ef0ff', size: 0.3 },
     skin: { head: hex('#2f6f9a'), body: hex('#1d4a6d'), arm: hex('#2f6f9a'), leg: hex('#153549'), face: T.FACE_BOSS, hat: hex('#7ef0ff'), emissive: 0.22, cloak: hex('#153549'), wings: hex('#2f6f9a'), wingAlpha: 0.6, spines: hex('#7ef0ff'), spineTile: T.CRYSTAL },
   },
+  // --- Four that ask something the first ten do not ------------------------
+  //
+  // The roster was ten enemies and six behaviours, and every one of them
+  // answered the same question: how do I close on the player and hit them.
+  // These four each break a different assumption — that you can hit anything
+  // from any side, that killing one thing is progress, that a corpse is the
+  // end of it, and that a charge only comes from a boss.
+  lancer: {
+    name: 'Lancer', weight: 5, minWave: 5, cost: 2,
+    hp: 74, damage: 20, speed: 3.4, range: 2.6, attackSpeed: 0.7, souls: 7,
+    height: 1.9, width: 0.55, behavior: 'lancer',
+    tagline: 'Winds up, then crosses the room at you. Step aside.',
+    skin: { head: hex('#b8763a'), body: hex('#7a4a22'), arm: hex('#b8763a'), leg: hex('#5a3618'), face: T.FACE_HUSK, weapon: hex('#8a8f9a'), weaponHead: hex('#d8dbe2'), weaponLen: 1.5, weaponWide: 0.12, spines: hex('#d8dbe2'), spineCount: 3 },
+  },
+  bulwark: {
+    name: 'Bulwark', weight: 4, minWave: 8, cost: 3,
+    hp: 210, damage: 18, speed: 2.4, range: 2.6, attackSpeed: 0.6, souls: 12,
+    height: 2.1, width: 0.8, behavior: 'melee', knockResist: 0.8,
+    // The shield is the whole enemy. It is not more health — it is health you
+    // cannot reach from the front, which turns a damage check into a
+    // positioning one and is the first time the arena asks a ranged class to
+    // move rather than to kite.
+    blockArc: 1.15, blockCut: 0.78,
+    tagline: 'Shielded from the front. Get around it.',
+    skin: { head: hex('#6f7480'), body: hex('#474c57'), arm: hex('#6f7480'), leg: hex('#33373f'), face: T.FACE_BRUTE, weapon: hex('#8a8f9a'), weaponHead: hex('#c9a227'), weaponWide: 0.5, weaponLen: 0.9, cloak: hex('#33373f') },
+  },
+  leech: {
+    name: 'Leech', weight: 3, minWave: 12, cost: 3,
+    hp: 88, damage: 12, speed: 3.6, range: 12, attackSpeed: 0.7, souls: 14,
+    height: 1.7, width: 0.5, behavior: 'leech',
+    projectile: { speed: 22, gravity: 3, color: '#8ce06a', size: 0.24 },
+    // Mends everything around it. The first enemy in the game whose presence
+    // makes killing something else *not* progress, which is the only way a
+    // crowd becomes a priority problem instead of a damage one.
+    healPulse: 0.035, healRadius: 9,
+    tagline: 'Mends the pack. Kill it first or kill nothing.',
+    skin: { head: hex('#7fae5e'), body: hex('#4a6b36'), arm: hex('#7fae5e'), leg: hex('#324825'), face: T.FACE_HEXER, emissive: 0.2, cloak: hex('#324825'), spines: hex('#c8ff9a'), spineCount: 5 },
+  },
+  splitter: {
+    name: 'Splitter', weight: 3, minWave: 16, cost: 4,
+    hp: 200, damage: 22, speed: 3.0, range: 2.8, attackSpeed: 0.8, souls: 18,
+    height: 2.0, width: 0.75, behavior: 'melee',
+    // Two smaller ones on death, which are not free kills — they are the same
+    // fight again at half size, and a corpse that makes more work is the one
+    // thing an endless arena had no example of.
+    splitInto: 'husk', splitCount: 2, splitScale: 0.62,
+    tagline: 'Breaks in two when it falls.',
+    skin: { head: hex('#8a5ea8'), body: hex('#5a3a70'), arm: hex('#8a5ea8'), leg: hex('#3d2650'), face: T.FACE_CRAWLER, emissive: 0.16, tail: hex('#3d2650'), tailSegs: 4, spines: hex('#c69cff'), spineCount: 6 },
+  },
+
   broodmother: {
     name: 'Broodmother', weight: 0, minWave: 15, cost: 0, boss: true,
     hp: 620, damage: 24, speed: 3.0, range: 3.2, attackSpeed: 0.7, souls: 110,
@@ -313,6 +363,8 @@ export class Mob extends Entity {
       case 'leaper': this.aiLeaper(dt, game, target, dist, nx, nz, speed); break;
       case 'slammer': this.aiSlammer(dt, game, target, dist, nx, nz, speed); break;
       case 'blinker': this.aiBlinker(dt, game, target, dist, nx, nz, speed); break;
+      case 'lancer': this.aiLancer(dt, game, target, dist, nx, nz, speed); break;
+      case 'leech': this.aiLeech(dt, game, target, dist, nx, nz, speed); break;
       case 'boss': this.aiBoss(dt, game, target, dist, nx, nz, speed); break;
       case 'boss_warden': this.aiWarden(dt, game, target, dist, nx, nz, speed); break;
       case 'boss_brood': this.aiBrood(dt, game, target, dist, nx, nz, speed); break;
@@ -667,6 +719,89 @@ export class Mob extends Entity {
       this.moveToward(nx, nz, speed * 0.15);
       this.startSwing();
     }
+  }
+
+  /**
+   * Winds up in place, then crosses the room in a straight line.
+   *
+   * The charge is the whole enemy, so it is telegraphed hard: a full second
+   * planted, facing you, before anything moves. That is what makes it a thing
+   * you step out of rather than a thing that happens — and it is the first
+   * time a wave enemy asks the player to read a tell, which every raid boss
+   * has asked for since tier zero.
+   */
+  aiLancer(dt, game, target, dist, nx, nz, speed) {
+    if (this.state === 'charge') {
+      this.chargeTime -= dt;
+      this.vx = this.chargeVX;
+      this.vz = this.chargeVZ;
+      if (dist < 2.4 && this.attackTimer <= 0) {
+        this.attackTimer = 0.9;
+        this.meleeHit(game, target, 1.5, 9);
+        this.state = 'chase';
+      }
+      if (this.chargeTime <= 0 || this.hitWallX || this.hitWallZ) this.state = 'chase';
+      return;
+    }
+    if (this.windup > 0) { this.vx *= 0.3; this.vz *= 0.3; return; }
+
+    this.lanceTimer = (this.lanceTimer || rand(4, 2)) - dt;
+    const clear = game.world.lineOfSight(this.x, this.eyeY, this.z, target.x, target.centerY, target.z);
+    if (this.lanceTimer <= 0 && dist > 5 && dist < 20 && clear) {
+      this.lanceTimer = rand(7, 4);
+      // Planted, facing, and telegraphed on the floor along the lane it will
+      // travel — the tell has to say *where*, not just *soon*.
+      this.windup = 0.85;
+      this.windupMult = 0;
+      this.swing = 1;
+      game.sfx('charge');
+      const dx = nx, dz = nz;
+      for (let d = 3; d < 16; d += 3) {
+        game.telegraph(this.x + dx * d, this.y, this.z + dz * d, 1.6, 0.85, () => {},
+          TELL_COLOR.aimed);
+      }
+      game.delay(0.85, () => {
+        if (this.dead) return;
+        this.state = 'charge';
+        this.chargeTime = 0.85;
+        this.chargeVX = dx * this.speed * 4.2;
+        this.chargeVZ = dz * this.speed * 4.2;
+      });
+      return;
+    }
+    this.aiMelee(dt, game, target, dist, nx, nz, speed);
+  }
+
+  /**
+   * Hangs back and mends everything around it.
+   *
+   * The first enemy whose presence makes killing something else not progress.
+   * It keeps its distance like an archer, so the answer is always to go and
+   * deal with it — which is a target-priority decision, and the crowd had none
+   * before this.
+   */
+  aiLeech(dt, game, target, dist, nx, nz, speed) {
+    this.pulseTimer = (this.pulseTimer || 1.5) - dt;
+    if (this.pulseTimer <= 0) {
+      this.pulseTimer = 2.2;
+      const r = this.def.healRadius;
+      let mended = 0;
+      for (const other of game.mobs) {
+        if (other === this || other.dead || other.hp >= other.maxHp) continue;
+        if ((other.x - this.x) ** 2 + (other.z - this.z) ** 2 > r * r) continue;
+        other.hp = Math.min(other.maxHp, other.hp + other.maxHp * this.def.healPulse);
+        mended++;
+        if (game.r.fancy) {
+          game.particles.push(new Particle(
+            other.x, other.centerY, other.z, rand(1, -1), 2.2, rand(1, -1),
+            '#8ce06a', 0.5, 0.18, 0));
+        }
+      }
+      // Only sounds when it did something, so the cue means "that one is
+      // undoing your work" rather than being background noise.
+      if (mended) game.sfx('buff');
+    }
+    this.aiRanged(dt, game, target, dist, nx, nz, speed);
   }
 
   aiLeaper(dt, game, target, dist, nx, nz, speed) {
@@ -1073,6 +1208,8 @@ export class Mob extends Entity {
    */
   mechanicStep(dt, game, target) {
     if (!this.mechanic) return false;
+    this.updateTether(dt, game);
+    this.updateWard(game, dt);
     // Distance is recomputed rather than passed: this used to live inside
     // aiRaid and borrow its caller's, and three different AIs now call it.
     const dist = Math.hypot(target.x - this.x, target.z - this.z);
@@ -1217,6 +1354,10 @@ export class Mob extends Entity {
       case 'bombs': return this.mechBombs(game, mech, target, reps);
       case 'frost': return this.mechFrost(game, mech, target);
       case 'shadow': return this.mechShadow(game, mech, target);
+      case 'sweep': return this.mechSweep(game, mech, target);
+      case 'collapse': return this.mechCollapse(game, mech);
+      case 'tether': return this.mechTether(game, mech, target);
+      case 'ward': return this.mechWard(game, mech);
       default: return this.mechNova(game, mech);
     }
   }
@@ -1455,6 +1596,183 @@ export class Mob extends Entity {
         this.x + Math.cos(a) * 0.8, this.y + 0.5, this.z + Math.sin(a) * 0.8,
         Math.cos(a) * sp, rand(10, 5), Math.sin(a) * sp,
         color, rand(0.30, 0.14), rand(2.0, 1.1), tile));
+    }
+  }
+
+  /**
+   * Drag the tethered player in, and let them break it by running.
+   *
+   * The pull is weaker than a sprint on every class, so running always wins —
+   * it just costs the whole duration to do it. A tether that could not be
+   * broken would be damage with a rope drawn on it.
+   */
+  updateTether(dt, game) {
+    if (!(this.tetherTime > 0)) return;
+    this.tetherTime -= dt;
+    const p = this.tetherTarget || game.player;
+    if (!p || p.dead) { this.tetherTime = 0; return; }
+    const dx = this.x - p.x, dz = this.z - p.z;
+    const d = Math.hypot(dx, dz);
+    if (d > 15) {
+      // Snapped. Running far enough is the answer and it should feel like one.
+      this.tetherTime = 0;
+      game.notify('CHAIN SNAPPED', 1.2);
+      game.sfx('shatter');
+      return;
+    }
+    const pull = 3.6;
+    p.vx += (dx / (d || 1)) * pull * dt * 4;
+    p.vz += (dz / (d || 1)) * pull * dt * 4;
+    // A line of motes along the chain, so the thing pulling you is visible.
+    if (game.r.fancy) {
+      const t = Math.random();
+      game.particles.push(new Particle(
+        p.x + dx * t, p.y + 1 + Math.sin(t * 6) * 0.2, p.z + dz * t,
+        0, 0.4, 0, '#b06cff', 0.22, 0.16, 0));
+    }
+    if (this.tetherTime <= 0) {
+      game.damageEntity(this, p, this.damageAmount * MECHANICS.tether.dmg, { source: 'tether' });
+    }
+  }
+
+  /** Drop the ward once its guards are dead. */
+  updateWard(game, dt) {
+    if (!this.warded) return;
+    this.wardTime -= dt;
+    const left = game.mobs.filter((m) => !m.dead && m.wardFor === this).length;
+    if (left > 0 && this.wardTime > 0) return;
+    this.warded = false;
+    // Whatever is left of the guard pack goes with the ward, so a broken ward
+    // is a clean beat rather than a boss plus five stragglers.
+    for (const m of game.mobs) if (m.wardFor === this && !m.dead) m.dead = true;
+    game.notify(`${this.def.name.toUpperCase()} — WARD BROKEN`, 1.8);
+    game.sfx('shatter');
+    game.burst(this.x, this.centerY, this.z, 26, this.raidColor || '#ffd24a');
+  }
+
+  /**
+   * A beam that swings around the room.
+   *
+   * Every other mechanic in the set says "be somewhere else". This one says
+   * "be somewhere else, continuously, in one direction" — you cannot solve it
+   * by stepping aside once, and standing still is the only guaranteed loss.
+   * Drawn as a line of telegraphs so the arc is legible from inside it.
+   */
+  mechSweep(game, mech, target) {
+    // Start behind the player and rotate past them, so the safe move is
+    // decided at the moment it starts rather than by where they already are.
+    const toPlayer = Math.atan2(target.z - this.z, target.x - this.x);
+    const dir = Math.random() < 0.5 ? 1 : -1;
+    let a = toPlayer - dir * 1.1;
+    const steps = 14;
+    for (let i = 0; i < steps; i++) {
+      const ang = a + dir * (i / steps) * 2.6;
+      game.delay(mech.cast + i * 0.09, () => {
+        if (this.dead) return;
+        // A row of small blasts along the beam rather than one long one: the
+        // arena has walls and a single huge shape would sit inside them.
+        for (let d = 4; d < mech.radius; d += 3.2) {
+          const bx = this.x + Math.cos(ang) * d;
+          const bz = this.z + Math.sin(ang) * d;
+          game.explode(bx, this.y + 0.4, bz, 2.1, this.damageAmount * mech.dmg * 0.5, {
+            team: TEAM.ENEMY, source: this, color: TELL_COLOR.aimed, knockback: 3,
+          });
+        }
+      });
+      // The leading edge is telegraphed one beat ahead of where it will be.
+      game.telegraph(
+        this.x + Math.cos(ang) * (mech.radius * 0.45),
+        this.y, this.z + Math.sin(ang) * (mech.radius * 0.45),
+        3.0, mech.cast + i * 0.09, () => {}, TELL_COLOR.aimed);
+    }
+    game.sfx('cast');
+  }
+
+  /**
+   * The floor turns except for one circle.
+   *
+   * The inverse of every other mechanic: it asks the player to move *toward* a
+   * marked place rather than away from one, and once they are in it standing
+   * still is correct. That inversion is the whole reason it exists — a set of
+   * eight mechanics that all mean "run" teaches one habit.
+   */
+  mechCollapse(game, mech) {
+    // The safe circle is offset from the boss, so reaching it means leaving
+    // melee and coming back — a real cost for a melee class and a free beat
+    // for a ranged one, which is the trade the raid stances already make.
+    const a = Math.random() * Math.PI * 2;
+    const r = 7 + Math.random() * 4;
+    const sx = this.x + Math.cos(a) * r, sz = this.z + Math.sin(a) * r;
+    const safe = mech.radius;
+    // Mark the safe ground for the whole wind-up, in the linger colour so it
+    // reads as "stand here" rather than as another blast.
+    game.telegraph(sx, this.y, sz, safe, mech.cast + 0.9, () => {}, TELL_COLOR.linger);
+    game.delay(mech.cast + 0.9, () => {
+      if (this.dead) return;
+      game.sfx('quake');
+      game.screenShake = Math.max(game.screenShake, 0.5);
+      const p = game.player;
+      const inside = (p.x - sx) ** 2 + (p.z - sz) ** 2 <= safe * safe;
+      if (!inside) {
+        game.damageEntity(this, p, this.damageAmount * mech.dmg, { source: 'collapse' });
+        game.impactFlash(TELL_COLOR.burst, 0.3);
+      }
+      // A ring of dust at the edge of the safe circle, so what happened is
+      // legible after the fact as well as before it.
+      for (let i = 0; i < 24; i++) {
+        const t = (i / 24) * Math.PI * 2;
+        game.burst(sx + Math.cos(t) * safe, this.y + 0.2, sz + Math.sin(t) * safe, 2, '#c9a06a');
+      }
+    });
+  }
+
+  /**
+   * A chain that drags you in unless you run.
+   *
+   * Pressure rather than a dodge: it does not ask for one correct step, it
+   * asks the player to keep choosing to move away while something is pulling
+   * the other way. Breaks on distance, so it is always winnable.
+   */
+  mechTether(game, mech, target) {
+    this.tetherTime = 3.2;
+    this.tetherTarget = target;
+    game.sfx('chain');
+    game.notify('CHAINED — run', 1.6);
+  }
+
+  /**
+   * Shielded until its guards fall.
+   *
+   * The only mechanic in the set that asks the player to stop attacking the
+   * boss. Everything else is about where you stand; this is about what you
+   * are pointed at, which is the axis the other eight never touch.
+   */
+  mechWard(game, mech) {
+    const n = 3 + Math.min(2, this.phase);
+    this.wardCount = n;
+    this.warded = true;
+    // A hard ceiling on top of the guards. Guards can be knocked somewhere
+    // unreachable, fall in lava, or simply be ignored — and a boss that is
+    // immune until a condition that may never arrive is not a mechanic, it is
+    // a softlock.
+    //
+    // Seven seconds against a twenty-two second cooldown. The first number was
+    // fifteen, which is two thirds of the fight spent immune if the player
+    // ignores the guards — that is not a mechanic asking them to switch
+    // targets, it is a mechanic taking the fight away. At seven, ignoring the
+    // guards is a real cost and killing them is clearly better.
+    this.wardTime = 7;
+    game.notify(`${this.def.name.toUpperCase()} — WARDED`, 2.2);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      const m = game.spawnMob('hexer',
+        this.x + Math.cos(a) * 5, this.y + 1, this.z + Math.sin(a) * 5);
+      if (m) {
+        m.isAdd = true;
+        m.wardFor = this;
+        // Guards are a timer, not a wall: they exist to be killed quickly.
+        m.hp = m.maxHp = Math.max(30, m.maxHp * 0.45);
+      }
     }
   }
 

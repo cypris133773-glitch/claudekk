@@ -763,6 +763,20 @@ export class Game {
     if (!target || target.dead) return 0;
     const isPlayer = source === this.player;
     let dmg = amount;
+    // A shield that only covers the front. Not more health — health you cannot
+    // reach from one side, which turns a damage check into a positioning one.
+    // Measured against the mob's facing rather than its velocity, so backing
+    // away from it does not count as flanking it.
+    const arc = target.def && target.def.blockArc;
+    if (arc && source) {
+      const fx = -Math.sin(target.yaw), fz = -Math.cos(target.yaw);
+      const dx = source.x - target.x, dz = source.z - target.z;
+      const d = Math.hypot(dx, dz) || 1;
+      if ((dx / d) * fx + (dz / d) * fz > Math.cos(arc)) {
+        dmg *= 1 - target.def.blockCut;
+        opts = { ...opts, blocked: true };
+      }
+    }
     let crit = false;
     if (isPlayer) {
       crit = source.rollCrit(opts.forceCrit);
@@ -930,6 +944,32 @@ export class Game {
         this.explode(mob.x, mob.centerY, mob.z, 5, left * burst,
           { team: TEAM.PLAYER, source: this.player, color: '#e0473c', knockback: 3 });
       }
+    }
+    // A corpse that makes more work. The halves are real enemies with the
+    // same behaviour at a fraction of the size, not a cosmetic burst — the
+    // point is that killing this one was not the end of it.
+    const sp = mob.def.splitInto;
+    if (sp && !mob.splitChild) {
+      for (let i = 0; i < (mob.def.splitCount || 2); i++) {
+        const a = (i / (mob.def.splitCount || 2)) * Math.PI * 2 + Math.random();
+        const child = this.spawnMob(sp,
+          mob.x + Math.cos(a) * 1.2, mob.y + 0.4, mob.z + Math.sin(a) * 1.2);
+        if (!child) continue;
+        const k = mob.def.splitScale || 0.6;
+        child.splitChild = true;                 // and they do not split again
+        // A third of the parent's health each, not half. At half, the two
+        // halves together were 62% of what you just killed, and a Splitter was
+        // silently worth 1.6 enemies of budget — the wave director had no idea
+        // and the wave landed harder than the number it was built to.
+        child.maxHp = Math.max(1, Math.round(mob.maxHp * k * 0.35));
+        child.hp = child.maxHp;
+        child.damageAmount = mob.damageAmount * k;
+        child.width *= k; child.height *= k;
+        child.souls = Math.max(1, Math.round(mob.souls * 0.3));
+        child.vx = Math.cos(a) * 4; child.vz = Math.sin(a) * 4; child.vy = 4;
+      }
+      this.burst(mob.x, mob.centerY, mob.z, 16, '#c69cff');
+      this.sfx('gib');
     }
     this.rollPotionDrop(mob);
     if (mob.def.boss) this.tally.bossKills++;

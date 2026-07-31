@@ -1720,7 +1720,13 @@ check('every one of the 42 bosses fights without throwing', async () => {
         // corpse handling are the ones the game actually runs. Assigning hp
         // directly leaves `dead` unset and tests nothing past the last frame.
         if (game.raidBoss) {
-          game.dealDamage(game.player, game.raidBoss, game.raidBoss.maxHp / (60 * 26),
+          // Enough to kill it in eighteen seconds, inside a twenty-six second
+          // window. The headroom is deliberate: the Ward mechanic makes a boss
+          // genuinely immune while its guards are up — measured at 27% of a
+          // fight — and a drain calibrated to exactly the boss's health would
+          // fail on a mechanic that is working correctly. This check is about
+          // whether a boss fights and dies without throwing, not about dps.
+          game.dealDamage(game.player, game.raidBoss, game.raidBoss.maxHp / (60 * 18),
             { silent: true });
         }
         game.player.hp = game.player.maxHp;      // the fight, not the outcome
@@ -2112,6 +2118,81 @@ check('no talent promises a number its effect does not produce', async () => {
     }
   }
   assert(bad.length === 0, `talent text disagrees with talent effects:\n  ${bad.join('\n  ')}`);
+});
+
+check('the four new enemies each do the thing they exist for', async () => {
+  const { Game } = await import('../src/game/game.js');
+  const { makeHarness } = await import('./harness.js');
+
+  // Each of these is a special attack rather than a stat, and a stat is what
+  // they would silently decay into: a block arc that stops applying, a heal
+  // pulse that finds nobody, a split that spawns zero, a charge that never
+  // fires. None of those throws, and none of them shows up in a screenshot.
+  //
+  // A fresh run per enemy. Sharing one leaks state between them — a player
+  // who dies in the Leech section stops the run, and every assertion after it
+  // then passes or fails for the wrong reason.
+  const fresh = () => {
+    const h = makeHarness({ level: 40 });
+    const game = new Game(h.renderer, h.audio, h.profile);
+    game.startRun(CLASSES[0], { layout: 0 });
+    game.wave = 20;
+    game.mobs.length = 0;
+    return { game, h, p: game.player };
+  };
+  const fake = (x, y, z) => ({
+    x, y, z, rollCrit: () => false, critMult: 1, mods: {}, stats: { bossMult: 1 },
+  });
+
+  // Bulwark — shielded from the front, open from behind.
+  {
+    const { game, p } = fresh();
+    const b = game.spawnMob('bulwark', p.x, p.y, p.z - 6);
+    b.yaw = Math.atan2(-(p.x - b.x), -(p.z - b.z));
+    const front = game.dealDamage(fake(b.x, b.y, b.z + 8), b, 100, { silent: true });
+    const back = game.dealDamage(fake(b.x, b.y, b.z - 8), b, 100, { silent: true });
+    assert(back > front * 2,
+      `the Bulwark takes ${front.toFixed(0)} from the front and ${back.toFixed(0)} from behind`);
+  }
+
+  // Leech — mends the pack, which is what makes it a priority target.
+  {
+    const { game, h, p } = fresh();
+    game.spawnMob('leech', p.x + 4, p.y, p.z);
+    const hurt = game.spawnMob('husk', p.x + 5, p.y, p.z);
+    hurt.hp = hurt.maxHp * 0.3;
+    const was = hurt.hp;
+    for (let i = 0; i < 200; i++) { game.update(1 / 60, h.input()); p.hp = p.maxHp; }
+    assert(hurt.hp > was, 'the Leech healed nobody');
+  }
+
+  // Splitter — a corpse that makes more work, and its halves do not split.
+  {
+    const { game, p } = fresh();
+    const sp = game.spawnMob('splitter', p.x + 3, p.y, p.z + 3);
+    const parentHp = sp.maxHp;
+    game.dealDamage(p, sp, 99999, { silent: true });
+    const kids = game.mobs.filter((m) => !m.dead && m.splitChild);
+    assert(kids.length === 2, `the Splitter left ${kids.length} halves`);
+    const total = kids.reduce((n, k) => n + k.maxHp, 0);
+    // Bounded, or a Splitter costs the wave director less budget than it
+    // spends, and the wave lands harder than the number it was built to.
+    assert(total < parentHp * 0.55,
+      `the halves carry ${(total / parentHp * 100).toFixed(0)}% of the parent's health`);
+  }
+
+  // Lancer — telegraphs, then commits.
+  {
+    const { game, h, p } = fresh();
+    const l = game.spawnMob('lancer', p.x, p.y, p.z - 12);
+    let charged = false;
+    for (let i = 0; i < 60 * 12 && !charged; i++) {
+      game.update(1 / 60, h.input());
+      p.hp = p.maxHp;
+      if (l.state === 'charge') charged = true;
+    }
+    assert(charged, 'the Lancer never charged in twelve seconds');
+  }
 });
 
 check('a pack surrounds instead of queuing up', async () => {
