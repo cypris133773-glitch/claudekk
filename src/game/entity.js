@@ -231,9 +231,12 @@ export function drawHumanoid(r, e, skin) {
   const detail = far2 < reach * reach && e.detailed !== false;
   const closeUp = far2 < reach * reach * 0.36;
   const unit = e.height / 1.8 * s;           // 1.8-block reference height
-  const headSize = 0.5 * unit;
+  // Proportion knobs. An imp is not a small person: it is a person with a head
+  // half again too big and legs half as long, and that ratio is what the eye
+  // reads as "imp" long before any colour does.
+  const headSize = 0.5 * unit * (skin.headScale || 1);
   const bodyH = 0.75 * unit, bodyW = 0.55 * unit, bodyD = 0.28 * unit;
-  const limbH = 0.72 * unit, limbW = 0.24 * unit;
+  const limbH = 0.72 * unit * (skin.limbScale || 1), limbW = 0.24 * unit;
   const legTop = e.y + limbH;
   const bodyCenterY = legTop + bodyH / 2;
   const headY = legTop + bodyH + headSize / 2;
@@ -364,6 +367,22 @@ export function drawHumanoid(r, e, skin) {
 
   // Tail. Tapering segments trailing down and back, swaying with the walk —
   // the single cheapest way to say "this is a beast, not a man".
+  // Horns. Two stubs angled off the temples — the cheapest silhouette change
+  // that turns a head into a devil's head.
+  if (skin.horns && detail) {
+    const hc = col(skin.horns);
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < (skin.hornCount || 2); i++) {
+        const up = headSize * (0.42 + i * 0.26);
+        const out = side * headSize * (0.30 + i * 0.06);
+        r.drawBox(
+          e.x + rx * out, headY + up, e.z + rz * out,
+          headSize * (0.16 - i * 0.04), headSize * 0.30, headSize * (0.16 - i * 0.04),
+          { ...common, tile: T.SKIN, color: hc, yaw });
+      }
+    }
+  }
+
   if (skin.tail && detail) {
     const tc = col(skin.tail);
     const segs = skin.tailSegs || 5;

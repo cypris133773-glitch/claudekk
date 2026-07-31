@@ -112,7 +112,7 @@ export const CLASSES = [
       {
         id: 'charge', name: 'Charge', kind: 'dash', cost: 15, cooldown: 7, icon: '⚡',
         desc: 'Rush forward, knocking aside and damaging everything in your path.',
-        power: { distance: 11, speed: 34, damage: 30, knockback: 12, radius: 1.8 },
+        power: { distance: 11, speed: 34, damage: 30, knockback: 12, radius: 1.8, selfHeal: 0.05 },
       },
       {
         id: 'whirlwind', name: 'Whirlwind', kind: 'aoe_self', cost: 25, cooldown: 5, icon: '🌀',
@@ -259,7 +259,7 @@ export const CLASSES = [
       {
         id: 'fireball', name: 'Fireball', kind: 'projectile', cost: 18, cooldown: 1.6, icon: '🔥',
         desc: 'Hurl a fireball that explodes on impact.',
-        power: { damage: 46, speed: 26, radius: 3.4, gravity: 2, color: '#ff8a3c', size: 0.42, burn: 12 },
+        power: { damage: 46, speed: 26, radius: 3.4, gravity: 2, color: '#ff8a3c', size: 0.42, burn: 12, selfHeal: 0.05 },
       },
       {
         id: 'frostnova', name: 'Frost Nova', kind: 'aoe_self', cost: 22, cooldown: 9, icon: '❄',
@@ -406,7 +406,7 @@ export const CLASSES = [
       {
         id: 'corruption', name: 'Corruption', kind: 'projectile', cost: 14, cooldown: 1.2, icon: '☠',
         desc: 'Infect a target with rot: heavy damage over 6s that spreads on death.',
-        power: { damage: 10, speed: 30, radius: 1.2, dot: { dps: 16, duration: 6 }, spread: 1, color: '#8f4dff', size: 0.3 },
+        power: { damage: 10, speed: 30, radius: 1.2, dot: { dps: 16, duration: 6 }, spread: 1, color: '#8f4dff', size: 0.3, selfHeal: 0.05 },
       },
       {
         id: 'drainlife', name: 'Drain Life', kind: 'cone', cost: 20, cooldown: 6, icon: '🩸',
@@ -553,7 +553,7 @@ export const CLASSES = [
       {
         id: 'chainlightning', name: 'Chain Lightning', kind: 'chain', cost: 22, cooldown: 3.5, icon: '⚡',
         desc: 'Lightning arcs to 4 nearby enemies, losing 20% damage per jump.',
-        power: { damage: 48, jumps: 4, range: 22, jumpRange: 9, falloff: 0.8, color: '#7ef0ff' },
+        power: { damage: 48, jumps: 4, range: 22, jumpRange: 9, falloff: 0.8, color: '#7ef0ff', selfHeal: 0.035 },
       },
       {
         id: 'earthshock', name: 'Earth Shock', kind: 'aoe_self', cost: 20, cooldown: 7, icon: '🪨',
@@ -700,7 +700,7 @@ export const CLASSES = [
       {
         id: 'smite', name: 'Smite', kind: 'projectile', cost: 16, cooldown: 1.4, icon: '✨',
         desc: 'A bolt of holy light. Heals you for 20% of the damage it deals.',
-        power: { damage: 44, speed: 34, radius: 1.6, lifesteal: 0.2, color: '#ffe9a8', size: 0.32 },
+        power: { damage: 44, speed: 34, radius: 1.6, lifesteal: 0.2, color: '#ffe9a8', size: 0.32, selfHeal: 0.035 },
       },
       {
         id: 'shield', name: 'Power Word: Shield', kind: 'buff', cost: 22, cooldown: 10, icon: '🔰',
@@ -867,7 +867,7 @@ export const CLASSES = [
       {
         id: 'shuriken', name: 'Shuriken Toss', kind: 'projectile', cost: 16, cooldown: 2, icon: '🌟',
         desc: 'A thrown blade for when the target will not come to you.',
-        power: { damage: 42, speed: 48, radius: 1.4, dot: { dps: 8, duration: 4 }, color: '#d6ffb8', size: 0.22 },
+        power: { damage: 42, speed: 48, radius: 1.4, dot: { dps: 8, duration: 4 }, color: '#d6ffb8', size: 0.22, selfHeal: 0.05 },
       },
       {
         id: 'crimsontempest', name: 'Crimson Tempest', kind: 'aoe_self', cost: 32, cooldown: 9, icon: '🩸',
@@ -1043,7 +1043,7 @@ export const CLASSES = [
       {
         id: 'shear', name: 'Shear', kind: 'strike', cost: 14, cooldown: 2.5, icon: '🗡',
         desc: 'A fast cut that feeds on Hatred and returns it.',
-        power: { damage: 42, range: 3.4, arc: 0.8, lifesteal: 0.15 },
+        power: { damage: 42, range: 3.4, arc: 0.8, lifesteal: 0.15, selfHeal: 0.05 },
       },
       {
         id: 'blur', name: 'Blur', kind: 'buff', cost: 22, cooldown: 20, icon: '🌫',
@@ -1143,7 +1143,7 @@ export const CLASSES = [
       {
         id: 'crusaderstrike', name: 'Crusader Strike', kind: 'strike', cost: 12, cooldown: 3, icon: '⚒',
         desc: 'A hammer blow that returns Faith and heals you for part of it.',
-        power: { damage: 40, range: 3.6, arc: 0.9, lifesteal: 0.25 },
+        power: { damage: 40, range: 3.6, arc: 0.9, lifesteal: 0.25, selfHeal: 0.035 },
       },
       {
         id: 'consecration', name: 'Consecration', kind: 'zone', cost: 22, cooldown: 9, icon: '🕯',
@@ -1293,7 +1293,7 @@ export const CLASSES = [
       {
         id: 'arcaneshot', name: 'Arcane Shot', kind: 'projectile', cost: 12, cooldown: 1.5, icon: '🏹',
         desc: 'A fast shot that costs almost nothing. The rotation filler.',
-        power: { damage: 44, speed: 58, radius: 1.2, color: '#cdf5a8', size: 0.2 },
+        power: { damage: 44, speed: 58, radius: 1.2, color: '#cdf5a8', size: 0.2, selfHeal: 0.05 },
       },
       {
         id: 'multishot', name: 'Multi-Shot', kind: 'cone', cost: 24, cooldown: 6, icon: '🎯',

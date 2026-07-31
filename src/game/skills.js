@@ -317,7 +317,14 @@ export function castSkill(game, player, index) {
         if (live.length >= maxPets) live[0].dead = true;
         const sx = player.x + rand(2, -2), sz = player.z + rand(2, -2);
         const sy = game.world.groundAt(sx, sz, player.y + 2);
-        game.pets.push(new Fiend(sx, sy, sz, { ...p, owner: player }));
+        // The Hunter's companion is an animal and the Warlock's is an imp.
+        // Same entity, same behaviour, different silhouette — which is the
+        // half that was missing: the class whose whole identity is a beast
+        // was being followed around by a small purple person.
+        game.pets.push(new Fiend(sx, sy, sz, {
+          ...p, owner: player,
+          shape: skill.id === 'summonbeast' ? 'beast' : 'imp',
+        }));
       }
       game.sfx('summon');
       break;
@@ -402,6 +409,17 @@ export function castSkill(game, player, index) {
   player.resource -= cost;
   player.cooldowns[index] = skillCooldown(player, skill, rank);
   player.lastCast = skill.id;
+
+  // Every class's opening skill mends a little. Four of the nine have no heal
+  // of their own at all, which meant their sustain was entirely whatever the
+  // floor happened to drop — and a class whose answer to being hurt is "hope"
+  // is not a class, it is a difficulty setting. A share of max health rather
+  // than a flat number, so it is worth the same at level 1 and level 60, and
+  // it is deliberately small: this is a trickle that rewards pressing the
+  // button in a fight, not a reason to stand in a corner casting at a wall.
+  if (p.selfHeal && !player.echoing) {
+    game.healEntity(player, player, player.maxHp * p.selfHeal * player.stats.healMult);
+  }
 
   // Mage six-piece: the spell casts itself again, half strength, a beat later.
   //
