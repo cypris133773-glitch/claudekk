@@ -775,14 +775,49 @@ button:disabled { opacity: 0.35; cursor: default; }
 .tt-detail-head { display: flex; align-items: baseline; gap: 8px; }
 .tt-detail-head b { font-size: 14px; }
 .tt-detail-rank { margin-left: auto; font-size: 12px; font-weight: 800; color: var(--gold); }
-.tt-detail-desc { margin: 0; font-size: 12px; color: var(--dim); line-height: 1.45; min-height: 2.9em; }
+/* No reserved height any more. The strip used to hold two lines open so the
+   panel would not jump as you tapped between nodes; now the effect table
+   below it is the tallest thing in the strip and it already varies, so the
+   reservation bought nothing and cost a line of screen on a phone. */
+.tt-detail-desc { margin: 0; font-size: 12px; color: var(--dim); line-height: 1.4; }
+
+/* The numbers, generated from the effect table rather than written by hand.
+   A label/value pair per line with the value hard right, because the value is
+   what the eye is looking for and a ragged column defeats scanning. */
+.tt-effects-head {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--dim);
+  opacity: 0.75;
+  margin-top: 3px;
+}
+.tt-effects {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.24);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.tt-effect { display: flex; align-items: baseline; gap: 10px; font-size: 11.5px; line-height: 1.5; }
+.tt-effect-label { color: var(--dim); }
+.tt-effect-value { margin-left: auto; font-weight: 800; color: var(--gold); font-variant-numeric: tabular-nums; }
+/* What one more point buys — the only question being asked here. */
+.tt-next { margin: 2px 0 0; font-size: 11.5px; font-weight: 700; color: var(--accent); line-height: 1.4; }
+.tt-next.maxed { color: var(--gold); }
+
 .tt-btns { display: flex; gap: 8px; margin-top: 2px; }
 .tt-btns .tiny-btn { width: 42px; height: 34px; font-size: 19px; }
 
 @media (max-height: 600px) {
   .talent-tree { --cell: 36px; --tgap: 8px; margin: 6px 0 2px; }
   .tt-detail { padding: 7px 10px; }
-  .tt-detail-desc { font-size: 11px; min-height: 2.6em; }
+  .tt-detail-desc { font-size: 11px; }
+  .tt-effect, .tt-next { font-size: 10.5px; }
+  .tt-effects { padding: 4px 7px; }
   .tt-btns .tiny-btn { height: 30px; }
 }
 
@@ -1708,7 +1743,7 @@ body.show-popout-btn #popout-btn { display: block; }
   .talents-screen .panel-head h1 { font-size: 20px; }
   .talents-screen .panel { padding: 12px; }
   .talent-tree { --cell: 44px; --tgap: 11px; margin: 6px 0 2px; }
-  .tt-detail-desc { min-height: 2.6em; font-size: 11px; }
+  .tt-detail-desc { font-size: 11px; }
   .class-picker { gap: 4px; }
   .class-picker .pill { padding: 4px 8px; font-size: 11px; }
 }

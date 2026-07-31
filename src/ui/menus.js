@@ -25,6 +25,7 @@ import { storage } from '../core/save.js';
 import { DIFFICULTIES } from '../data/difficulty.js';
 import { skillIconElement, iconElement, schoolFor, SCHOOLS } from './icons.js';
 import { QUEST_COUNT } from '../data/quests.js';
+import { talentLines, talentNextGain } from '../data/talentinfo.js';
 
 // Presentation only, so it lives here and not in raids.js — the same reason
 // TALENT_GLYPHS does. One glyph per raid; the field colour comes from the
@@ -719,6 +720,31 @@ export class Menus {
     detail.appendChild(el('p', 'tt-detail-desc', selLocked
       ? `Requires ${selRequired} points in ${branch.name}.`
       : sel.desc));
+
+    // The numbers, derived from the same effect table the game reads, so the
+    // tooltip cannot drift away from what the talent does. Two columns: what
+    // the points already spent are worth, and what one more would add — which
+    // is the only question being asked at the moment this is read.
+    if (!selLocked) {
+      const lines = talentLines(sel, selRank, selTarget && selTarget.name);
+      if (lines.length) {
+        const table = el('div', 'tt-effects');
+        for (const line of lines) {
+          const row = el('div', 'tt-effect');
+          row.appendChild(el('span', 'tt-effect-label', line.label));
+          if (line.value) row.appendChild(el('span', 'tt-effect-value', line.value));
+          table.appendChild(row);
+        }
+        table.firstChild.classList.add('tt-effect-first');
+        detail.appendChild(el('div', 'tt-effects-head',
+          selRank ? `At rank ${selRank}` : 'Per rank'));
+        detail.appendChild(table);
+      }
+      const gain = selRank > 0 && talentNextGain(sel, selRank, selTarget && selTarget.name);
+      if (gain) detail.appendChild(el('p', 'tt-next', `Next rank → ${gain}`));
+      else if (selRank >= sel.max) detail.appendChild(el('p', 'tt-next maxed', 'Maxed out.'));
+    }
+
     if (selTarget && !selLocked) {
       const tag = el('div', 'talent-skill' + (equipped.has(selTarget.id) ? '' : ' off'));
       tag.appendChild(skillIconElement(selTarget, 20));

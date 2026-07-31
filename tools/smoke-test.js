@@ -1777,6 +1777,70 @@ check('a keyboard can play the whole game', async () => {
   }
 });
 
+check('every talent effect can be explained on screen', async () => {
+  const { EFFECT_INFO, talentLines } = await import('../src/data/talentinfo.js');
+  for (const cls of CLASSES) {
+    for (const branch of cls.talents) {
+      for (const node of branch.nodes) {
+        for (const key of Object.keys(node.effect || {})) {
+          assert(EFFECT_INFO[key],
+            `${cls.id}/${node.id} has effect "${key}" that the talent screen cannot describe`);
+        }
+        // And the lines have to actually come out, or the node shows a name
+        // and nothing else — which is the complaint this screen was built for.
+        const scalars = Object.keys(node.effect || {})
+          .filter((k) => EFFECT_INFO[k].kind !== 'unique');
+        assert(talentLines(node, 1, 'Skill').length === scalars.length,
+          `${cls.id}/${node.id} renders ${talentLines(node, 1, 'Skill').length} lines for ${scalars.length} effects`);
+      }
+    }
+  }
+});
+
+check('no talent promises a number its effect does not produce', async () => {
+  // The tree used to carry hand-written percentages next to an effect table
+  // that had since been retuned, and fifty-eight nodes disagreed with
+  // themselves — Warrior's Unstoppable Charge advertised 22% against an
+  // effect worth 8%. Prose does not get recompiled, so nothing caught it.
+  //
+  // The screen now derives every number from the effect object. This keeps
+  // the *descriptions* honest too: any percentage still written by hand has
+  // to be one some rank of the node genuinely produces.
+  const { EFFECT_INFO } = await import('../src/data/talentinfo.js');
+  const bad = [];
+  for (const cls of CLASSES) {
+    for (const branch of cls.talents) {
+      for (const node of branch.nodes) {
+        const quoted = [...(node.desc || '').matchAll(/(\d+(?:\.\d+)?)%/g)].map((m) => Number(m[1]));
+        if (!quoted.length) continue;
+        // Every percentage any rank of this node produces, plus the ones a
+        // single-rank switch states as a threshold (a Last Stand that revives
+        // you at 25% health is quoting the game, not its own effect value).
+        const produced = new Set();
+        for (const v of Object.values(node.effect || {})) {
+          if (typeof v !== 'number') continue;
+          for (let r = 1; r <= node.max; r++) produced.add(Math.round(Math.abs(v * r) * 1000) / 10);
+        }
+        // A threshold the screen itself prints — "damage reduction below 25%
+        // health" — is explained by the label, so the description may repeat it.
+        for (const k of Object.keys(node.effect || {})) {
+          const label = (EFFECT_INFO[k] || {}).label || '';
+          for (const m of label.matchAll(/(\d+(?:\.\d+)?)%/g)) produced.add(Number(m[1]));
+        }
+        const unexplained = quoted.filter((q) => ![...produced].some((p) => Math.abs(p - q) < 0.51));
+        // A threshold quoted by a single-rank mechanic is prose about the
+        // game's rules rather than about this node's numbers, so it is exempt.
+        const isSwitch = Object.keys(node.effect || {})
+          .some((k) => EFFECT_INFO[k] && EFFECT_INFO[k].kind === 'unique');
+        if (unexplained.length && !isSwitch) {
+          bad.push(`${cls.id}/${node.id}: "${node.desc}" quotes ${unexplained.join('%, ')}% — effects are ${JSON.stringify(node.effect)}`);
+        }
+      }
+    }
+  }
+  assert(bad.length === 0, `talent text disagrees with talent effects:\n  ${bad.join('\n  ')}`);
+});
+
 check('nothing sets a cached GL uniform behind the cache', async () => {
   const { readFile } = await import('node:fs/promises');
   const src = await readFile(new URL('../src/render/renderer.js', import.meta.url), 'utf8');
