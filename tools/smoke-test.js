@@ -2057,44 +2057,57 @@ check('no talent promises a number its effect does not produce', async () => {
   assert(bad.length === 0, `talent text disagrees with talent effects:\n  ${bad.join('\n  ')}`);
 });
 
-check('nothing sets a cached GL uniform behind the cache', async () => {
+check('every box goes through the batch', async () => {
   const { readFile } = await import('node:fs/promises');
   const src = await readFile(new URL('../src/render/renderer.js', import.meta.url), 'utf8');
+  const gl = await readFile(new URL('../src/render/gl.js', import.meta.url), 'utf8');
 
-  // drawBox skips any uniform whose value it already set. That is worth
-  // roughly two thirds of a busy frame's GL calls — measured at 3702 uniform
-  // sets down to 1076 on a thirty-mob wave — and it is only correct while the
-  // shadow copy in `this.st` describes what the driver actually holds.
+  // Boxes are not drawn when they are submitted: they queue into one array and
+  // reach the driver as a single instanced draw. Measured on a thirty-mob
+  // wave that took a frame from 605 draw calls and 3702 uniform sets to 5 and
+  // 17, because what costs on a phone is the number of times JavaScript hands
+  // work to the driver, not the amount handed over.
   //
-  // The failure mode if it stops being correct is not a crash. It is a mob
-  // drawn in the last mob's colours, or a tile that never updates, appearing
-  // only when the draw order happens to line up. Cheap to prevent, expensive
-  // to debug, so pin the three places the cache can be bypassed.
-  assert(/invalidateState\s*\(\s*\)\s*\{/.test(src), 'the GL state cache is gone');
+  // The correctness risk is state the batch cannot express — the alpha cutoff,
+  // the depth mask, a different program. Anything that changes one of those
+  // has to push the queue out first, or the boxes already queued get drawn
+  // under the new state instead of the one they were submitted under. That
+  // does not throw; it draws shadows into the depth buffer, or an arena with
+  // the wrong alpha threshold. So pin the three places it can happen.
+  assert(/^  flush\(\) \{/m.test(src), 'the batch flush is gone');
+  assert(src.includes('drawArraysInstanced'), 'the batch no longer draws instanced');
 
-  // The world mesh sets tint and UVs directly because it carries its own, so
-  // it has to write down what it set.
   const body = (name, end) => {
     const at = src.indexOf(name);
     assert(at >= 0, `${name} went missing`);
-    const stop = src.indexOf(end, at);
+    const stop = src.indexOf(end, at + name.length);
     return src.slice(at, stop < 0 ? src.length : stop);
   };
-  const worldBody = body('drawWorld()', '\n  /**');
-  assert(worldBody.includes('st.tintR = 1'), 'drawWorld sets the tint without recording it');
-  assert(worldBody.includes('st.uvDU = 1'), 'drawWorld sets the UV scale without recording it');
-  assert(worldBody.includes('st.emissive = 0'), 'drawWorld sets emissive without recording it');
+  // The cutoff is a uniform, so changing it has to flush.
+  const cutoff = body('setCutoff(v) {', '\n  /**');
+  assert(cutoff.includes('this.flush()'), 'setCutoff changes a uniform without flushing');
+  // The sky runs a different program.
+  assert(body('drawSky() {', '\n  /**').includes('this.flush()'),
+    'drawSky binds another program without flushing');
+  // And the shadow pass turns the depth mask off, which no instance attribute
+  // can carry.
+  const shadow = body('shadowPass(fn) {', '\n  /**');
+  assert(shadow.includes('depthMask(false)') && shadow.includes('this.flush()')
+    && shadow.indexOf('this.flush()') < shadow.indexOf('depthMask(true)'),
+    'the shadow pass restores the depth mask before flushing its blobs');
 
-  // The sky runs a different program, which unbinds the vertex array.
-  const skyBody = body('drawSky()', '\n  /**');
-  assert(skyBody.includes('this.st.vao = null'), 'drawSky unbinds the VAO without recording it');
+  // And the frame has to end with a flush, or whatever was queued after the
+  // last state change is simply never drawn.
+  const game = await readFile(new URL('../src/game/game.js', import.meta.url), 'utf8');
+  assert(game.includes('this.r.flush()'), 'the frame never flushes what it queued last');
 
-  // And the alpha cutoff, which two call sites toggle, goes through its setter
-  // rather than straight at the driver.
-  const direct = src.split('\n').filter((l) => /gl\.uniform1f\(\s*(this\.)?u\.uCutoff/.test(l));
-  assert(direct.length === 1,
-    `uCutoff is written directly ${direct.length} times; it should only be in setCutoff`);
-  assert(/setCutoff\(v\)\s*\{/.test(src), 'setCutoff is gone');
+  // The vertex count divides by the real stride. It read `/ 6` against a
+  // 7-float vertex for as long as the glow channel has existed, so every mesh
+  // drew a sixth more vertices than it had — six phantom triangles per box,
+  // reading past the end of the buffer.
+  assert(gl.includes('floats.length / VERTEX_FLOATS'),
+    'the vertex count is not derived from the vertex layout');
+  assert(/VERTEX_FLOATS = 7/.test(gl), 'the vertex layout changed without the count following');
 });
 
 check('every sound the game asks for exists', async () => {

@@ -1,7 +1,10 @@
 // Renderer: draws the arena mesh plus every blocky entity/particle with a
 // single shader. Entities are built out of unit cubes, Minecraft-style.
 
-import { createContext, createProgram, createSkyProgram, createMesh } from './gl.js';
+import {
+  createContext, createProgram, createSkyProgram, createMesh, createInstanceBuffer,
+  INSTANCE_FLOATS,
+} from './gl.js';
 import { createAtlasTexture, tileUV, T } from './atlas.js';
 import { mat4, perspective, viewFromEuler, composeTRS, identity, multiply, clamp } from '../core/math.js';
 
@@ -29,8 +32,18 @@ function cubeVerts() {
   return new Float32Array(out);
 }
 
-/** The default tint. Shared so an untinted box compares equal to the last one. */
+/** The default tint. */
 const WHITE = [1, 1, 1];
+
+/**
+ * How many boxes one instanced draw can carry.
+ *
+ * A measured thirty-mob wave submits about six hundred, so this is roughly
+ * three times the worst frame the game has been seen to produce. Going over is
+ * not a failure: the batch flushes and starts a new one, which costs exactly
+ * one extra draw call.
+ */
+const BATCH_CAP = 2048;
 
 const SKY_TOP = [0.32, 0.50, 0.76];
 const SKY_BOT = [0.62, 0.72, 0.86];
@@ -158,7 +171,23 @@ export class Renderer {
     this.u = u;
     this.sky = createSkyProgram(gl);
     this.atlas = createAtlasTexture(gl);
-    this.cube = createMesh(gl, cubeVerts());
+    // Room for a busy frame and then some. A measured thirty-mob wave submits
+    // about six hundred boxes; overflowing simply flushes early, so the cap is
+    // a memory decision rather than a correctness one.
+    this.instVbo = createInstanceBuffer(gl, BATCH_CAP);
+    this.inst = new Float32Array(BATCH_CAP * INSTANCE_FLOATS);
+    this.instCount = 0;
+    this.cube = createMesh(gl, cubeVerts(), this.instVbo);
+    // The world mesh carries its own UVs and never moves, so it draws as a
+    // single instance out of a buffer written once.
+    this.worldInstVbo = createInstanceBuffer(gl, 1);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.worldInstVbo);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, new Float32Array([
+      1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1,   // identity
+      1, 1, 1, 1,                                        // white
+      0, 0, 1, 1,                                        // the whole atlas
+      0, 0,                                              // no emissive, no flash
+    ]));
     this.worldMesh = null;
     this.invalidateState();
     gl.enable(gl.DEPTH_TEST);
@@ -169,29 +198,25 @@ export class Renderer {
   }
 
   /**
-   * A shadow copy of the GL state drawBox sets, so we only set what actually
-   * changed. A busy frame draws six hundred boxes and almost all of them
-   * share a tint, a tile, and a VAO with the box before them: measured on a
-   * thirty-mob wave, 2607 of 3702 uniform calls and 601 of 606 vertex-array
-   * binds were setting a value the driver already had.
+   * Reset the batch and the shadow copy of GL state it depends on.
    *
-   * Those redundant calls are not free even though they change nothing — each
-   * one crosses from JavaScript into the browser's GL implementation, and on a
-   * phone that crossing is the frame's single largest cost. The driver cannot
-   * skip them for us: it has to validate the arguments before it can know they
-   * are the same. We can, because we know what we set last.
+   * Boxes are not drawn when they are submitted. They accumulate into one
+   * array and go to the driver as a single instanced draw, because the cost
+   * that actually shows up on a phone is the number of times JavaScript hands
+   * work to the driver, not the amount of work handed over. A busy frame was
+   * six hundred separate draws; it is one.
    *
-   * NaN is the initial value on purpose. It compares unequal to everything,
+   * What forces the batch out early is a change to state the batch cannot
+   * express — the alpha cutoff, the depth mask, a different program. Those are
+   * tracked here so the flush happens exactly when it must and not otherwise.
+   *
+   * NaN is the initial value on purpose: it compares unequal to everything,
    * including itself, so the first set after a context loss always goes
    * through and the cache can never start out claiming to hold a real value.
    */
   invalidateState() {
-    this.st = {
-      vao: undefined,
-      tintR: NaN, tintG: NaN, tintB: NaN, tintA: NaN,
-      uvU: NaN, uvV: NaN, uvDU: NaN, uvDV: NaN,
-      emissive: NaN, flash: NaN, cutoff: NaN,
-    };
+    this.st = { vao: undefined, cutoff: NaN };
+    this.instCount = 0;
   }
 
   setWorld(world) {
@@ -201,7 +226,7 @@ export class Renderer {
       gl.deleteBuffer(this.worldMesh.vbo);
     }
     this.worldFloats = world.mesh;   // kept so a lost context can be rebuilt
-    this.worldMesh = createMesh(gl, world.mesh);
+    this.worldMesh = createMesh(gl, world.mesh, this.worldInstVbo);
   }
 
   resize() {
@@ -253,6 +278,8 @@ export class Renderer {
   drawSky() {
     if (this.contextLost || !this.fancy) return;
     const gl = this.gl;
+    // A different program cannot draw this program's queue.
+    this.flush();
     const t = this.theme;
     gl.depthMask(false);
     gl.depthFunc(gl.LEQUAL);
@@ -309,10 +336,9 @@ export class Renderer {
     gl.uniform1f(this.u.uFogNear, this.fogNear);
     gl.uniform1f(this.u.uFogFar, this.fogFar);
     gl.uniform3fv(this.u.uGlowColor, this.theme.glow || [0.5, 0.38, 0.18]);
-    // The cached uniforms survive between frames — the values live in the
-    // program object, and nothing else touches them — so the frame does not
-    // re-set them. It does have to clear the shorthand cache the sky program
-    // invalidates.
+    // Anything left queued from an aborted frame is dropped rather than drawn
+    // against this frame's camera.
+    this.instCount = 0;
     this.st.vao = undefined;
     this.setCutoff(0.35);
     if (this.fancy) {
@@ -330,26 +356,11 @@ export class Renderer {
 
   drawWorld() {
     if (!this.worldMesh || this.contextLost) return;
-    const gl = this.gl, st = this.st;
-    gl.uniformMatrix4fv(this.u.uModel, false, this.identity);
-    gl.uniform4f(this.u.uTint, 1, 1, 1, 1);
-    gl.uniform2f(this.u.uUVOffset, 0, 0);
-    gl.uniform2f(this.u.uUVScale, 1, 1);
-    gl.uniform1f(this.u.uEmissive, 0);
-    // The world mesh carries its own UVs, so it sets these directly rather
-    // than through drawBox. Record what it set, or the first box after it
-    // would trust a cache that no longer describes the GL state.
-    st.tintR = 1; st.tintG = 1; st.tintB = 1; st.tintA = 1;
-    st.uvU = 0; st.uvV = 0; st.uvDU = 1; st.uvDV = 1;
-    st.emissive = 0;
+    const gl = this.gl;
     this.useVao(this.worldMesh.vao);
-    gl.drawArrays(gl.TRIANGLES, 0, this.worldMesh.count);
+    gl.drawArraysInstanced(gl.TRIANGLES, 0, this.worldMesh.count, 1);
   }
 
-  /**
-   * Draw one cube. Position is the cube centre.
-   * opts: { tile, color:[r,g,b], alpha, emissive, flash, yaw, pitch }
-   */
   /** Bind a vertex array only if it is not the one already bound. */
   useVao(vao) {
     if (this.st.vao === vao) return;
@@ -357,44 +368,59 @@ export class Renderer {
     this.gl.bindVertexArray(vao);
   }
 
-  /** Alpha-test threshold. Two call sites toggle it; both go through here. */
+  /**
+   * Alpha-test threshold. It is a uniform, so it cannot vary inside a batch —
+   * changing it has to push what is already queued out first.
+   */
   setCutoff(v) {
     if (this.st.cutoff === v) return;
+    this.flush();
     this.st.cutoff = v;
     this.gl.uniform1f(this.u.uCutoff, v);
   }
 
+  /**
+   * Send everything queued as one draw.
+   *
+   * Order within the batch is the order it was submitted, and GL preserves
+   * primitive order inside a single draw call — so blended things still land
+   * over what they were meant to land over. That is the property that makes
+   * batching safe here rather than a rewrite of how the scene is composed.
+   */
+  flush() {
+    if (this.contextLost || !this.instCount) return;
+    const gl = this.gl;
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.instVbo);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0,
+      this.inst.subarray(0, this.instCount * INSTANCE_FLOATS));
+    this.useVao(this.cube.vao);
+    gl.drawArraysInstanced(gl.TRIANGLES, 0, this.cube.count, this.instCount);
+    this.instCount = 0;
+  }
+
+  /**
+   * Queue one cube. Position is the cube centre.
+   * opts: { tile, color:[r,g,b], alpha, emissive, flash, yaw, pitch }
+   */
   drawBox(x, y, z, sx, sy, sz, opts = {}) {
     if (this.contextLost) return;
-    const gl = this.gl, st = this.st, u = this.u;
+    if (this.instCount >= BATCH_CAP) this.flush();
     const tile = opts.tile === undefined ? T.SKIN : opts.tile;
     const [u0, v0, du, dv] = tileUV(tile);
-    // The model matrix is the one uniform that genuinely differs per box, so
-    // it is the only one set unconditionally.
-    composeTRS(this.model, x, y, z, opts.yaw || 0, opts.pitch || 0, sx, sy, sz);
-    gl.uniformMatrix4fv(u.uModel, false, this.model);
+    const m = this.model;
+    composeTRS(m, x, y, z, opts.yaw || 0, opts.pitch || 0, sx, sy, sz);
 
+    const a = this.inst;
+    let o = this.instCount * INSTANCE_FLOATS;
+    for (let i = 0; i < 16; i++) a[o + i] = m[i];
+    o += 16;
     const c = opts.color || WHITE;
-    const a = opts.alpha === undefined ? 1 : opts.alpha;
-    if (st.tintR !== c[0] || st.tintG !== c[1] || st.tintB !== c[2] || st.tintA !== a) {
-      st.tintR = c[0]; st.tintG = c[1]; st.tintB = c[2]; st.tintA = a;
-      gl.uniform4f(u.uTint, c[0], c[1], c[2], a);
-    }
-    if (st.uvU !== u0 || st.uvV !== v0) {
-      st.uvU = u0; st.uvV = v0;
-      gl.uniform2f(u.uUVOffset, u0, v0);
-    }
-    if (st.uvDU !== du || st.uvDV !== dv) {
-      st.uvDU = du; st.uvDV = dv;
-      gl.uniform2f(u.uUVScale, du, dv);
-    }
-    const em = opts.emissive || 0;
-    if (st.emissive !== em) { st.emissive = em; gl.uniform1f(u.uEmissive, em); }
-    const fl = opts.flash || 0;
-    if (st.flash !== fl) { st.flash = fl; gl.uniform1f(u.uFlash, fl); }
-
-    this.useVao(this.cube.vao);
-    gl.drawArrays(gl.TRIANGLES, 0, this.cube.count);
+    a[o] = c[0]; a[o + 1] = c[1]; a[o + 2] = c[2];
+    a[o + 3] = opts.alpha === undefined ? 1 : opts.alpha;
+    a[o + 4] = u0; a[o + 5] = v0; a[o + 6] = du; a[o + 7] = dv;
+    a[o + 8] = opts.emissive || 0;
+    a[o + 9] = opts.flash || 0;
+    this.instCount++;
   }
 
   /**
@@ -402,18 +428,32 @@ export class Renderer {
    * float without one: nothing else in the scene tells you whether a mob is
    * standing on the floor or hovering a block above it.
    */
-  drawShadow(x, y, z, radius, alpha = 0.42) {
-    if (this.contextLost || !this.fancy || alpha <= 0.01) return;
+  /**
+   * Run every contact shadow inside one state change.
+   *
+   * The blob is soft-edged alpha and must not write depth, so it needs a
+   * different cutoff and the depth mask off. Both are things a batch cannot
+   * carry per box, so toggling them per shadow would force a flush per shadow
+   * — thirty draw calls to save thirty draw calls. Scoped like this the whole
+   * pass is one.
+   */
+  shadowPass(fn) {
+    if (this.contextLost || !this.fancy) return;
     const gl = this.gl;
-    // The soft edge is entirely alpha, so the usual cutoff would carve the
-    // blob into a hard-edged disc.
     this.setCutoff(0.004);
     gl.depthMask(false);
+    fn();
+    this.flush();
+    gl.depthMask(true);
+    this.setCutoff(0.35);
+  }
+
+  /** One blob. Only meaningful inside `shadowPass`. */
+  drawShadow(x, y, z, radius, alpha = 0.42) {
+    if (this.contextLost || !this.fancy || alpha <= 0.01) return;
     this.drawBox(x, y + 0.03, z, radius * 2, 0.001, radius * 2, {
       tile: T.SHADOW, color: [0, 0, 0], alpha, emissive: 1,
     });
-    gl.depthMask(true);
-    this.setCutoff(0.35);
   }
 
   /**

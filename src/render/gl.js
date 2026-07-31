@@ -1,31 +1,52 @@
 // Thin WebGL wrapper: context creation, one shader program, buffer helpers.
 
+// Everything that used to be a per-draw uniform — the model matrix, the tint,
+// the atlas rect, emissive and flash — is a per-instance attribute now.
+//
+// The point is the draw call count. A busy frame is six hundred boxes and each
+// one was its own drawArrays, which on a phone is six hundred crossings from
+// JavaScript into the driver before a single pixel is shaded. As instances
+// they are one buffer upload and one call, and the shader is otherwise
+// identical: the same maths, read from a different place.
 const VERT = `#version 300 es
 precision highp float;
 layout(location=0) in vec3 aPos;
 layout(location=1) in vec2 aUV;
 layout(location=2) in float aLight;
 layout(location=3) in float aGlow;
+// Per instance. The matrix arrives as four columns because an attribute slot
+// is a vec4 and a mat4 is simply four of them in consecutive locations.
+layout(location=4) in vec4 iM0;
+layout(location=5) in vec4 iM1;
+layout(location=6) in vec4 iM2;
+layout(location=7) in vec4 iM3;
+layout(location=8) in vec4 iTint;
+layout(location=9) in vec4 iRect;      // atlas u0, v0, du, dv
+layout(location=10) in vec2 iMisc;     // emissive, flash
 
 uniform mat4 uProj;
 uniform mat4 uView;
-uniform mat4 uModel;
-uniform vec2 uUVOffset;
-uniform vec2 uUVScale;
 
 out vec2 vUV;
 out float vLight;
 out float vGlow;
 out float vDepth;
+out vec4 vTint;
+out float vEmissive;
+out float vFlash;
 
 void main() {
-  vec4 world = uModel * vec4(aPos, 1.0);
+  mat4 model = mat4(iM0, iM1, iM2, iM3);
+  vec4 world = model * vec4(aPos, 1.0);
   vec4 eye = uView * world;
   gl_Position = uProj * eye;
-  vUV = uUVOffset + aUV * uUVScale;
+  vUV = iRect.xy + aUV * iRect.zw;
   vLight = aLight;
   vGlow = aGlow;
   vDepth = length(eye.xyz);
+  vTint = iTint;
+  vEmissive = iMisc.x;
+  vFlash = iMisc.y;
 }`;
 
 const FRAG = `#version 300 es
@@ -34,14 +55,14 @@ in vec2 vUV;
 in float vLight;
 in float vGlow;
 in float vDepth;
+in vec4 vTint;
+in float vEmissive;
+in float vFlash;
 
 uniform sampler2D uAtlas;
-uniform vec4 uTint;
 uniform vec3 uFogColor;
 uniform float uFogNear;
 uniform float uFogFar;
-uniform float uEmissive;
-uniform float uFlash;
 uniform float uCutoff;
 uniform vec3 uSunColor;
 uniform vec3 uSkyColor;
@@ -53,7 +74,7 @@ out vec4 outColor;
 void main() {
   vec4 tex = texture(uAtlas, vUV);
   if (tex.a < uCutoff) discard;
-  vec3 rgb = tex.rgb * uTint.rgb;
+  vec3 rgb = tex.rgb * vTint.rgb;
 
   // Hemispheric lighting. The mesh has no normals, but the baked per-face
   // shade is a faithful proxy for one: 1.0 is an up face, 0.55 a down face,
@@ -69,14 +90,14 @@ void main() {
   // beside a lake of fire look like it is beside a lake of fire, and it is the
   // difference between a lit room and an evenly lit one.
   lightCol += uGlowColor * vGlow * vGlow;
-  lightCol = mix(lightCol, vec3(1.0), uEmissive);
-  rgb *= lightCol * mix(max(vLight, vGlow * 0.85), 1.0, uEmissive);
+  lightCol = mix(lightCol, vec3(1.0), vEmissive);
+  rgb *= lightCol * mix(max(vLight, vGlow * 0.85), 1.0, vEmissive);
 
-  rgb = mix(rgb, vec3(1.0, 0.55, 0.55), uFlash);
+  rgb = mix(rgb, vec3(1.0, 0.55, 0.55), vFlash);
   float fog = clamp((vDepth - uFogNear) / max(uFogFar - uFogNear, 0.001), 0.0, 1.0);
-  fog *= (1.0 - uEmissive * 0.6);
+  fog *= (1.0 - vEmissive * 0.6);
   rgb = mix(rgb, uFogColor, fog);
-  outColor = vec4(rgb, tex.a * uTint.a);
+  outColor = vec4(rgb, tex.a * vTint.a);
 }`;
 
 // Sky: one full-screen triangle with a vertical gradient and a soft sun
@@ -153,9 +174,10 @@ export function createProgram(gl) {
     throw new Error('Program link failed: ' + gl.getProgramInfoLog(prog));
   }
   const u = {};
-  for (const name of ['uProj', 'uView', 'uModel', 'uAtlas', 'uTint', 'uFogColor',
-    'uFogNear', 'uFogFar', 'uEmissive', 'uUVOffset', 'uUVScale', 'uFlash',
-    'uCutoff', 'uSunColor', 'uSkyColor', 'uGroundColor', 'uGlowColor']) {
+  // uModel, uTint, uUVOffset, uUVScale, uEmissive and uFlash are gone: they
+  // varied per box, which is exactly what an instance attribute is for.
+  for (const name of ['uProj', 'uView', 'uAtlas', 'uFogColor', 'uFogNear',
+    'uFogFar', 'uCutoff', 'uSunColor', 'uSkyColor', 'uGroundColor', 'uGlowColor']) {
     u[name] = gl.getUniformLocation(prog, name);
   }
   return { prog, u };
@@ -181,10 +203,44 @@ export function createSkyProgram(gl) {
   return { prog, u, vao };
 }
 
-/** Vertex layout shared by every mesh: pos(3) uv(2) light(1) = 6 floats. */
-export const STRIDE = 7 * 4;
+/** Vertex layout shared by every mesh: pos(3) uv(2) light(1) glow(1). */
+export const VERTEX_FLOATS = 7;
+export const STRIDE = VERTEX_FLOATS * 4;
 
-export function createMesh(gl, floats) {
+/**
+ * Per-instance layout: model matrix (16), tint (4), atlas rect (4),
+ * emissive + flash (2).
+ */
+export const INSTANCE_FLOATS = 26;
+export const INSTANCE_STRIDE = INSTANCE_FLOATS * 4;
+
+/**
+ * Bind an instance buffer's attributes into whichever vertex array is current.
+ *
+ * `vertexAttribDivisor(loc, 1)` is the whole trick: it tells the driver to
+ * advance this attribute once per *instance* rather than once per vertex, so
+ * thirty-six vertices of cube read one matrix, one tint and one atlas rect.
+ */
+function bindInstanceAttribs(gl, vbo) {
+  gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+  // Four columns of the model matrix, then tint, rect, and the two scalars.
+  const layout = [[4, 4, 0], [5, 4, 16], [6, 4, 32], [7, 4, 48],
+    [8, 4, 64], [9, 4, 80], [10, 2, 96]];
+  for (const [loc, size, offset] of layout) {
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, size, gl.FLOAT, false, INSTANCE_STRIDE, offset);
+    gl.vertexAttribDivisor(loc, 1);
+  }
+}
+
+/**
+ * A mesh, wired to draw instanced.
+ *
+ * `instanceVbo` supplies the per-instance attributes. The world mesh passes a
+ * one-entry static buffer and draws a single instance; the unit cube passes
+ * the renderer's growing scratch buffer and draws six hundred.
+ */
+export function createMesh(gl, floats, instanceVbo) {
   const vao = gl.createVertexArray();
   const vbo = gl.createBuffer();
   gl.bindVertexArray(vao);
@@ -198,6 +254,19 @@ export function createMesh(gl, floats) {
   gl.vertexAttribPointer(2, 1, gl.FLOAT, false, STRIDE, 20);
   gl.enableVertexAttribArray(3);
   gl.vertexAttribPointer(3, 1, gl.FLOAT, false, STRIDE, 24);
+  if (instanceVbo) bindInstanceAttribs(gl, instanceVbo);
   gl.bindVertexArray(null);
-  return { vao, vbo, count: floats.length / 6 };
+  // Divided by the real stride. This read `/ 6` against a 7-float vertex for
+  // as long as the glow channel has existed, so every mesh in the game drew a
+  // sixth more vertices than it had — six phantom triangles per box, six
+  // hundred boxes a frame, all of them reading past the end of the buffer.
+  return { vao, vbo, count: floats.length / VERTEX_FLOATS };
+}
+
+/** A buffer sized for `n` instances, written every frame. */
+export function createInstanceBuffer(gl, n) {
+  const vbo = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+  gl.bufferData(gl.ARRAY_BUFFER, n * INSTANCE_STRIDE, gl.DYNAMIC_DRAW);
+  return vbo;
 }

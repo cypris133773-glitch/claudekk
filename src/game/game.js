@@ -1475,6 +1475,9 @@ export class Game {
     for (const p of this.particles) p.draw(this.r);
     this.drawBeams();
     if (!this.player.dead) this.player.drawViewModel(this.r, cam);
+    // Nothing is drawn until it is asked for. The last batch of the frame has
+    // no state change after it to force it out, so the frame does it itself.
+    this.r.flush();
   }
 
   /**
@@ -1521,9 +1524,12 @@ export class Game {
       this.r.drawShadow(e.x, gy, e.z, (e.width || 0.6) * 0.95 * scale * (1 + drop * 0.10),
         0.45 * fade * fade);
     };
-    for (const m of this.mobs) cast(m, m.def && m.def.boss ? 1.25 : 1);
-    for (const p of this.pets) cast(p);
-    if (!this.player.dead) cast(this.player);
+    // One state change for the whole pass rather than one per blob.
+    this.r.shadowPass(() => {
+      for (const m of this.mobs) cast(m, m.def && m.def.boss ? 1.25 : 1);
+      for (const p of this.pets) cast(p);
+      if (!this.player.dead) cast(this.player);
+    });
   }
 
   /**

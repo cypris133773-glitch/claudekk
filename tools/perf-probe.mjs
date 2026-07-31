@@ -133,6 +133,8 @@ const report = await frame.evaluate(({ wave, crowd }) => {
   };
   const origDraw = gl.drawArrays.bind(gl);
   gl.drawArrays = (...a) => { counts.draw++; return origDraw(...a); };
+  const origDrawI = gl.drawArraysInstanced.bind(gl);
+  gl.drawArraysInstanced = (...a) => { counts.draw++; return origDrawI(...a); };
 
   // Time the passes. finish() after each so the rasteriser's work lands in
   // the pass that asked for it rather than all at the end.
@@ -151,25 +153,43 @@ const report = await frame.evaluate(({ wave, crowd }) => {
   mark('sky', () => g.r.drawSky());
   mark('particles', () => { for (const p of g.particles) p.draw(g.r); });
   mark('viewmodel', () => { if (!g.player.dead) g.player.drawViewModel(g.r, cam); });
+  // Boxes are queued, not drawn, so the passes above measure the cost of
+  // building the batch. This is where it actually goes to the driver.
+  mark('flush', () => g.r.flush());
+
+  // And a whole frame end to end, which is the number that matters.
+  const frameStart = performance.now();
+  const before2 = { draw: counts.draw, uniform: counts.uniform, vao: counts.vao };
+  for (let i = 0; i < 10; i++) g.draw();
+  gl.finish();
+  t.frameAvg = (performance.now() - frameStart) / 10;
+  const perFrame = {
+    draw: (counts.draw - before2.draw) / 10,
+    uniform: (counts.uniform - before2.uniform) / 10,
+    vao: (counts.vao - before2.vao) / 10,
+  };
 
   const live = g.mobs.filter((m) => !m.dead).length;
   return {
     wave: g.wave, live, particles: g.particles.length, gibs: g.gibs.length,
-    counts, before, t,
+    counts, before, t, perFrame,
   };
 }, { wave, crowd });
 
 const { counts, before, t } = report;
 console.log(`wave ${report.wave} | live mobs ${report.live} | particles ${report.particles} | gibs ${report.gibs}`);
 console.log('');
-console.log('one frame:');
-console.log(`  draw calls        ${counts.draw - before.draw}`);
-console.log(`  uniform sets      ${counts.uniform - before.uniform}   (redundant ${counts.redundantUniform - before.redundantUniform})`);
-console.log(`  VAO binds         ${counts.vao - before.vao}   (redundant ${counts.redundantVao - before.redundantVao})`);
+console.log('one full frame (averaged over 10):');
+console.log(`  draw calls        ${report.perFrame.draw}`);
+console.log(`  uniform sets      ${report.perFrame.uniform}`);
+console.log(`  VAO binds         ${report.perFrame.vao}`);
+console.log(`  wall time         ${t.frameAvg.toFixed(1)} ms`);
 console.log('');
 console.log('pass timings (swiftshader — read the ratios, not the ms):');
-const total = Object.entries(t).filter(([k]) => k !== 'sim').reduce((a, [, v]) => a + v, 0);
+const total = Object.entries(t).filter(([k]) => k !== 'sim' && k !== 'frameAvg')
+  .reduce((a, [, v]) => a + v, 0);
 for (const [k, v] of Object.entries(t)) {
+  if (k === 'frameAvg') continue;
   const pct = k === 'sim' ? '' : `  ${(v / total * 100).toFixed(0)}%`;
   console.log(`  ${k.padEnd(12)} ${v.toFixed(1)} ms${pct}`);
 }
