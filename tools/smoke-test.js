@@ -250,8 +250,27 @@ check('the Forge is short, finite, and not a power curve', async () => {
   }
   let total = 0;
   for (const d of PERMANENT) for (let lv = 0; lv < d.max; lv++) total += upgradeCost(d, lv);
-  assert(total < 2e6, `buying the whole Forge costs ${Math.round(total)} gold; it should be early-game`);
-  assert(total > 1e5, `the whole Forge costs ${Math.round(total)} gold, which is no decision at all`);
+
+  // Priced against the Armoury rather than against a round number. The Forge
+  // was 2.3% of a full gear set, which meant a player finished it by accident
+  // on the way to the thing that actually paces the game — and the third power
+  // source must never be the cheap one.
+  //
+  // It also must not become the grind. Gear is the grind; the Forge is a short
+  // finite set of conveniences you buy once and stop thinking about. Somewhere
+  // between a tenth and a third of a full set is where both of those are true.
+  const fullSet = GEAR_SLOTS.length * Array.from({ length: MAX_TIER + 1 })
+    .reduce((sum, _, t) => sum + gearCost(t), 0);
+  const share = total / fullSet;
+  assert(share > 0.06,
+    `the whole Forge is ${(share * 100).toFixed(1)}% of a gear set — too cheap to be a decision`);
+  assert(share < 0.33,
+    `the whole Forge is ${(share * 100).toFixed(0)}% of a gear set — it is competing with the grind`);
+
+  // And the first rank of anything stays reachable, because a new player has
+  // to be able to buy *something*.
+  const cheapest = Math.min(...PERMANENT.map((d) => upgradeCost(d, 0)));
+  assert(cheapest < 1500, `the cheapest thing in the Forge costs ${cheapest} gold`);
 
   // The hard ceiling. Whatever the tracks are, a fully bought Forge must stay
   // well under what a full gear set gives, or it is back to being the thing

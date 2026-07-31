@@ -257,6 +257,10 @@ export class Renderer {
     }
     perspective(this.proj, fovRad, this.aspect, 0.06, 260);
     viewFromEuler(this.view, camera.x, camera.y, camera.z, camera.yaw, camera.pitch);
+    // Kept for detail culling. Every entity is drawn as a stack of individual
+    // draw calls, so what a model costs is entirely a question of how many
+    // boxes it is made of — and past twenty blocks most of them are a pixel.
+    this.camX = camera.x; this.camY = camera.y; this.camZ = camera.z;
     multiply(this.viewProj, this.proj, this.view);
 
     gl.useProgram(this.prog);

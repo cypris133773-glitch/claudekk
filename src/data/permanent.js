@@ -24,27 +24,27 @@ export const PERMANENT = [
   // account-wide, and it applied to every class equally — which is what made a
   // maxed account play every class the same and made the wave curve
   // meaningless. Ten levels is the whole track now.
-  { id: 'p_hp', name: 'Vitality', icon: '❤', desc: '+2% max health per level.', max: 10, baseCost: 300, growth: 1.34, effect: { maxHpPct: 0.02 } },
-  { id: 'p_dmg', name: 'Might', icon: '⚔', desc: '+1% all damage per level.', max: 10, baseCost: 340, growth: 1.35, effect: { allDamage: 0.01 } },
-  { id: 'p_armor', name: 'Warding', icon: '🛡', desc: '+1% armor per level.', max: 10, baseCost: 300, growth: 1.34, effect: { armor: 0.01 } },
-  { id: 'p_crit', name: 'Precision', icon: '🎯', desc: '+0.5% crit chance per level.', max: 10, baseCost: 320, growth: 1.34, effect: { critChance: 0.005 } },
-  { id: 'p_cdr', name: 'Attunement', icon: '⏱', desc: '-1% cooldowns per level.', max: 10, baseCost: 360, growth: 1.35, effect: { cooldownReduction: 0.01 } },
-  { id: 'p_res', name: 'Reservoir', icon: '🫙', desc: '+5 max resource per level.', max: 10, baseCost: 280, growth: 1.33, effect: { resourceMax: 5 } },
-  { id: 'p_regen', name: 'Flow', icon: '💧', desc: '+0.6 resource regen per level.', max: 10, baseCost: 320, growth: 1.34, effect: { resourceRegen: 0.6 } },
-  { id: 'p_speed', name: 'Swiftness', icon: '👟', desc: '+1% move speed per level.', max: 10, baseCost: 300, growth: 1.34, effect: { moveSpeed: 0.01 } },
+  { id: 'p_hp', name: 'Vitality', icon: '❤', desc: '+2% max health per level.', max: 10, baseCost: 300, growth: 1.52, effect: { maxHpPct: 0.02 } },
+  { id: 'p_dmg', name: 'Might', icon: '⚔', desc: '+1% all damage per level.', max: 10, baseCost: 340, growth: 1.53, effect: { allDamage: 0.01 } },
+  { id: 'p_armor', name: 'Warding', icon: '🛡', desc: '+1% armor per level.', max: 10, baseCost: 300, growth: 1.52, effect: { armor: 0.01 } },
+  { id: 'p_crit', name: 'Precision', icon: '🎯', desc: '+0.5% crit chance per level.', max: 10, baseCost: 320, growth: 1.52, effect: { critChance: 0.005 } },
+  { id: 'p_cdr', name: 'Attunement', icon: '⏱', desc: '-1% cooldowns per level.', max: 10, baseCost: 360, growth: 1.53, effect: { cooldownReduction: 0.01 } },
+  { id: 'p_res', name: 'Reservoir', icon: '🫙', desc: '+5 max resource per level.', max: 10, baseCost: 280, growth: 1.51, effect: { resourceMax: 5 } },
+  { id: 'p_regen', name: 'Flow', icon: '💧', desc: '+0.6 resource regen per level.', max: 10, baseCost: 320, growth: 1.52, effect: { resourceRegen: 0.6 } },
+  { id: 'p_speed', name: 'Swiftness', icon: '👟', desc: '+1% move speed per level.', max: 10, baseCost: 300, growth: 1.52, effect: { moveSpeed: 0.01 } },
 
   // --- How a run works -----------------------------------------------------
   // The reason to keep earning. None of these makes a hit land harder; they
   // change what a run *is* — how it opens, what it drops, what it pays. That
   // is the job the Forge is actually good at, and the one nothing else in the
   // game is doing.
-  { id: 'p_gold', name: 'Prospector', icon: '🪙', desc: '+3% gold earned per level.', max: 10, baseCost: 900, growth: 1.40, effect: { soulGain: 0.03 } },
-  { id: 'p_xp', name: 'Scholar', icon: '📘', desc: '+3% experience earned per level.', max: 10, baseCost: 1100, growth: 1.42, effect: { xpGain: 0.03 } },
-  { id: 'p_alch', name: 'Alchemist', icon: '⚗', desc: 'Enemies drop potions 15% more often per level.', max: 5, baseCost: 1400, growth: 1.65, effect: { potionChance: 0.15 } },
-  { id: 'p_potency', name: 'Potency', icon: '🧪', desc: 'Potions are 10% stronger per level.', max: 5, baseCost: 1300, growth: 1.62, effect: { potionPower: 0.10 } },
-  { id: 'p_start', name: 'Head Start', icon: '🎁', desc: 'Begin each run with 1 free skill rank per level.', max: 3, baseCost: 2600, growth: 2.2, effect: { startingUpgrades: 1 } },
-  { id: 'p_reroll', name: 'Second Thoughts', icon: '🔄', desc: '+1 upgrade reroll per wave.', max: 3, baseCost: 2200, growth: 2.0, effect: { rerolls: 1 } },
-  { id: 'p_luck', name: 'Fortune', icon: '🍀', desc: '+3% chance a wave pays a bonus skill rank, per level.', max: 5, baseCost: 1800, growth: 1.7, effect: { luck: 0.03 } },
+  { id: 'p_gold', name: 'Prospector', icon: '🪙', desc: '+3% gold earned per level.', max: 10, baseCost: 900, growth: 1.58, effect: { soulGain: 0.03 } },
+  { id: 'p_xp', name: 'Scholar', icon: '📘', desc: '+3% experience earned per level.', max: 10, baseCost: 1100, growth: 1.60, effect: { xpGain: 0.03 } },
+  { id: 'p_alch', name: 'Alchemist', icon: '⚗', desc: 'Enemies drop potions 15% more often per level.', max: 5, baseCost: 1400, growth: 1.95, effect: { potionChance: 0.15 } },
+  { id: 'p_potency', name: 'Potency', icon: '🧪', desc: 'Potions are 10% stronger per level.', max: 5, baseCost: 1300, growth: 1.92, effect: { potionPower: 0.10 } },
+  { id: 'p_start', name: 'Head Start', icon: '🎁', desc: 'Begin each run with 1 free skill rank per level.', max: 3, baseCost: 2600, growth: 2.8, effect: { startingUpgrades: 1 } },
+  { id: 'p_reroll', name: 'Second Thoughts', icon: '🔄', desc: '+1 upgrade reroll per wave.', max: 3, baseCost: 2200, growth: 2.6, effect: { rerolls: 1 } },
+  { id: 'p_luck', name: 'Fortune', icon: '🍀', desc: '+3% chance a wave pays a bonus skill rank, per level.', max: 5, baseCost: 1800, growth: 2.05, effect: { luck: 0.03 } },
   { id: 'p_revive', name: 'Phoenix Ember', icon: '🔥', desc: 'Revive once per run at 50% health.', max: 1, baseCost: 9000, growth: 1, effect: { cheatDeathRun: 0.5 } },
 ];
 
@@ -66,7 +66,16 @@ export const PERMANENT_BY_ID = Object.fromEntries(PERMANENT.map((p) => [p.id, p]
  * declared. Raising it makes every gold coin a run earns worth more, which is
  * what stretches the grind rather than shortening the game.
  */
-export const PRICE_MULTIPLIER = 1.5;
+// The Forge was 606,482 gold for every track a class can buy — 2.3% of what a
+// full Armoury set costs, which meant a player finished it almost by accident
+// on the way to the gear that actually paces the game. It is the *third* power
+// source behind talents and gear and it must never be the cheap one.
+//
+// 3.4 on top of a steeper growth curve puts a full Forge at about four million,
+// which is roughly a sixth of the Armoury and a real decision at every rank
+// past the fourth. The early ranks stay cheap on purpose: a new player has to
+// be able to buy something.
+export const PRICE_MULTIPLIER = 3.4;
 
 export function upgradeCost(def, currentLevel) {
   return Math.round(def.baseCost * Math.pow(def.growth, currentLevel) * PRICE_MULTIPLIER);

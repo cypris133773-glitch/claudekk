@@ -20,6 +20,9 @@ import { T } from '../render/atlas.js';
 
 const INTERMISSION = 4.0;
 
+/** How many enemies get their silhouette parts drawn in a frame. */
+const DETAIL_BUDGET = 12;
+
 // Raids reuse the arena generator until they get rooms of their own. Layout 0
 // is the open one, which is what every raid mechanic in the set assumes: slam
 // and shadow both need a 16-block clear radius around the boss, and a layout
@@ -1395,6 +1398,23 @@ export class Game {
     this.r.beginFrame(cam, this.r.skyTint);
     this.r.drawWorld();
     this.drawShadows();
+    // A detail budget, not only a distance one. Distance alone bounds what a
+    // single model costs and says nothing about thirty of them: a wave at its
+    // peak can put thirty enemies inside the range where every silhouette part
+    // still draws, and that is a thousand draw calls before the world, the
+    // particles or the telegraphs have had a turn.
+    //
+    // So the nearest twelve get their parts and the rest get the base model.
+    // Twelve because that is more than fills the screen at fighting distance —
+    // past it you are looking at a crowd, and a crowd reads as a crowd.
+    const px = this.player.x, pz = this.player.z;
+    const ranked = this.mobs.filter((m) => !m.dead);
+    if (ranked.length > DETAIL_BUDGET) {
+      ranked.sort((a, b) => ((a.x - px) ** 2 + (a.z - pz) ** 2) - ((b.x - px) ** 2 + (b.z - pz) ** 2));
+      for (let i = 0; i < ranked.length; i++) ranked[i].detailed = i < DETAIL_BUDGET;
+    } else {
+      for (const m of ranked) m.detailed = true;
+    }
     for (const m of this.mobs) m.draw(this.r);
     for (const p of this.pets) p.draw(this.r);
     this.drawAuras();

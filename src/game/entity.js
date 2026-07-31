@@ -205,6 +205,25 @@ export function humanoidBoxes(e, scale = 1) {
 
 export function drawHumanoid(r, e, skin) {
   const s = skin.scale || 1;
+  // Detail culling. Every box here is its own draw call with six uniform
+  // updates behind it, so a model's cost is exactly how many boxes it is made
+  // of. The silhouette parts roughly tripled that for a raid boss, which is
+  // the right trade at four blocks and the wrong one at thirty — where a wing
+  // is two pixels and a spine row is none.
+  //
+  // The threshold scales with how tall the thing is, which is the only version
+  // of this that is right for both a husk and a raid boss. A 1.8-block husk at
+  // sixteen paces is small enough that its tail is noise; a five-block boss at
+  // forty is still filling a third of the frame. One constant, divided by the
+  // reference height, does both.
+  const dx = (r.camX || 0) - e.x, dz = (r.camZ || 0) - e.z;
+  const far2 = dx * dx + dz * dz;
+  const reach = 16 * (e.height / 1.8);
+  // `detailed` is set by the draw loop and caps how many enemies may carry
+  // their parts at once; it is undefined for the player and for pets, which
+  // are never numerous enough to need a budget.
+  const detail = far2 < reach * reach && e.detailed !== false;
+  const closeUp = far2 < reach * reach * 0.36;
   const unit = e.height / 1.8 * s;           // 1.8-block reference height
   const headSize = 0.5 * unit;
   const bodyH = 0.75 * unit, bodyW = 0.55 * unit, bodyD = 0.28 * unit;
@@ -245,7 +264,7 @@ export function drawHumanoid(r, e, skin) {
   // Swing trail: a short arc of fading blocks along the path the arm just
   // travelled. A single-frame swing animation is invisible at 60fps in a
   // crowd; the trail is what tells you an attack actually happened.
-  if (e.swing > 0.15 && skin.trail !== false) {
+  if (e.swing > 0.15 && skin.trail !== false && detail) {
     const tc = skin.trailColor || col(skin.arm);
     for (let i = 1; i <= 4; i++) {
       const t = i / 5;
@@ -313,7 +332,7 @@ export function drawHumanoid(r, e, skin) {
 
   // Pauldrons: slabs over the shoulders. Widening the silhouette at the top
   // is what makes a heavy enemy look heavy without changing its hitbox.
-  if (skin.pauldrons) {
+  if (skin.pauldrons && detail) {
     const pc = col(skin.pauldrons);
     const shoulderY = legTop + bodyH - limbW * 0.15;
     for (let i = 0; i < 2; i++) {
@@ -339,7 +358,7 @@ export function drawHumanoid(r, e, skin) {
 
   // Tail. Tapering segments trailing down and back, swaying with the walk —
   // the single cheapest way to say "this is a beast, not a man".
-  if (skin.tail) {
+  if (skin.tail && detail) {
     const tc = col(skin.tail);
     const segs = skin.tailSegs || 5;
     const sway = Math.sin(e.walkPhase * 0.9) * 0.22;
@@ -357,7 +376,7 @@ export function drawHumanoid(r, e, skin) {
   // Wings. Two swept panels stepping out and up from the shoulders. Drawn as
   // three chunks a side rather than a fan: a voxel wing reads by its stepped
   // edge, and a smooth one just looks like a plank.
-  if (skin.wings) {
+  if (skin.wings && detail) {
     const wc = col(skin.wings);
     const beat = Math.sin(e.walkPhase * 1.4) * 0.10;
     for (let i = 0; i < 2; i++) {
@@ -377,7 +396,7 @@ export function drawHumanoid(r, e, skin) {
   // A weapon in the hand. The largest silhouette win available: a boss holding
   // something is read as a boss before its colour, its size or its name has
   // registered, and it costs three boxes.
-  if (skin.weapon) {
+  if (skin.weapon && detail) {
     const wc = col(skin.weapon);
     const grip = at(bodyW / 2 + limbW / 2, legTop + bodyH - limbH * 0.62, limbW * 0.4);
     const len = unit * (skin.weaponLen || 0.9);
@@ -399,7 +418,7 @@ export function drawHumanoid(r, e, skin) {
 
   // A crest or spine row down the back. Reads from behind and from the side,
   // which is where a humanoid box is otherwise completely featureless.
-  if (skin.spines) {
+  if (skin.spines && closeUp) {
     const sc = col(skin.spines);
     const n = skin.spineCount || 5;
     for (let i = 0; i < n; i++) {
@@ -413,7 +432,7 @@ export function drawHumanoid(r, e, skin) {
 
   // Cloak. One slab behind the body, kicking out as the thing moves — casters
   // and commanders, and the only part here that is pure theatre.
-  if (skin.cloak) {
+  if (skin.cloak && detail) {
     const cc = col(skin.cloak);
     const kick = Math.abs(Math.sin(e.walkPhase)) * 0.18;
     const p = at(0, legTop + bodyH * 0.30 - unit * kick * 0.3,
