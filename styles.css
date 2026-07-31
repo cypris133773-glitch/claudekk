@@ -85,9 +85,16 @@ html, body {
   overflow: hidden;
   overscroll-behavior: none;
   touch-action: none;
+  /* Forge glow from below, cold sky above, a vignette, then the scrim. Four
+     gradients on one full-screen element is a single static paint. The cyan
+     top-glow this replaced read as sci-fi rather than heroic, and the arena
+     bleeding through underneath is what made every panel look like a sticker
+     laid on top of the game. */
   background:
-    radial-gradient(ellipse at 50% 0%, rgba(110, 200, 255, 0.10), transparent 60%),
-    linear-gradient(180deg, rgba(8, 10, 16, 0.94), rgba(8, 10, 16, 0.98));
+    radial-gradient(120% 60% at 50% 118%, rgba(255, 138, 60, 0.16), transparent 62%),
+    radial-gradient(90% 50% at 50% -8%, rgba(150, 190, 255, 0.07), transparent 70%),
+    radial-gradient(120% 100% at 50% 50%, transparent 36%, rgba(0, 0, 0, 0.58) 100%),
+    linear-gradient(180deg, rgba(5, 6, 10, 0.90), rgba(3, 4, 7, 0.97));
   padding: calc(16px + var(--safe-t)) calc(16px + var(--safe-r)) calc(16px + var(--safe-b)) calc(16px + var(--safe-l));
 }
 
@@ -1660,79 +1667,269 @@ body.show-popout-btn #popout-btn { display: block; }
 /* Panel dressing — the menus should look forged, not printed             */
 /* --------------------------------------------------------------------- */
 
+/* -----------------------------------------------------------------------
+   Forged, not printed.
+
+   Everything below used to *undo* the three-layer bevel work earlier in this
+   file — a .menu-btn whose face was an almost-transparent wash over the live
+   arena, a .big-btn with its extrusion deleted and 1px of travel against a 3px
+   seat, a .panel with its edge softened away. The menus did not look flat
+   because they lacked effects; they looked flat because a later block turned
+   the effects off.
+
+   One key light, warm, top-left. One cold bounce along the lower inside edge.
+   Occlusion bottom-right. That matches how icons.js and atlas.js already light
+   everything, which the old CSS (lit from straight above) fought.
+
+   Nothing here changes a box's intrinsic size: shadows, gradients, radii,
+   colours and transforms only. Border widths, letter-spacing and padding are
+   deliberately untouched, because menu-fit-test.mjs measures 114 layouts down
+   to 320x568 and any of those three would break it.
+   ----------------------------------------------------------------------- */
+
 .panel {
   position: relative;
+  border-radius: 10px;
   background:
-    radial-gradient(120% 90% at 50% -10%, rgba(255, 210, 74, 0.07), transparent 60%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(0, 0, 0, 0.14));
+    linear-gradient(180deg, rgba(255, 241, 214, 0.055), rgba(255, 241, 214, 0) 20%),
+    radial-gradient(120% 70% at 50% -12%, rgba(255, 186, 84, 0.10), transparent 58%),
+    /* A 1px-in-4 forge grain. A surface with no image and one paint — felt
+       rather than seen, and only on the panel, never on fourteen cards. */
+    repeating-linear-gradient(101deg, rgba(255, 255, 255, 0.014) 0 1px, transparent 1px 4px),
+    linear-gradient(180deg, #1a1b22 0%, #121319 58%, #0c0d12 100%);
   box-shadow:
-    0 18px 48px rgba(0, 0, 0, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    inset 1px 1px 0 rgba(255, 238, 205, 0.14),
+    inset -1px -1px 0 rgba(0, 0, 0, 0.62),
+    inset 0 -16px 24px -20px rgba(150, 190, 255, 0.22),
+    0 0 0 1px rgba(0, 0, 0, 0.72),
+    0 2px 0 rgba(0, 0, 0, 0.8),
+    0 22px 44px -14px rgba(0, 0, 0, 0.78);
 }
-/* A hairline of gold across the top edge, brightest in the middle. */
+/* Crest rail across the top, seat line along the bottom. */
 .panel::before {
   content: "";
   position: absolute;
   inset: 0 0 auto 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 210, 74, 0.55), transparent);
+  height: 2px;
   pointer-events: none;
+  background:
+    linear-gradient(90deg, transparent, rgba(255, 210, 74, 0.55) 22%, #fff3c8 50%,
+      rgba(255, 210, 74, 0.55) 78%, transparent),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.35), transparent);
+}
+.panel::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.85) 30%,
+    rgba(0, 0, 0, 0.85) 70%, transparent);
 }
 
+/* Heading: engraved rather than floating. text-shadow paints over a
+   background-clipped glyph, so the edge has to come from drop-shadow. The
+   scaleY is monumental lettering — tall — and costs no layout at all. */
 .panel-head h1 {
-  background: linear-gradient(180deg, #fff 30%, #c9b27a);
+  font-weight: 900;
+  transform: scaleY(1.06);
+  transform-origin: 0 100%;
+  background: linear-gradient(180deg, #fffdf7 0%, #ffeec4 42%, #e6b862 70%, #9d6a22 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
   letter-spacing: 0.6px;
+  filter:
+    drop-shadow(0 1px 0 rgba(0, 0, 0, 0.8))
+    drop-shadow(0 0 16px rgba(255, 180, 70, 0.20));
 }
 
+/* The plate recipe: key rim top-left, shade rim bottom-right, cold bounce
+   inside the lower edge, a cut line, the plate's own thickness, contact
+   shadow, ambient. The thickness must equal the press travel exactly or the
+   button reads as not moving — that was broken (3px seat, 1px travel). */
 .big-btn {
-  background: linear-gradient(180deg, #5b8cff, #3457c9);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 205, 110, 0.5);
+  border-radius: 8px 3px 8px 3px;
+  background:
+    linear-gradient(180deg, rgba(255, 222, 160, 0.18), rgba(255, 222, 160, 0) 30%),
+    linear-gradient(180deg, #86491b 0%, #5d2a0d 48%, #351506 100%);
+  color: #ffe9bd;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.75);
   box-shadow:
-    0 6px 18px rgba(52, 87, 201, 0.4),
-    inset 0 1px 0 rgba(255, 255, 255, 0.35);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    inset 1px 1px 0 rgba(255, 226, 168, 0.34),
+    inset -1px -1px 0 rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(0, 0, 0, 0.7),
+    0 4px 0 -1px #2a1105,
+    0 10px 18px -6px rgba(0, 0, 0, 0.7),
+    0 16px 36px -10px rgba(255, 140, 50, 0.28);
+  /* transform only. A shadow transition repaints every frame, and there can be
+     fourteen of these on a screen. */
+  transition: transform 80ms cubic-bezier(.2, .8, .3, 1);
 }
-.big-btn:hover { filter: brightness(1.1); }
-.big-btn:active { transform: translateY(1px); }
+.big-btn:hover { border-color: var(--gold); }
+.big-btn:active {
+  transform: translateY(4px);
+  box-shadow: inset 0 3px 7px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 0, 0, 0.7);
+}
 
 .menu-btn {
   position: relative;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(0, 0, 0, 0.12));
-  transition: border-color 120ms ease, background 120ms ease, transform 90ms ease;
+  overflow: hidden;
+  border-radius: 8px 3px 8px 3px;
+  background:
+    linear-gradient(180deg, rgba(255, 241, 214, 0.07), rgba(255, 241, 214, 0) 26%),
+    linear-gradient(180deg, #34333c 0%, #1e1f26 46%, #131318 100%);
+  box-shadow:
+    inset 1px 1px 0 rgba(255, 238, 205, 0.20),
+    inset -1px -1px 0 rgba(0, 0, 0, 0.60),
+    inset 0 -12px 18px -14px rgba(150, 190, 255, 0.22),
+    0 0 0 1px rgba(0, 0, 0, 0.68),
+    0 3px 0 -1px #08080d,
+    0 6px 10px -4px rgba(0, 0, 0, 0.65),
+    0 16px 26px -10px rgba(0, 0, 0, 0.55);
+  transition: transform 90ms cubic-bezier(.2, .8, .3, 1);
 }
-.menu-btn:hover { border-color: rgba(255, 210, 74, 0.55); }
-.menu-btn:active { transform: translateY(1px); }
+.menu-btn:hover { border-color: rgba(255, 210, 74, 0.55); transform: translateY(-1px); }
+/* The bevel inverts on press — dark on top-left, light on bottom-right. That
+   inversion is what reads as carved *into* the panel rather than merely
+   moving down. */
+.menu-btn:active {
+  transform: translateY(3px);
+  box-shadow:
+    inset 1px 1px 0 rgba(0, 0, 0, 0.55),
+    inset -1px -1px 0 rgba(255, 238, 205, 0.10),
+    inset 0 3px 6px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(0, 0, 0, 0.68);
+}
+/* Bronze plate with a gold rim, not a gold slab: the title is already gold and
+   two saturated golds flatten each other. */
 .menu-btn.primary {
-  background: linear-gradient(180deg, rgba(255, 210, 74, 0.16), rgba(255, 150, 40, 0.05));
-  border-color: rgba(255, 210, 74, 0.5);
+  border-color: rgba(255, 205, 110, 0.55);
+  background:
+    linear-gradient(180deg, rgba(255, 222, 160, 0.16), rgba(255, 222, 160, 0) 30%),
+    linear-gradient(180deg, #7d4318 0%, #59280c 48%, #341506 100%);
+  box-shadow:
+    inset 1px 1px 0 rgba(255, 226, 168, 0.34),
+    inset -1px -1px 0 rgba(0, 0, 0, 0.6),
+    inset 0 0 20px -6px rgba(255, 138, 60, 0.35),
+    0 0 0 1px rgba(0, 0, 0, 0.7),
+    0 3px 0 -1px #2a1105,
+    0 8px 14px -4px rgba(0, 0, 0, 0.7),
+    0 14px 34px -8px rgba(255, 140, 50, 0.30);
+}
+.menu-btn.primary .menu-label {
+  background: linear-gradient(180deg, #fff8e6, #ffd24a 60%, #e09a2a);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.menu-btn.primary .menu-hint { color: rgba(255, 214, 150, 0.75); }
+
+/* One sheen sweep, on entry and on hover. Absolutely positioned, one
+   composited transform, and it runs once — a looping shimmer is a permanent
+   GPU cost on a phone that is also running the arena behind this. */
+.menu-btn.primary::after {
+  content: "";
+  position: absolute;
+  inset: -40% -60%;
+  pointer-events: none;
+  background: linear-gradient(100deg, transparent 42%, rgba(255, 238, 196, 0.26) 50%, transparent 58%);
+  transform: translateX(-130%);
+}
+@keyframes sheen {
+  from { transform: translateX(-130%); }
+  to { transform: translateX(130%); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .title-screen .menu-btn.primary::after {
+    animation: sheen 1100ms 420ms cubic-bezier(.3, .7, .4, 1) 1 both;
+  }
+  .menu-btn.primary:hover::after { animation: sheen 700ms linear 1 both; }
 }
 
-.class-card, .forge-card, .skill-slot, .diff-btn, .rank-card, .talent-node {
-  transition: border-color 120ms ease, background 120ms ease, transform 90ms ease;
+/* Cards: same recipe, lower amplitude. Several of these had no shadow at all,
+   which is why the Armoury read as four grey washes. */
+.class-card, .forge-card, .skill-slot, .diff-btn, .rank-card, .talent-node,
+.roster-card, .potion-card, .skill-card, .quest-row {
+  border-radius: 7px 3px 7px 3px;
+  background:
+    linear-gradient(180deg, rgba(255, 241, 214, 0.05), rgba(255, 241, 214, 0) 30%),
+    linear-gradient(180deg, #24252d 0%, #191a20 55%, #111116 100%);
+  box-shadow:
+    inset 1px 1px 0 rgba(255, 238, 205, 0.13),
+    inset -1px -1px 0 rgba(0, 0, 0, 0.55),
+    inset 0 -10px 14px -14px rgba(150, 190, 255, 0.22),
+    0 0 0 1px rgba(0, 0, 0, 0.6),
+    0 2px 0 -1px #08080d,
+    0 8px 16px -6px rgba(0, 0, 0, 0.55);
+  transition: transform 90ms cubic-bezier(.2, .8, .3, 1);
 }
 .class-card:hover, .forge-card:hover, .skill-slot:hover, .diff-btn:hover {
   border-color: rgba(255, 210, 74, 0.45);
 }
+/* The one literal 3D moment. A persistently tilted menu is unreadable on a
+   320px phone and blurs text, so the perspective is spent on a momentary tap
+   response instead: the card pitches away from the finger and comes back. */
+.class-card:active, .rank-card:active, .diff-btn:active, .skill-slot:active {
+  transform: perspective(520px) rotateX(7deg) translateY(1px);
+}
 .class-card.selected {
-  box-shadow: 0 0 0 1px var(--accent) inset, 0 8px 22px rgba(0, 0, 0, 0.35);
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 0 0 1px var(--accent),
+    inset 1px 1px 0 rgba(255, 255, 255, 0.22),
+    0 0 0 1px rgba(0, 0, 0, 0.6),
+    0 4px 0 -1px rgba(0, 0, 0, 0.7),
+    0 14px 26px -8px rgba(0, 0, 0, 0.6);
 }
 
+/* Capsules are the least heroic shape available. Small cut corners read as
+   stone; 999px reads as a phone app. */
+.pill, .chip, .kit-chip, .set-chip { border-radius: 4px 2px 4px 2px; }
+.pill {
+  background: linear-gradient(180deg, #26272f, #16171c);
+  box-shadow:
+    inset 1px 1px 0 rgba(255, 238, 205, 0.12),
+    inset -1px -1px 0 rgba(0, 0, 0, 0.5),
+    0 1px 0 rgba(0, 0, 0, 0.6);
+}
+.pill.active {
+  box-shadow:
+    inset 0 0 0 1px var(--accent),
+    inset 1px 1px 0 rgba(255, 255, 255, 0.2),
+    0 0 12px -2px rgba(0, 0, 0, 0.5);
+}
 .souls-badge {
-  background: linear-gradient(180deg, rgba(201, 166, 255, 0.16), rgba(0, 0, 0, 0.2));
+  border-radius: 4px 2px 4px 2px;
+  background: linear-gradient(180deg, rgba(201, 166, 255, 0.20), rgba(20, 12, 34, 0.85));
   border: 1px solid rgba(201, 166, 255, 0.35);
+  box-shadow:
+    inset 1px 1px 0 rgba(230, 210, 255, 0.28),
+    inset -1px -1px 0 rgba(0, 0, 0, 0.6),
+    0 2px 0 -1px #120a22,
+    0 6px 12px -4px rgba(0, 0, 0, 0.6);
 }
 
-/* The title breathes rather than sitting flat. */
+/* The title. The seven-copy extrusion earlier in this file is the good part
+   and stays; the rule that used to live here set background-clip on the
+   element itself, which the comment above that extrusion explains cannot
+   work — it painted an invisible gradient under the ::after doing the job. */
 .game-title {
-  background: linear-gradient(180deg, #fff 20%, #ffd24a 60%, #b3762a);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  filter: drop-shadow(0 4px 18px rgba(255, 170, 60, 0.28));
+  font-weight: 900;
+  transform: scaleY(1.06);
+  transform-origin: 50% 100%;
+  filter: drop-shadow(0 4px 18px rgba(255, 170, 60, 0.30));
 }
+/* `background-image`, not `background`. The shorthand resets background-clip
+   to border-box, which unclips the gradient from the glyphs and paints the
+   title as a solid gold rectangle. Six stops rather than four: the extra dark
+   one at the bottom is what turns "yellow text" into a lit metal object. */
+.game-title::after {
+  background-image: linear-gradient(180deg,
+    #fffdf7 0%, #fff2cd 22%, #ffd97a 48%, #f0a83c 74%, #b96f18 92%, #7a4409 100%);
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .title-screen .logo { animation: title-rise 520ms cubic-bezier(.2, .8, .3, 1) both; }
   .title-screen .menu-btn { animation: rise 380ms cubic-bezier(.2, .8, .3, 1) both; }
@@ -1749,12 +1946,17 @@ body.show-popout-btn #popout-btn { display: block; }
    measuring the page, so the screen is judged taller than it is and scaled
    down for no reason — a fade cannot lie about layout. */
 @keyframes rise {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from { opacity: 0; transform: scale(.985); }
+  to { opacity: 1; transform: none; }
 }
+/* Scale, not translate. `fitScreen()` measures scrollHeight the instant a
+   screen is shown and the fit probe checks button centres at t=0, so an entry
+   keyframe must not move a centre or grow the box downward. A scale below 1
+   about the default 50%/50% origin satisfies both exactly; a translateY does
+   not, which is why these were opacity-only. */
 @keyframes title-rise {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from { opacity: 0; transform: scale(.94); }
+  to { opacity: 1; transform: none; }
 }
 
 /* Wave affixes on the pause screen. The HUD chips are the reminder; this is
