@@ -949,6 +949,33 @@ export class World {
     }
     return { x: best.x, y: this.groundAt(best.x, best.z, best.y + 4), z: best.z };
   }
+
+  /**
+   * A spawn point behind the player, for reinforcements.
+   *
+   * The point of releasing a pack mid-wave is that the room turns over rather
+   * than continuing to empty from the direction you are already facing. Coming
+   * in from the front would just be more of the same wave.
+   */
+  pickSpawnBehind(player, minDist = 12) {
+    const pts = this.spawnPoints;
+    if (!pts.length) return { ...this.playerSpawn };
+    // Camera convention: forward is (-sin, -cos).
+    const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
+    let best = null, bestScore = -Infinity;
+    for (const p of pts) {
+      const dx = p.x - player.x, dz = p.z - player.z;
+      const d = Math.hypot(dx, dz) || 1;
+      if (d < minDist) continue;
+      // -1 is directly behind. Distance breaks ties, closest first, so they
+      // are a threat rather than a rumour.
+      const facing = (dx / d) * fx + (dz / d) * fz;
+      const score = -facing * 10 - d * 0.1;
+      if (score > bestScore) { bestScore = score; best = p; }
+    }
+    if (!best) return this.pickSpawn(player.x, player.z, minDist);
+    return { x: best.x, y: this.groundAt(best.x, best.z, best.y + 4), z: best.z };
+  }
 }
 
 /**

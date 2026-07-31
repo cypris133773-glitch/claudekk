@@ -118,6 +118,9 @@ export class WaveDirector {
     this.state = 'intermission';   // 'intermission' | 'spawning' | 'clearing'
     this.intermission = 0;
     this.spawnedThisWave = 0;
+    // Beats inside a wave. Both fire once, and both are consumed by firing.
+    this.reinforced = false;
+    this.lastStand = false;
   }
 
   startWave(wave) {
@@ -127,6 +130,48 @@ export class WaveDirector {
     this.spawnedThisWave = 0;
     this.spawnTimer = 0.6;
     this.state = 'spawning';
+    this.reinforced = false;
+    this.lastStand = false;
+    // Held back from the wave's own budget rather than added on top, so a wave
+    // with a middle is not also a harder wave. The director spends the same
+    // number of enemies; it just does not spend them all at once.
+    this.reserve = [];
+    const hold = Math.floor(this.queue.length * 0.28);
+    for (let i = 0; i < hold; i++) this.reserve.push(this.queue.pop());
+  }
+
+  /**
+   * A wave used to be flat: spawn a queue, wait for the room to empty. Wave 30
+   * was wave 10 with bigger numbers in the same three beats, and the only
+   * thing that ever varied it was an affix — which is a rule for the whole
+   * wave rather than something that happens during one.
+   *
+   * Two beats give it a middle. At the halfway point the reserve arrives from
+   * behind the player, so the room turns over instead of emptying from one
+   * direction; and when the last few are left they close in and press, so the
+   * tail of a wave is the dangerous part rather than the cleanup.
+   *
+   * Returns a string when a beat fires, for the caller to announce.
+   */
+  beat(aliveCount, killedThisWave) {
+    if (this.state === 'intermission') return null;
+    const total = this.total || 1;
+    if (!this.reinforced && this.reserve.length && killedThisWave >= total * 0.5) {
+      this.reinforced = true;
+      // Back into the queue, at the front, so they arrive at once rather than
+      // trickling in behind whatever is left.
+      this.queue.unshift(...this.reserve);
+      this.reserve = [];
+      this.spawnTimer = 0;
+      if (this.state === 'clearing') this.state = 'spawning';
+      return 'reinforcements';
+    }
+    if (!this.lastStand && !this.queue.length && !this.reserve.length
+      && aliveCount > 0 && aliveCount <= Math.max(2, Math.ceil(total * 0.2))) {
+      this.lastStand = true;
+      return 'laststand';
+    }
+    return null;
   }
 
   /** Returns an array of spawn descriptors to create this frame. */

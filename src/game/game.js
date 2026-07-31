@@ -401,6 +401,8 @@ export class Game {
   nextWave() {
     this.wave++;
     this.waveStartHp = this.player ? this.player.hp : 0;
+    this.killedThisWave = 0;
+    this.spawnBehind = false;
     // The one moment a run stops being routine. Called out once, loudly.
     const best = (this.profile.character(this.charId) || {}).bestWave || 0;
     if (!this.recordBeaten && best > 0 && this.wave > best) {
@@ -985,6 +987,7 @@ export class Game {
       this.burst(mob.x, mob.centerY, mob.z, 16, '#c69cff');
       this.sfx('gib');
     }
+    this.killedThisWave = (this.killedThisWave || 0) + 1;
     this.rollPotionDrop(mob);
     if (mob.def.boss) this.tally.bossKills++;
     else if (mob.elite) this.tally.eliteKills++;
@@ -1464,9 +1467,37 @@ export class Game {
       return;
     }
 
+    // The wave's own beats, before its spawns, so reinforcements released this
+    // frame can arrive on the same frame.
+    const live = this.mobs.filter((m) => !m.dead).length;
+    const beat = d.beat(live, this.killedThisWave || 0);
+    if (beat === 'reinforcements') {
+      // Announced, because a pack arriving behind you is only fair if you were
+      // told to turn around.
+      this.notify('REINFORCEMENTS', 2.2);
+      this.audio.play('roar');
+      this.screenShake = Math.max(this.screenShake, 0.3);
+      this.spawnBehind = true;
+    } else if (beat === 'laststand') {
+      // The survivors stop hanging back and come. A wave whose last three
+      // enemies wander the arena is the part of this game people quit during.
+      this.notify('THEY CLOSE IN', 2.0);
+      this.audio.play('growl');
+      for (const m of this.mobs) {
+        if (m.dead || m.def.boss) continue;
+        m.enraged = true;
+        m.speed *= 1.22;
+        m.desiredBearing = undefined;   // straight at you, not around
+        m.retreat = 0;
+        m.retreatUsed = true;
+      }
+    }
+
     const spawns = d.update(dt, this.mobs.length);
     for (const s of spawns) {
-      const pt = this.world.pickSpawn(this.player.x, this.player.z, s.boss ? 16 : 11);
+      const pt = this.spawnBehind && !s.boss
+        ? this.world.pickSpawnBehind(this.player, 13)
+        : this.world.pickSpawn(this.player.x, this.player.z, s.boss ? 16 : 11);
       const mob = this.spawnMob(s.typeId, pt.x, pt.y + 0.2, pt.z, s.elite);
       if (s.boss) {
         this.notify(mob.def.name.toUpperCase() + ' AWAKENS', 2.6);
@@ -1475,6 +1506,9 @@ export class Game {
       }
       this.burst(pt.x, pt.y + 1, pt.z, 8, '#6a2fb5');
     }
+
+    // One burst only: the flag lasts as long as the release, not the wave.
+    if (this.spawnBehind && !d.queue.length) this.spawnBehind = false;
 
     if (d.state === 'clearing' && this.mobs.length === 0) {
       // The clear bonus is the larger half of a wave's payout, so it has to

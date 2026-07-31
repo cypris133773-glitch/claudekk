@@ -2120,6 +2120,58 @@ check('no talent promises a number its effect does not produce', async () => {
   assert(bad.length === 0, `talent text disagrees with talent effects:\n  ${bad.join('\n  ')}`);
 });
 
+check('a wave has a middle, and still ends', async () => {
+  const { Game } = await import('../src/game/game.js');
+  const { makeHarness } = await import('./harness.js');
+  const h = makeHarness({ level: 60, gear: 6 });
+  const game = new Game(h.renderer, h.audio, h.profile);
+  game.startRun(CLASSES[0], { layout: 0 });
+
+  // A wave used to be flat — spawn a queue, wait for the room to empty — so
+  // wave 30 was wave 10 with bigger numbers in the same three beats. These two
+  // give it a middle, and the risk of both is the same: a beat that can fire
+  // twice, or one that releases enemies a wave then never spends, is a wave
+  // that cannot end. That is a softlock, not a difficulty spike.
+  const beats = [];
+  const orig = game.notify.bind(game);
+  game.notify = (t, d) => {
+    if (/REINFORCEMENTS|CLOSE IN/.test(t)) beats.push(t);
+    return orig(t, d);
+  };
+
+  const p = game.player;
+  const input = h.input();
+  for (let i = 0; i < 60 * 150; i++) {
+    input.attack = true;
+    game.update(1 / 60, input);
+    p.hp = p.maxHp;               // measuring the wave, not the fight
+    if (!game.running) break;
+  }
+
+  assert(beats.some((b) => /REINFORCEMENTS/.test(b)), 'no wave ever called reinforcements');
+  assert(beats.some((b) => /CLOSE IN/.test(b)), 'the survivors never closed in');
+
+  // Once each per wave. Both beats consume themselves, and a reinforcement
+  // that can re-fire refills the wave forever.
+  const d = game.director;
+  assert(d.reinforced === true || d.state === 'intermission',
+    'the reinforcement beat did not record itself as spent');
+  assert(d.reserve.length === 0 || d.state === 'intermission',
+    `${d.reserve.length} reinforcements are still held after the wave ended`);
+
+  // And the held-back pack comes out of the wave's own budget rather than on
+  // top of it, or "a wave with a middle" is quietly "a harder wave".
+  d.startWave(12);
+  const held = d.reserve.length;
+  assert(held > 0, 'nothing is held back for the middle of the wave');
+  // `total` is recorded before the reserve is taken, so this is the whole
+  // budget against what the wave will actually spend. Compared against the
+  // director's own record rather than a second call to buildWaveQueue, which
+  // rolls its own mob types and returns a different length each time.
+  assert(held + d.queue.length === d.total,
+    `wave 12 spends ${held + d.queue.length} enemies against a budget of ${d.total}`);
+});
+
 check('every quest metric is something a run actually reports', async () => {
   const { METRICS, TEMPLATES } = await import('../src/data/quests.js');
   const { Game } = await import('../src/game/game.js');
@@ -2153,6 +2205,12 @@ check('every quest metric is something a run actually reports', async () => {
   const input = h.input();
   for (let i = 0; i < 60 * 60; i++) {
     input.attack = true;
+    // Turned to face the nearest enemy. The harness bot never rotates, so
+    // whether it kills anything at all comes down to which direction the wave
+    // happened to arrive from — and reinforcements now deliberately arrive
+    // from behind.
+    const near = game.nearestEnemy(p.x, p.eyeY, p.z, 40);
+    if (near) p.yaw = Math.atan2(-(near.x - p.x), -(near.z - p.z));
     game.update(1 / 60, input);
     p.hp = p.maxHp;
     p.critChance = 1;
