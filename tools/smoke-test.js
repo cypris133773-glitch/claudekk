@@ -2057,6 +2057,47 @@ check('no talent promises a number its effect does not produce', async () => {
   assert(bad.length === 0, `talent text disagrees with talent effects:\n  ${bad.join('\n  ')}`);
 });
 
+check('a pack surrounds instead of queuing up', async () => {
+  const { Game } = await import('../src/game/game.js');
+  const { makeHarness } = await import('./harness.js');
+  const h = makeHarness({ level: 30 });
+  const game = new Game(h.renderer, h.audio, h.profile);
+  game.startRun(CLASSES[0], { layout: 0 });
+  game.wave = 15;
+  const p = game.player;
+
+  // Sixteen enemies deliberately spawned on one side. What the player should
+  // see over the next few seconds is a pack fanning out around them, not a
+  // queue arriving one at a time from the same direction.
+  for (let i = 0; i < 16; i++) game.spawnMob('husk', p.x + 14 + (i % 4), p.y, p.z + (i % 5) - 2);
+
+  const sectors = () => {
+    const seen = new Set();
+    for (const m of game.mobs) {
+      if (m.dead || Math.hypot(m.x - p.x, m.z - p.z) > 22) continue;
+      seen.add((((Math.atan2(m.z - p.z, m.x - p.x) + Math.PI) / (Math.PI / 4)) | 0) % 8);
+    }
+    return seen.size;
+  };
+  const before = sectors();
+  assert(before <= 3, `the fixture did not spawn a lopsided pack (${before} sectors)`);
+
+  for (let i = 0; i < 60 * 10; i++) {
+    game.update(1 / 60, h.input());
+    // Both sides held up, so this measures movement rather than who wins.
+    p.hp = p.maxHp;
+    for (const m of game.mobs) if (m.hp < m.maxHp * 0.9) m.hp = m.maxHp * 0.9;
+  }
+  const after = sectors();
+
+  // The naive version of this — every mob steering at whichever sector is
+  // emptiest — makes it *worse*, because they all evaluate the same data on
+  // the same frame and stampede. That version measured 2 sectors going to 1.
+  // This is the number that tells the two apart.
+  assert(after >= 5,
+    `a one-sided pack spread from ${before} sectors to only ${after} in ten seconds`);
+});
+
 check('a boss keeps casting for the whole fight', async () => {
   const { Game } = await import('../src/game/game.js');
   const { makeHarness } = await import('./harness.js');

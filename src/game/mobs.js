@@ -171,6 +171,12 @@ export class Mob extends Entity {
     // and hitting six times harder for no visible reason.
     this.level = Math.max(1, wave);
     this.elite = false;
+    // Pack state. `retreat` counts down while backing off; `retreatUsed`
+    // makes it once per life, because a survivor that kites forever is the
+    // stalled-wave bug this game has already fixed twice.
+    this.retreat = 0;
+    this.retreatUsed = false;
+    this.flankTimer = Math.random();
     // Mechanic state, for any boss that has one. Raid bosses overwrite all of
     // this in createRaidBoss; an arena boss declares its pair on its type and
     // is otherwise identical, which is the point — one pipeline, two callers.
@@ -279,11 +285,15 @@ export class Mob extends Entity {
 
     this.updateSeparation(game);
     this.crowd = this.crowdRank(game, target);
-    // Approach on an arc rather than a straight line. Mobs at the back of a
-    // pack lean harder, so a group fans out and surrounds instead of forming
-    // one conga line that the player can out-walk forever.
-    if (dist > this.def.range * 0.8 && !this.def.boss) {
-      const lean = this.slotBias * Math.min(1, this.crowd / 3);
+    this.updateFlank(dt, game, target);
+    // Approach on an arc rather than a straight line, aimed at the side of the
+    // target this mob was assigned. The lean used to be scaled by crowd rank,
+    // which meant the mobs at the *front* — the ones actually defining the
+    // shape of the pack — arced not at all, and a wave that spawned on one
+    // side stayed on one side. Measured: sixteen enemies spawned in two
+    // sectors were still in three after eight seconds.
+    if (dist > this.def.range * 0.8 && !this.def.boss && this.retreat <= 0) {
+      const lean = this.bearingError(target);
       if (lean) {
         const cs = Math.cos(lean), sn = Math.sin(lean);
         const ax = nx * cs - nz * sn, az = nx * sn + nz * cs;
@@ -409,6 +419,124 @@ export class Mob extends Entity {
     this.sepZ = sz;
   }
 
+  /**
+   * Pick a side to come in on, and change it only when that side gets busy.
+   *
+   * The obvious version — every mob steers at whichever sector is emptiest
+   * right now — does the opposite of what it should: they all evaluate the
+   * same data on the same frame, all agree, and the pack stampedes into one
+   * place. Measured, sixteen enemies spread across two sectors ended up in
+   * one.
+   *
+   * So the bearing is a stable per-mob offset from where the mob already is.
+   * A wave arriving from one side fans out across that side immediately and
+   * without agreeing about anything, which is both cheaper and what a pack
+   * actually looks like. Re-picking only happens when a mob's own approach is
+   * genuinely crowded, and then only by nudging its offset — never by
+   * everyone recomputing the same answer.
+   */
+  updateFlank(dt, game, target) {
+    if (this.def.boss) return;
+    const bearing = Math.atan2(this.z - target.z, this.x - target.x);
+    if (this.desiredBearing === undefined) {
+      // Spread across ±100° of wherever this one came from. Wide enough to
+      // surround, narrow enough that nobody crosses the arena to do it.
+      this.flankOffset = (((this.id % 9) - 4) / 4) * 1.75;
+      this.desiredBearing = bearing + this.flankOffset;
+    }
+    this.flankTimer = (this.flankTimer || 0) - dt;
+    if (this.flankTimer > 0) return;
+    this.flankTimer = 0.9 + Math.random() * 0.6;
+
+    // How many allies share this mob's approach. Only if its own lane is
+    // busy does it move, and it moves by a fixed step rather than to a
+    // globally agreed target.
+    let ahead = 0;
+    for (const other of game.mobs) {
+      if (other === this || other.dead || other.def.boss) continue;
+      if ((other.x - target.x) ** 2 + (other.z - target.z) ** 2 > 400) continue;
+      const b = Math.atan2(other.z - target.z, other.x - target.x);
+      let da = Math.abs(b - bearing) % (Math.PI * 2);
+      if (da > Math.PI) da = Math.PI * 2 - da;
+      if (da < 0.40) ahead++;
+    }
+    if (ahead < 3) return;
+    // Step around, in the direction this mob was already leaning, so two mobs
+    // in the same lane peel off opposite ways instead of following each other.
+    const dir = this.flankOffset >= 0 ? 1 : -1;
+    this.desiredBearing = bearing + dir * (0.55 + Math.random() * 0.35);
+  }
+
+  /**
+   * How far to lean, to close on the side this mob was assigned.
+   *
+   * Full strength while the mob is on the wrong side and fading to nothing as
+   * it arrives, so a pack converges on a ring instead of orbiting it forever.
+   * Capped below a right angle: a mob that steers perpendicular to its target
+   * has stopped approaching, and a wave of those never reaches the player.
+   */
+  bearingError(target) {
+    if (this.desiredBearing === undefined) return 0;
+    const bearing = Math.atan2(this.z - target.z, this.x - target.x);
+    let err = this.desiredBearing - bearing;
+    while (err > Math.PI) err -= Math.PI * 2;
+    while (err < -Math.PI) err += Math.PI * 2;
+    return clamp(err * 1.15, -1.15, 1.15);
+  }
+
+  /**
+   * Is one of ours standing in the shot?
+   *
+   * Archers used to fire straight through their own melee line. Projectiles
+   * do not hit allies, so nothing went wrong mechanically — it just looked
+   * like nobody was paying attention, and a pack where the back rank waits
+   * for a lane reads as far more deliberate than the code costs.
+   *
+   * Only the near half of the shot is checked. An ally standing next to the
+   * *target* is not in the way in any sense the player would recognise.
+   */
+  allyInLine(game, nx, nz, dist) {
+    const reach = Math.min(dist * 0.7, 14);
+    for (const other of game.mobs) {
+      if (other === this || other.dead || other.def.boss) continue;
+      const ox = other.x - this.x, oz = other.z - this.z;
+      const along = ox * nx + oz * nz;
+      if (along < 1 || along > reach) continue;
+      // Perpendicular distance from the line of fire.
+      const side = Math.abs(ox * nz - oz * nx);
+      if (side < (other.width || 0.6) + 0.35) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Back off when badly hurt and there is somebody to back off behind.
+   *
+   * A wounded enemy that keeps walking into your swing is a health bar. One
+   * that breaks off, circles, and comes back when its friends are in front is
+   * a decision — it gives the player something to chase and a choice about
+   * whether chasing is worth leaving the pack for.
+   *
+   * Only with support present, and only once: a lone survivor that kites
+   * forever is the stalled-wave bug this game has already fixed twice.
+   */
+  updateRetreat(dt, game) {
+    if (this.retreat > 0) { this.retreat -= dt; return; }
+    if (this.def.boss || this.retreatUsed || this.elite) return;
+    if (this.hp > this.maxHp * 0.28) return;
+    // Somebody has to be holding the front, or this is just fleeing.
+    let support = 0;
+    for (const other of game.mobs) {
+      if (other === this || other.dead) continue;
+      if (other.hp > other.maxHp * 0.5) support++;
+      if (support >= 2) break;
+    }
+    if (support < 2) return;
+    this.retreatUsed = true;
+    this.retreat = 1.4 + Math.random() * 0.8;
+    this.flankTimer = 0;      // and come back somewhere else
+  }
+
   /** How many other enemies are already closer to the target than this one. */
   crowdRank(game, target) {
     const mine = (this.x - target.x) ** 2 + (this.z - target.z) ** 2;
@@ -516,6 +644,14 @@ export class Mob extends Entity {
   }
 
   aiMelee(dt, game, target, dist, nx, nz, speed) {
+    this.updateRetreat(dt, game);
+    if (this.retreat > 0 && this.windup <= 0) {
+      // Backwards and around, not straight back: retreating in a line walks
+      // into whatever is behind you and reads as running away.
+      this.moveToward(-nx, -nz, speed * 0.75);
+      this.strafe(nx, nz, speed * 0.5, this.slotBias >= 0 ? 1 : -1);
+      return;
+    }
     if (this.windup > 0) {
       // Planted mid-swing: a mob that keeps sliding forward while winding up
       // gives the player nothing to step away from.
@@ -566,7 +702,7 @@ export class Mob extends Entity {
       this.strafe(nx, nz, speed * 0.45, this.id % 2 ? 1 : -1);
     } else this.strafe(nx, nz, speed * 0.7, this.id % 2 ? 1 : -1);
 
-    if (this.attackTimer <= 0 && dist < this.def.range && los) {
+    if (this.attackTimer <= 0 && dist < this.def.range && los && !this.allyInLine(game, nx, nz, dist)) {
       this.attackTimer = 1 / this.def.attackSpeed;
       this.swing = 1;
       game.fireProjectile({
