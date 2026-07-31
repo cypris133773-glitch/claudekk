@@ -2120,6 +2120,45 @@ check('no talent promises a number its effect does not produce', async () => {
   assert(bad.length === 0, `talent text disagrees with talent effects:\n  ${bad.join('\n  ')}`);
 });
 
+check('every skill gets a drawn icon, and no shape is overloaded', async () => {
+  const { markFor, SCHOOLS, schoolFor } = await import('../src/ui/icons.js');
+
+  // Icons are drawn shapes now rather than emoji, and which shape a skill gets
+  // is resolved from its own words. That is what keeps 117 icons maintainable
+  // — a new skill gets a sensible one the moment it is named — but it has a
+  // failure mode a screenshot will not show: a keyword table that quietly
+  // funnels half the game into one shape.
+  const use = {};
+  let total = 0;
+  for (const cls of CLASSES) {
+    for (const skill of cls.skills) {
+      const m = markFor(skill);
+      assert(m && m.mark, `${cls.id}/${skill.id} resolved to no mark at all`);
+      use[m.mark] = (use[m.mark] || 0) + 1;
+      total++;
+      // And a school, or the plate has no colour to put in its rim.
+      assert(schoolFor(skill), `${skill.id} has no school`);
+    }
+  }
+  const worst = Math.max(...Object.values(use));
+  assert(worst <= total * 0.16,
+    `one shape carries ${worst} of ${total} skills — the keyword table is too greedy`);
+  // A vocabulary that has collapsed to a handful of shapes is the same bug
+  // seen from the other side.
+  assert(Object.keys(use).length >= 10,
+    `only ${Object.keys(use).length} distinct shapes across ${total} skills`);
+
+  // Within one class is where it actually matters: thirteen icons in a row in
+  // the picker, and four on the skill bar. Global variety is no comfort if a
+  // single class is all skulls.
+  for (const cls of CLASSES) {
+    const marks = new Set(cls.skills.map((s) => markFor(s).mark));
+    assert(marks.size >= 4,
+      `${cls.id}'s thirteen skills use only ${marks.size} shapes`);
+  }
+  assert(Object.keys(SCHOOLS).length >= 8, 'the school palette shrank');
+});
+
 check('the four new enemies each do the thing they exist for', async () => {
   const { Game } = await import('../src/game/game.js');
   const { makeHarness } = await import('./harness.js');
