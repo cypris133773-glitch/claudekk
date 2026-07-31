@@ -183,55 +183,71 @@ export const CLASS_GEAR = {
  *     tiers of stacking bonuses would be worth more than the gear underneath
  *     them, and a player wearing a full T6 set would still be collecting a
  *     bonus for the T0 set they replaced six tiers ago.
- *   * The numbers are small on purpose. A full T6 set is already about +70%
- *     damage and +65% health; these add roughly a tenth of that. They exist to
- *     reward finishing a set rather than magpie-ing the cheapest upgrade, and
- *     a reward that big enough to change what you buy is big enough to break
- *     the price curve the whole Armoury is paced by.
+ *   * The numbers are sized against measurement rather than against a feeling.
+ *     The harness was run with this table and again with every bonus blanked;
+ *     the difference is what the set is worth. At the first tuning the whole
+ *     set bought +11% wave depth and three classes — Warrior, Warlock, Rogue —
+ *     got nothing at all out of four slots, so these are the retune. They are
+ *     still bounded: no class's median may run past twice the baseline, which
+ *     is what keeps a set from being worth more than the gear underneath it and
+ *     breaking the price curve the whole Armoury is paced by.
  *
  * Per class, because that is what makes a set feel like *your* set rather than
  * a second copy of the stat table you already read on the pieces.
+ *
+ * The four-piece of each class is conditional, so its face value is not its
+ * real value: a conditional is worth its magnitude times the uptime of its
+ * condition. Measured, a minute at a time, in a full set: Rage held 91% of
+ * hits at a mean of 53% full, so `bloodsurge` pays about half what it reads;
+ * a Priest's shield is up 97%; the post-dash window covers 70%; Zeal is
+ * stacked 33%. Two are far lower, and they are notes rather than numbers.
+ * `exposeWeakness` is paid on 5% of hits and `sharpshooter` on none at all,
+ * because `castSkill` hands `situationalMult` the player's `aimLock` as the
+ * target and that is null unless aim assist is on — which is touch devices
+ * only. Raising either would buy nothing on a desktop and buy double on a
+ * phone, so both are held at their designed magnitude until a real target is
+ * plumbed through to the skill path.
  */
 export const SET_BONUSES = {
   warrior: {
-    2: { effect: { meleeDamage: 0.06, maxHpPct: 0.04 }, desc: '+6% melee damage, +4% health' },
-    4: { effect: { bloodsurge: 0.26 }, desc: 'Up to +26% melee damage, scaling with the Rage you hold' },
-    6: { effect: { bleedBurst: 1.0, bleedPct: 0.25 },
-      desc: 'Bleeds hit 25% harder, and a bleeding enemy that dies detonates the rest' },
+    2: { effect: { meleeDamage: 0.10, maxHpPct: 0.07 }, desc: '+10% melee damage, +7% health' },
+    4: { effect: { bloodsurge: 0.42 }, desc: 'Up to +42% melee damage, scaling with the Rage you hold' },
+    6: { effect: { bleedBurst: 1.8, bleedPct: 0.45 },
+      desc: 'Bleeds hit 45% harder, and a bleeding enemy that dies detonates the rest' },
   },
   mage: {
-    2: { effect: { spellDamage: 0.06, critChance: 0.02 }, desc: '+6% spell damage, +2% crit' },
-    4: { effect: { critCdr: 0.5, burnDamage: 0.20 }, desc: 'Crits cut cooldowns 0.5s, +20% burn' },
-    6: { effect: { spellEcho: 0.25 }, desc: '25% chance a damaging skill casts itself again for half' },
+    2: { effect: { spellDamage: 0.09, critChance: 0.03 }, desc: '+9% spell damage, +3% crit' },
+    4: { effect: { critCdr: 0.7, burnDamage: 0.35 }, desc: 'Crits cut cooldowns 0.7s, +35% burn' },
+    6: { effect: { spellEcho: 0.32 }, desc: '32% chance a damaging skill casts itself again for half' },
   },
   warlock: {
-    2: { effect: { dotDamage: 0.09, petPower: 0.08 }, desc: '+9% damage over time, +8% demon power' },
-    4: { effect: { dotDuration: 1, dotLifesteal: 0.05 },
-      desc: 'Rot lasts 1s longer and heals you for 5%' },
-    6: { effect: { dotBurst: 0.30, maxPets: 1 },
-      desc: '+1 demon, and rot that runs its full course detonates for 30% of its total' },
+    2: { effect: { dotDamage: 0.15, petPower: 0.14 }, desc: '+15% damage over time, +14% demon power' },
+    4: { effect: { dotDuration: 2, dotLifesteal: 0.09 },
+      desc: 'Rot lasts 2s longer and heals you for 9%' },
+    6: { effect: { dotBurst: 0.55, maxPets: 1 },
+      desc: '+1 demon, and rot that runs its full course detonates for 55% of its total' },
   },
   shaman: {
-    2: { effect: { spellDamage: 0.06, totemDuration: 1.5 },
-      desc: '+6% spell damage, totems last 1.5s longer' },
-    4: { effect: { overload: 0.25 }, desc: '25% chance your chain skills fire a second time' },
-    6: { effect: { jumps: 1, maelstrom: 0.6, moveSpeed: 0.06 },
-      desc: '+1 chain jump, melee hits cut Chain Lightning 0.6s, +6% speed' },
+    2: { effect: { spellDamage: 0.09, totemDuration: 2.5 },
+      desc: '+9% spell damage, totems last 2.5s longer' },
+    4: { effect: { overload: 0.35 }, desc: '35% chance your chain skills fire a second time' },
+    6: { effect: { jumps: 1, maelstrom: 0.9, moveSpeed: 0.08 },
+      desc: '+1 chain jump, melee hits cut Chain Lightning 0.9s, +8% speed' },
   },
   priest: {
     2: { effect: { spellDamage: 0.05, healing: 0.08, absorb: 10 },
       desc: '+5% spell damage, +8% healing, +10 shield' },
-    4: { effect: { wardedDamage: 0.18 },
-      desc: '+18% spell damage while a shield of yours is holding' },
-    6: { effect: { absorb: 20, rapture: 15, resourceRegen: 2 },
-      desc: '+20 shield, a breaking shield refunds 15 mana, +2 mana regen' },
+    4: { effect: { wardedDamage: 0.14 },
+      desc: '+14% spell damage while a shield of yours is holding' },
+    6: { effect: { absorb: 14, rapture: 15, resourceRegen: 2 },
+      desc: '+14 shield, a breaking shield refunds 15 mana, +2 mana regen' },
   },
   rogue: {
-    2: { effect: { critMult: 0.12, attackSpeed: 0.04 }, desc: '+12% crit damage, +4% attack speed' },
-    4: { effect: { exposeWeakness: 0.22 },
-      desc: '+22% damage to anything already carrying one of your poisons' },
-    6: { effect: { doubleStrike: 0.18, critCdr: 0.4 },
-      desc: '18% chance to strike twice, crits cut every cooldown' },
+    2: { effect: { critMult: 0.24, attackSpeed: 0.07 }, desc: '+24% crit damage, +7% attack speed' },
+    4: { effect: { exposeWeakness: 0.35 },
+      desc: '+35% damage to anything already carrying one of your poisons' },
+    6: { effect: { doubleStrike: 0.30, critCdr: 0.7 },
+      desc: '30% chance to strike twice, crits cut every cooldown' },
   },
   demonslayer: {
     2: { effect: { meleeDamage: 0.06, moveSpeed: 0.05, onHitGain: 0.5 },
@@ -242,8 +258,8 @@ export const SET_BONUSES = {
   },
   paladin: {
     2: { effect: { meleeDamage: 0.05, armor: 0.03 }, desc: '+5% melee damage, +3% armor' },
-    4: { effect: { zeal: 0.04 },
-      desc: 'Each hit you take: +4% melee damage, stacking 5 times' },
+    4: { effect: { zeal: 0.06 },
+      desc: 'Each hit you take: +6% melee damage, stacking 5 times' },
     6: { effect: { damageReduction: 0.08, killHeal: 14, healing: 0.15 },
       desc: '-8% damage taken, 14 health a kill, +15% healing' },
   },

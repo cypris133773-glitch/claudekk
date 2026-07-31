@@ -26,7 +26,7 @@ export function rankDamageMult(rank) { return 1 + 0.12 * (rank || 0); }
 export function rankCooldownMult(rank) { return Math.max(0.45, 1 - 0.04 * (rank || 0)); }
 
 /** Scale a skill's numbers by the player's current modifiers and its rank. */
-function power(player, skill, rank = 0) {
+function power(player, skill, rank = 0, aim = null) {
   const p = { ...skill.power };
   const m = player.mods;
   // Talents that name this skill. Applied on top of the global bag rather than
@@ -37,8 +37,15 @@ function power(player, skill, rank = 0) {
   const melee = skill.kind === 'strike' || skill.kind === 'dash';
   // The situational half of the set bonuses: conditions the build cannot know
   // about ahead of time, asked at the moment the skill actually resolves.
+  //
+  // The target has to be a real one. This read `player.aimLock`, which is null
+  // unless aim assist is on — and aim assist is touch-only, so on a desktop
+  // the two target-dependent bonuses in the game paid out on almost nothing:
+  // measured, `exposeWeakness` fired on 5% of hits and `sharpshooter` on none
+  // at all. Whatever the player is pointing at is the honest answer, and it is
+  // the same answer on every device.
   const dmgMult = (melee ? player.stats.meleeMult : player.stats.spellMult)
-    * player.situationalMult(melee, player.aimLock)
+    * player.situationalMult(melee, aim)
     * (player.echoDamage || 1);
   // Demonslayer: a dash opens a window rather than being one hit.
   if (skill.kind === 'dash' && player.mods.momentumDamage) player.momentum = 4;
@@ -106,7 +113,13 @@ export function castSkill(game, player, index) {
   if (player.disabled) return false;
 
   const rank = player.rankOf ? player.rankOf(index) : 0;
-  const p = power(player, skill, rank);
+  // Whatever the player is pointing at, for the set bonuses that care.
+  // `player.aimLock` alone was wrong: it is null unless aim assist is on, and
+  // aim assist is touch-only, so on a desktop the two target-dependent bonuses
+  // in the game paid out on almost nothing.
+  const aim = player.aimLock
+    || game.nearestEnemy(player.x, player.eyeY, player.z, 26);
+  const p = power(player, skill, rank, aim);
   const dir = forwardVec(player.yaw, player.pitch);
   const ex = player.x, ey = player.eyeY, ez = player.z;
 

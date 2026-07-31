@@ -520,7 +520,9 @@ export class Player extends Entity {
           x: this.x, y: this.eyeY - 0.15, z: this.z, dir: d,
           speed: w.speed,
           damage: this.attackDamage * this.stats.spellMult
-            * this.situationalMult(false, this.aimLock) * (i === 0 ? 1 : 0.5),
+            * this.situationalMult(false, this.aimLock
+              || game.nearestEnemy(this.x, this.eyeY, this.z, this.attackRange + 8))
+            * (i === 0 ? 1 : 0.5),
           size: w.size, color: w.color, gravity: w.gravity || 0,
           // Ranged riders travel with the shot: the rider belongs to the
           // weapon, and for a bow the weapon's contact with the target is the

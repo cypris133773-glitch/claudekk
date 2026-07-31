@@ -819,6 +819,63 @@ check('a set bonus rewards finishing a set without replacing it', async () => {
   assert(t6.value > t0.value * 6, 'the rider barely grows across seven tiers');
 });
 
+check('no set bonus promises a number its effect does not produce', async () => {
+  // The same trap the talent tree already fell into, one table over. A set
+  // bonus's description is hand-written prose sitting next to the numbers it
+  // describes, and prose does not get recompiled — retune `bloodsurge` from
+  // 0.26 to 0.42 and the line still reads "up to +26%" until a player notices.
+  // Every percentage quoted in a description has to be one the effect object
+  // genuinely produces.
+  const { SET_BONUSES, SET_THRESHOLDS } = await import('../src/data/armor.js');
+  const bad = [];
+  for (const cls of CLASSES) {
+    for (const th of SET_THRESHOLDS) {
+      const entry = SET_BONUSES[cls.id][th];
+      const quoted = [...entry.desc.matchAll(/(\d+(?:\.\d+)?)%/g)].map((m) => Number(m[1]));
+      if (!quoted.length) continue;
+      const produced = new Set();
+      for (const v of Object.values(entry.effect)) {
+        if (typeof v !== 'number') continue;
+        produced.add(Math.round(Math.abs(v) * 1000) / 10);   // 0.26 -> 26
+        produced.add(Math.round(Math.abs(v) * 10) / 10);     // 15   -> 15
+      }
+      const unexplained = quoted.filter((q) => ![...produced].some((p) => Math.abs(p - q) < 0.51));
+      if (unexplained.length) {
+        bad.push(`${cls.id}/${th}pc: "${entry.desc}" quotes ${unexplained.join('%, ')}% `
+          + `— effects are ${JSON.stringify(entry.effect)}`);
+      }
+    }
+  }
+  assert(bad.length === 0, `set bonus text disagrees with set bonus effects:\n  ${bad.join('\n  ')}`);
+});
+
+// The conditional four-pieces are only worth what their condition's uptime
+// makes them worth, and a magnitude tuned against a measured uptime is a
+// number with a reason behind it. These bounds are the range those reasons
+// live in: below the floor the bonus is not worth the four slots, above the
+// ceiling one lucky condition is worth more than the rest of the set.
+check('a conditional set bonus is worth wearing without being the whole build', async () => {
+  const { SET_BONUSES, SET_THRESHOLDS } = await import('../src/data/armor.js');
+  const CONDITIONAL = {
+    bloodsurge: [0.20, 0.55],       // scales with Rage held; measured mean 53%
+    wardedDamage: [0.06, 0.20],     // shield uptime measured at ~99%: near-flat
+    exposeWeakness: [0.15, 0.50],   // fires on ~5% of hits (see report)
+    momentumDamage: [0.15, 0.40],   // ~70% uptime
+    sharpshooter: [0.15, 0.40],     // range gate
+    zeal: [0.03, 0.10],             // per stack, five stacks, ~33% uptime
+  };
+  for (const cls of CLASSES) {
+    for (const th of SET_THRESHOLDS) {
+      for (const [k, v] of Object.entries(SET_BONUSES[cls.id][th].effect)) {
+        const range = CONDITIONAL[k];
+        if (!range) continue;
+        assert(v >= range[0] && v <= range[1],
+          `${cls.id} ${th}pc ${k} is ${v}, outside ${range[0]}–${range[1]}`);
+      }
+    }
+  }
+});
+
 check('a full set is a real difference and a bounded one', () => {
   for (const cls of CLASSES) {
     const full = gearMods(cls.id, Object.fromEntries(GEAR_SLOT_IDS.map((id) => [id, MAX_TIER])));
@@ -2082,13 +2139,18 @@ check('a pack surrounds instead of queuing up', async () => {
   const before = sectors();
   assert(before <= 3, `the fixture did not spawn a lopsided pack (${before} sectors)`);
 
+  // Sampled across the last three seconds rather than at one instant. A
+  // snapshot is noisy — the pack is moving, and whether two mobs happen to
+  // share a sector on the frame you looked is luck. The best moment in a
+  // window is the honest answer to "did they surround".
+  let after = 0;
   for (let i = 0; i < 60 * 10; i++) {
     game.update(1 / 60, h.input());
     // Both sides held up, so this measures movement rather than who wins.
     p.hp = p.maxHp;
     for (const m of game.mobs) if (m.hp < m.maxHp * 0.9) m.hp = m.maxHp * 0.9;
+    if (i > 60 * 7 && i % 10 === 0) after = Math.max(after, sectors());
   }
-  const after = sectors();
 
   // The naive version of this — every mob steering at whichever sector is
   // emptiest — makes it *worse*, because they all evaluate the same data on
