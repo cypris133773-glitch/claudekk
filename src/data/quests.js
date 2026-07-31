@@ -40,6 +40,11 @@ export const METRICS = {
   bestWave: { kind: 'peak', label: 'wave reached in one run' },
   bestCombo: { kind: 'peak', label: 'kill streak in one run' },
   affixWaves: { kind: 'count', label: 'waves cleared under affixes' },
+  raidKills: { kind: 'count', label: 'raid bosses defeated' },
+  critHits: { kind: 'count', label: 'critical hits landed' },
+  flawlessWaves: { kind: 'count', label: 'waves cleared untouched' },
+  mechanicsSurvived: { kind: 'count', label: 'boss mechanics survived' },
+  goldEarned: { kind: 'count', label: 'gold earned' },
 };
 
 /**
@@ -119,6 +124,42 @@ export const TEMPLATES = [
     steps: [5, 12, 24, 42, 68, 105, 155, 220, 305, 415],
     title: (n) => `Clear ${plural(n, 'wave', 'waves')} under affixes`,
     blurb: 'Wave 4 onward. The rules are the reward.',
+  },
+
+  // Five more, and the first of them fixes an omission: forty-two raid
+  // bosses across seven rooms, and until now the quest log never once
+  // mentioned that the mode existed. The other four ask for things the arena
+  // could already measure and never rewarded — precision, patience, and
+  // standing in a room while something dangerous goes off.
+  {
+    id: 'raid', metric: 'raidKills', effort: 42.0, icon: '🏰',
+    steps: [1, 3, 6, 11, 18, 27, 38, 52, 68, 88],
+    title: (n) => `Defeat ${plural(n, 'raid boss', 'raid bosses')}`,
+    blurb: 'Any room, any tier. Each one opens a piece of gear.',
+  },
+  {
+    id: 'crit', metric: 'critHits', effort: 0.09, icon: '🎯',
+    steps: [200, 450, 850, 1500, 2500, 4000, 6200, 9200, 13500, 19000],
+    title: (n) => `Land ${n.toLocaleString()} critical hits`,
+    blurb: 'Crit chance is a stat you can buy. This is what it buys.',
+  },
+  {
+    id: 'flawless', metric: 'flawlessWaves', effort: 18.0, icon: '🛡',
+    steps: [3, 7, 14, 24, 38, 58, 84, 120, 168, 230],
+    title: (n) => `Clear ${plural(n, 'wave', 'waves')} without being hit`,
+    blurb: 'Not one point of health, start to finish.',
+  },
+  {
+    id: 'mechanics', metric: 'mechanicsSurvived', effort: 5.5, icon: '💫',
+    steps: [10, 24, 48, 84, 135, 205, 300, 430, 600, 820],
+    title: (n) => `Live through ${plural(n, 'boss mechanic', 'boss mechanics')}`,
+    blurb: 'Every telegraph a boss puts on the floor while you are in the room.',
+  },
+  {
+    id: 'gold', metric: 'goldEarned', effort: 0.020, icon: '🪙',
+    steps: [3000, 7000, 14000, 26000, 45000, 76000, 125000, 200000, 315000, 490000],
+    title: (n) => `Earn ${n.toLocaleString()} gold`,
+    blurb: 'Every coin a run pays out, spent or not.',
   },
 ];
 

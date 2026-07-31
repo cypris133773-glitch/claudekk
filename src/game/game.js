@@ -89,7 +89,14 @@ export class Game {
     // run is over.
     this.tally = {
       eliteKills: 0, bossKills: 0, potionsDrunk: 0, skillsCast: 0, affixWaves: 0,
+      // Raids had no quest coverage at all: forty-two bosses, seven rooms, and
+      // nothing in the log ever mentioned them. These four are the metrics the
+      // new templates read.
+      raidKills: 0, critHits: 0, flawlessWaves: 0, mechanicsSurvived: 0,
     };
+    // Health at the start of the current wave, so "cleared without being hit"
+    // can be answered without tracking every source of damage.
+    this.waveStartHp = 0;
     // XP is accumulated live rather than totalled at the end, because the HUD
     // bar has to fill while you play — a progress bar that only moves on the
     // results screen is a results screen, not a progress bar.
@@ -286,6 +293,7 @@ export class Game {
     // `killed` untouched, which is what makes an attempt free.
     this.raidBoss = null;
     this.raidCleared = true;
+    if (this.tally) this.tally.raidKills++;
     // Adds die with their summoner. Leaving a pack standing over the corpse
     // turns the reward screen into a fight the player has already won.
     for (const m of this.mobs) if (m.isAdd && !m.dead) { m.dead = true; this.burst(m.x, m.centerY, m.z, 8, '#c06cff'); }
@@ -392,6 +400,7 @@ export class Game {
 
   nextWave() {
     this.wave++;
+    this.waveStartHp = this.player ? this.player.hp : 0;
     // The one moment a run stops being routine. Called out once, loudly.
     const best = (this.profile.character(this.charId) || {}).bestWave || 0;
     if (!this.recordBeaten && best > 0 && this.wave > best) {
@@ -535,6 +544,11 @@ export class Game {
         potionsDrunk: this.tally.potionsDrunk,
         skillsCast: this.tally.skillsCast,
         affixWaves: this.tally.affixWaves,
+        raidKills: this.tally.raidKills,
+        critHits: this.tally.critHits,
+        flawlessWaves: this.tally.flawlessWaves,
+        mechanicsSurvived: this.tally.mechanicsSurvived,
+        goldEarned: Math.round(this.soulsEarned),
         runs: 1,
       },
       peaks: {
@@ -780,7 +794,7 @@ export class Game {
     let crit = false;
     if (isPlayer) {
       crit = source.rollCrit(opts.forceCrit);
-      if (crit) dmg *= source.critMult;
+      if (crit) { dmg *= source.critMult; if (this.tally) this.tally.critHits++; }
       // Shatter: frozen targets take extra damage.
       if (source.mods.frozenDamage && target.freeze > 0) dmg *= 1 + source.mods.frozenDamage;
       // Titanbane and the class capstones that specialise into boss fights.
@@ -1468,6 +1482,9 @@ export class Game {
       // mean the rules cost a third of the run's depth and returned a rounding
       // error on the currency that depth exists to earn.
       if (this.affixes.length) this.tally.affixWaves++;
+      // Cleared without losing a point of health. Compared at the boundary
+      // rather than hooked into every damage source, so nothing can leak.
+      if (this.player.hp >= this.waveStartHp) this.tally.flawlessWaves++;
       this.awardXp(xpForWave(this.wave));
       const bonus = Math.round(waveClearBonus(this.wave) * (1 + affixSoulBonus(this.affixes)));
       this.soulsEarned += bonus * (1 + (this.player.mods.soulGain || 0));

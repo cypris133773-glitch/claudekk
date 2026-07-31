@@ -2120,6 +2120,50 @@ check('no talent promises a number its effect does not produce', async () => {
   assert(bad.length === 0, `talent text disagrees with talent effects:\n  ${bad.join('\n  ')}`);
 });
 
+check('every quest metric is something a run actually reports', async () => {
+  const { METRICS, TEMPLATES } = await import('../src/data/quests.js');
+  const { Game } = await import('../src/game/game.js');
+  const { makeHarness } = await import('./harness.js');
+
+  // A quest whose metric nothing ever increments is a quest that can never be
+  // finished, and it does not throw — it just sits in the log forever. That is
+  // the exact failure the five new templates could have shipped with: the
+  // metric name in the table and no code anywhere writing it.
+  const h = makeHarness({ level: 40 });
+  const game = new Game(h.renderer, h.audio, h.profile);
+  game.startRun(CLASSES[0], { layout: 0 });
+  const report = game.questReport(0);
+  const produced = new Set([...Object.keys(report.deltas), ...Object.keys(report.peaks)]);
+
+  for (const t of TEMPLATES) {
+    assert(METRICS[t.metric], `quest template "${t.id}" reads metric "${t.metric}", which is not declared`);
+    assert(produced.has(t.metric),
+      `quest template "${t.id}" wants "${t.metric}", which no run ever reports`);
+  }
+  for (const name of Object.keys(METRICS)) {
+    assert(produced.has(name), `metric "${name}" is declared but never reported by a run`);
+  }
+
+  // And they have to actually move. A metric wired to a constant zero passes
+  // every check above and still cannot complete a quest.
+  const p = game.player;
+  // Crit forced, so this measures whether the counter is wired rather than
+  // whether the dice cooperated inside the sample window.
+  p.critChance = 1;
+  const input = h.input();
+  for (let i = 0; i < 60 * 60; i++) {
+    input.attack = true;
+    game.update(1 / 60, input);
+    p.hp = p.maxHp;
+    p.critChance = 1;
+    if (!game.running) break;
+  }
+  const after = game.questReport(Math.max(0, game.wave - 1));
+  for (const name of ['kills', 'critHits', 'goldEarned', 'damageDealt']) {
+    assert(after.deltas[name] > 0, `"${name}" stayed at zero through a whole minute of fighting`);
+  }
+});
+
 check('every skill gets a drawn icon, and no shape is overloaded', async () => {
   const { markFor, SCHOOLS, schoolFor } = await import('../src/ui/icons.js');
 

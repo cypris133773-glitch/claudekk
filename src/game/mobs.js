@@ -1341,6 +1341,10 @@ export class Mob extends Entity {
 
   castRaid(id, game, target) {
     const mech = MECHANICS[id];
+    // Counted at the cast rather than at the dodge: what a player wants credit
+    // for is having been in the room when it went off, and the alternative is
+    // eight different mechanics each reporting their own near-miss.
+    if (game.tally) game.tally.mechanicsSurvived++;
     const reps = 1 + Math.min(this.phase, PHASES[this.phase].reps) * (this.reps || 1);
     this.casting = mech.cast;
     game.sfx('cast');
