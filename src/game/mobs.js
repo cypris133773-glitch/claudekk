@@ -113,6 +113,9 @@ export const MOB_TYPES = {
     name: 'Colossus', weight: 0, minWave: 5, cost: 0, boss: true,
     hp: 520, damage: 28, speed: 2.5, range: 4.0, attackSpeed: 0.55, souls: 90,
     height: 4.2, width: 1.5, behavior: 'boss', knockResist: 1,
+    // Rings you run out of, and a charge you step aside from. Both are about
+    // its weight, which is the one thing the Colossus is.
+    mechanic: 'slam', second: 'charge', cadence: 7.5,
     tagline: 'Slow, enormous, hits like a landslide.',
     skin: { head: hex('#9a3f2f'), body: hex('#6d2a20'), arm: hex('#9a3f2f'), leg: hex('#4d1d16'), face: T.FACE_BOSS, hat: hex('#c9a227'), emissive: 0.12, weapon: hex('#4d1d16'), weaponHead: hex('#c9a227'), weaponWide: 0.30, weaponLen: 1.2, spines: hex('#c9a227'), spineCount: 6 },
   },
@@ -120,6 +123,9 @@ export const MOB_TYPES = {
     name: 'Warden', weight: 0, minWave: 10, cost: 0, boss: true,
     hp: 430, damage: 22, speed: 3.4, range: 30, attackSpeed: 0.8, souls: 100,
     height: 3.4, width: 1.0, behavior: 'boss_warden', knockResist: 1,
+    // It already zones; these are the same idea with a tell on them. Bombs
+    // deny where you are, frost denies where you were going.
+    mechanic: 'bombs', second: 'frost', cadence: 8,
     tagline: 'Keeps its distance, burns the ground you stand on.',
     projectile: { speed: 26, gravity: 2, color: '#7ef0ff', size: 0.3 },
     skin: { head: hex('#2f6f9a'), body: hex('#1d4a6d'), arm: hex('#2f6f9a'), leg: hex('#153549'), face: T.FACE_BOSS, hat: hex('#7ef0ff'), emissive: 0.22, cloak: hex('#153549'), wings: hex('#2f6f9a'), wingAlpha: 0.6, spines: hex('#7ef0ff'), spineTile: T.CRYSTAL },
@@ -128,6 +134,9 @@ export const MOB_TYPES = {
     name: 'Broodmother', weight: 0, minWave: 15, cost: 0, boss: true,
     hp: 620, damage: 24, speed: 3.0, range: 3.2, attackSpeed: 0.7, souls: 110,
     height: 2.8, width: 1.4, behavior: 'boss_brood', knockResist: 0.9,
+    // The swarm is its identity, so the second mechanic punishes standing
+    // still to fight the swarm rather than moving through it.
+    mechanic: 'adds', second: 'shadow', cadence: 8.5,
     tagline: 'Never fights alone. Kill it before the swarm buries you.',
     skin: { head: hex('#4a2a5e'), body: hex('#33203f'), arm: hex('#5e3575'), leg: hex('#241629'), face: T.FACE_CRAWLER, emissive: 0.14, tail: hex('#241629'), tailSegs: 7, spines: hex('#5e3575'), spineCount: 7 },
   },
@@ -162,6 +171,22 @@ export class Mob extends Entity {
     // and hitting six times harder for no visible reason.
     this.level = Math.max(1, wave);
     this.elite = false;
+    // Mechanic state, for any boss that has one. Raid bosses overwrite all of
+    // this in createRaidBoss; an arena boss declares its pair on its type and
+    // is otherwise identical, which is the point — one pipeline, two callers.
+    if (t.mechanic) {
+      this.mechanic = t.mechanic;
+      this.raidTrial = t.second || null;
+      this.cadence = t.cadence;
+      this.phase = 0;
+      this.casting = 0;
+      this.channel = 0;
+      this.channelTick = 0;
+      this.castStall = 0;
+      // The first cast waits. Dropping a telegraph on a player half a second
+      // after the boss lands teaches them only that it started without them.
+      this.castTimer = 3.5;
+    }
     this.id = (Math.random() * 100000) | 0;   // used for per-mob strafe direction
     this.stuckTimer = 0;
     this.strikes = 0;                         // consecutive windows with no progress
@@ -679,29 +704,13 @@ export class Mob extends Entity {
   }
 
   aiBoss(dt, game, target, dist, nx, nz, speed) {
+    this.updateRaidPhase(dt, game);
     this.checkEnrage(game);
-    this.slamTimer -= dt;
-    if (this.slamTimer <= 0) {
-      this.slamTimer = rand(7, 5);
-      const phase = this.hp / this.maxHp;
-      if (this.enraged && Math.random() < 0.45) {
-        this.enrageNova(game, target);
-      } else if (phase < 0.5 && Math.random() < 0.5) {
-        // Enrage phase: summon adds.
-        game.sfx('roar');
-        for (let i = 0; i < 3; i++) {
-          const a = (i / 3) * Math.PI * 2;
-          game.spawnMob('husk', this.x + Math.cos(a) * 3, this.y + 1, this.z + Math.sin(a) * 3);
-        }
-      } else {
-        this.swing = 1;
-        game.telegraph(target.x, target.y, target.z, 7.0, 1.35, () => {
-          game.explode(target.x, target.y + 0.4, target.z, 7.0, this.damageAmount * 1.4, {
-            team: TEAM.ENEMY, source: this, color: '#ff7a3c', knockback: 12,
-          });
-        });
-      }
-    }
+    // The Colossus used to fire an unannounced blast under the player every
+    // five to seven seconds. It now runs the same telegraphed pipeline the
+    // raid bosses do, so the fight is something you read rather than something
+    // that happens to you.
+    if (this.mechanicStep(dt, game, target)) return;
     this.aiMelee(dt, game, target, dist, nx, nz, speed);
   }
 
@@ -711,7 +720,12 @@ export class Mob extends Entity {
    * which is exactly what the Colossus rewards.
    */
   aiWarden(dt, game, target, dist, nx, nz, speed) {
+    this.updateRaidPhase(dt, game);
     this.checkEnrage(game);
+    // Its own zoning stays — that is what a Warden is. The mechanics are the
+    // same idea with a tell on them, so there is something to react to rather
+    // than only something to stand out of.
+    if (this.mechanicStep(dt, game, target)) return;
     const ideal = 13;
     if (dist > ideal + 4) this.moveToward(nx, nz, speed);
     else if (dist < ideal - 4) this.moveToward(-nx, -nz, speed);
@@ -789,7 +803,11 @@ export class Mob extends Entity {
    * drown; it rewards anything with area damage.
    */
   aiBrood(dt, game, target, dist, nx, nz, speed) {
+    this.updateRaidPhase(dt, game);
     this.checkEnrage(game);
+    // Its own charge-and-spawn loop is untouched; the pipeline runs alongside
+    // it and yields the frame when its own charge state owns one.
+    if (this.state !== 'charge' && this.mechanicStep(dt, game, target)) return;
     const enraged = this.hp / this.maxHp < 0.5;
 
     // Charge: telegraphed, then a committed lunge.
@@ -802,7 +820,7 @@ export class Mob extends Entity {
         this.meleeHit(game, target, 1.5, 10);
       }
       if (this.chargeTime <= 0 || this.hitWallX || this.hitWallZ) this.state = 'chase';
-      return;
+      return true;
     }
 
     this.blinkTimer -= dt;
@@ -901,6 +919,27 @@ export class Mob extends Entity {
   aiRaid(dt, game, target, dist, nx, nz, speed) {
     this.updateRaidPhase(dt, game);
     this.checkEnrage(game);
+    if (this.mechanicStep(dt, game, target)) return;
+
+    if (this.raidStance === 'ranged') this.aiWardenStep(dt, game, target, dist, nx, nz, speed);
+    else this.aiMelee(dt, game, target, dist, nx, nz, speed);
+  }
+
+  /**
+   * The telegraph-and-cast pipeline, shared by every boss that has mechanics.
+   *
+   * Returns true when it has taken the frame — mid-charge, mid-channel or
+   * planted under its own telegraph — so the caller skips its movement. It was
+   * written for the forty-two raid bosses and gated to them by nothing but the
+   * behaviour string it lived inside; the three arena bosses now run the same
+   * machinery, which is the difference between a boss wave being a long fight
+   * and being a fight you have to read.
+   */
+  mechanicStep(dt, game, target) {
+    if (!this.mechanic) return false;
+    // Distance is recomputed rather than passed: this used to live inside
+    // aiRaid and borrow its caller's, and three different AIs now call it.
+    const dist = Math.hypot(target.x - this.x, target.z - this.z);
 
     // The charge state is committed movement and owns the frame outright: a
     // charge that re-aims mid-flight cannot be dodged, and one that also casts
@@ -925,7 +964,7 @@ export class Mob extends Entity {
         game.shockwave(this.x, this.y + 0.4, this.z, 2.5, TELL_COLOR.aimed);
       }
       if (this.chargeTime <= 0 || this.hitWallX || this.hitWallZ) this.state = 'chase';
-      return;
+      return true;
     }
 
     // Breath freezes its facing at ignition and the boss becomes a turret. The
@@ -938,7 +977,7 @@ export class Mob extends Entity {
         this.channelTick = 0.3;
         this.breathVolley(game);
       }
-      return;
+      return true;
     }
 
     const phase = PHASES[this.phase];
@@ -948,7 +987,12 @@ export class Mob extends Entity {
     // clearing the pack is also the play that stops the telegraphs.
     const crowded = game.mobs.length > 4;
 
-    if (this.castTimer <= 0 && !this.casting) {
+    // `<= 0`, not `!this.casting`. The cast countdown below decrements past
+    // zero and stops, landing on a value like -0.0166 — which is truthy, so
+    // `!this.casting` was false forever and no boss ever cast a second time.
+    // Every raid boss in the game has been telegraphing exactly once and then
+    // auto-attacking for the rest of the fight.
+    if (this.castTimer <= 0 && this.casting <= 0) {
       const id = this.pickRaidMechanic(game);
       const mech = MECHANICS[id];
       if (!this.raidCastAllowed(game, mech)) {
@@ -968,13 +1012,11 @@ export class Mob extends Entity {
     if (this.casting > 0) {
       // Planted while a telegraph is up, so the picture on the floor is where
       // the blast lands. A boss that walks out of its own telegraph is a lie.
-      this.casting -= dt;
+      this.casting = Math.max(0, this.casting - dt);
       this.vx *= 0.4; this.vz *= 0.4;
-      return;
+      return true;
     }
-
-    if (this.raidStance === 'ranged') this.aiWardenStep(dt, game, target, dist, nx, nz, speed);
-    else this.aiMelee(dt, game, target, dist, nx, nz, speed);
+    return false;
   }
 
   /** Kiting movement without the Warden's own zoning and blinking. */

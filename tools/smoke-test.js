@@ -2057,6 +2057,56 @@ check('no talent promises a number its effect does not produce', async () => {
   assert(bad.length === 0, `talent text disagrees with talent effects:\n  ${bad.join('\n  ')}`);
 });
 
+check('a boss keeps casting for the whole fight', async () => {
+  const { Game } = await import('../src/game/game.js');
+  const { makeHarness } = await import('./harness.js');
+  const { RAIDS } = await import('../src/data/raids.js');
+
+  // The bug this exists for, and it shipped: `this.casting` is decremented
+  // past zero and lands on something like -0.0166, which is *truthy*. The
+  // guard was `!this.casting`, so after the very first cast it was false
+  // forever and no boss ever cast a second time. Every raid fight in the game
+  // was one telegraph followed by four minutes of auto-attacks, and nothing
+  // caught it because nothing counted.
+  //
+  // So this counts. A boss that stops casting is not a crash and is not
+  // visible in any other test — it just quietly stops being a boss fight.
+  const run = (setup) => {
+    const h = makeHarness({ level: 60, gear: 6 });
+    const game = new Game(h.renderer, h.audio, h.profile);
+    const boss = setup(game);
+    let casts = 0;
+    const orig = boss.castRaid.bind(boss);
+    boss.castRaid = (...a) => { casts++; return orig(...a); };
+    for (let i = 0; i < 60 * 60; i++) {
+      game.update(1 / 60, h.input());
+      // Held alive and healthy so the count measures cadence rather than how
+      // fast the harness kills things.
+      if (boss.hp < boss.maxHp * 0.9) boss.hp = boss.maxHp * 0.9;
+      game.player.hp = game.player.maxHp;
+    }
+    return casts;
+  };
+
+  const raidCasts = run((game) => {
+    game.startRaid(CLASSES[0], RAIDS[0], 0);
+    return game.raidBoss;
+  });
+  assert(raidCasts >= 4,
+    `a raid boss cast ${raidCasts} times in a minute — it should be casting on a cadence`);
+
+  // And the three arena bosses, which run the same pipeline now.
+  for (const id of ['colossus', 'warden', 'broodmother']) {
+    const casts = run((game) => {
+      game.startRun(CLASSES[0], { layout: 0 });
+      game.wave = 20;
+      const p = game.player;
+      return game.spawnMob(id, p.x + 7, p.y, p.z);
+    });
+    assert(casts >= 3, `the ${id} cast ${casts} times in a minute`);
+  }
+});
+
 check('an arena you can see across', async () => {
   const { createArena, LAYOUT_COUNT, LAYOUT_NAMES } = await import('../src/world/world.js');
 
