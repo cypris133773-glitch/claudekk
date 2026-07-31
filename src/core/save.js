@@ -55,39 +55,64 @@ export const storage = {
   },
 };
 
-function emptyProfile() {
-  const classes = {};
-  for (const c of CLASSES) {
-    classes[c.id] = {
-      talents: {}, bestWave: 0, kills: 0, runs: 0, unlocked: true,
-      loadout: defaultLoadout(c, 1), mastery: 0, xp: 0,
-      // The Forge is per class, like talents and gear. Account-wide, it was
-      // the one system that made a fresh class start strong — you inherited
-      // every point of it the moment you picked one, which is exactly what
-      // made a maxed account play every class the same.
-      forge: {},
-      // Six gear slots, per class, same reasoning. Absent means unowned: tier 0
-      // is a real tier that costs real gold, so `gear.helm === 0` has to mean
-      // "owns the T0 Helm" and cannot double as "owns nothing".
-      gear: {},
-      // Which raid bosses this class has put down. Per class like everything
-      // else here; only gold is shared.
-      raid: emptyRaidState(),
-      // Potions bought from the shop and not yet drunk, `{ health: 3 }`. Per
-      // class for the same reason as the gear: a stocked main should not hand
-      // a fresh alt a rack of potions it never paid for.
-      potions: {},
-    };
-  }
+/**
+ * How many characters an account may keep.
+ *
+ * Eight rather than one-per-class. A character is not a class any more: it is
+ * a slot with its own level, gear, Forge, raid record and potion rack, and its
+ * class is a property of it. Two Warriors are two characters who have never
+ * met, which is the thing a single per-class profile could not express.
+ *
+ * Not a hard ceiling on load. An account migrated from the per-class save can
+ * arrive with nine, and refusing to show a character somebody levelled is not
+ * a cap, it is data loss — so the cap only governs making new ones.
+ */
+export const MAX_CHARACTERS = 8;
+
+/**
+ * A new character. Every field a class profile used to hold, plus the two that
+ * make it a character rather than a class: which class it plays, and a name to
+ * tell it from the other Warrior.
+ */
+export function emptyCharacter(cls, id, name) {
   return {
-    version: 1,
+    id,
+    name: name || cls.name,
+    classId: cls.id,
+    talents: {}, bestWave: 0, kills: 0, runs: 0,
+    loadout: defaultLoadout(cls, 1), mastery: 0, xp: 0,
+    // The Forge is per character, like talents and gear. Account-wide, it was
+    // the one system that made a fresh character start strong — you inherited
+    // every point of it the moment you made one, which is exactly what made a
+    // maxed account play everything the same.
+    forge: {},
+    // Six gear slots, per character, same reasoning. Absent means unowned:
+    // tier 0 is a real tier that costs real gold, so `gear.helm === 0` has to
+    // mean "owns the T0 Helm" and cannot double as "owns nothing".
+    gear: {},
+    // Which raid bosses this character has put down. Per character like
+    // everything else here; only gold is shared.
+    raid: emptyRaidState(),
+    // Potions bought from the shop and not yet drunk, `{ health: 3 }`. Per
+    // character for the same reason as the gear: a stocked main should not
+    // hand a fresh alt a rack of potions it never paid for.
+    potions: {},
+  };
+}
+
+function emptyProfile() {
+  return {
+    version: 2,
     souls: 0,
     lifetimeSouls: 0,
     quests: emptyQuestState(),
     permanent: {},
     armor: {},
-    classes,
-    lastClass: CLASSES[0].id,
+    // No characters at all. A new account lands on the roster screen and picks
+    // a class to make its first one, which is the moment the game now starts.
+    characters: [],
+    activeChar: null,
+    nextCharId: 1,
     stats: { runs: 0, kills: 0, bestWave: 0, timePlayed: 0, deaths: 0 },
     settings: {
       sensitivity: 1.0,
@@ -133,14 +158,12 @@ export class Profile {
         ...base, ...parsed,
         settings: { ...base.settings, ...(parsed.settings || {}) },
         stats: { ...base.stats, ...(parsed.stats || {}) },
-        classes: Object.fromEntries(
-          Object.entries(base.classes).map(([id, v]) => [id, { ...v, ...((parsed.classes || {})[id] || {}) }])
-        ),
         // Repaired rather than merged: a save from before quests existed has
         // no state at all, and one from a build with a different slot count
         // has the wrong shape. Both have to end up playable.
         quests: normaliseQuestState(parsed.quests),
       };
+      if (this.migrateToCharacters(parsed)) migrated = true;
       if (this.migrateToLevels()) migrated = true;
       if (this.refundForge()) migrated = true;
       if (this.refundArmoury()) migrated = true;
@@ -155,6 +178,62 @@ export class Profile {
   }
 
   /**
+   * Progress used to be filed under the class that earned it: exactly one
+   * Warrior per account, forever. It is now filed under a character, and a
+   * character has a class rather than being one — so an account can hold two
+   * Warriors who have never met.
+   *
+   * The conversion is one character per class that was actually played. A
+   * class the player never touched becomes nothing, because an empty slot is
+   * not progress and a roster prefilled with nine untouched characters is a
+   * roster you have to clean up before you can use it.
+   *
+   * Every played class is kept even past the eight-slot cap. Nine classes with
+   * progress is a real save somebody could be holding, and hiding one of them
+   * to respect a limit invented afterwards is data loss dressed up as a rule.
+   */
+  migrateToCharacters(parsed) {
+    if (Array.isArray(parsed.characters)) {
+      this.data.characters = parsed.characters;
+      this.data.nextCharId = parsed.nextCharId
+        || this.data.characters.reduce((n, c) => Math.max(n, (c.id | 0) + 1), 1);
+      return false;
+    }
+    const old = parsed.classes;
+    if (!old) return false;
+
+    const played = [];
+    for (const cls of CLASSES) {
+      const cd = old[cls.id];
+      if (!cd) continue;
+      // "Played" is deliberately generous. Someone who spent gold on gear and
+      // never finished a run still has an account, and dropping it because the
+      // run counter is zero would be the worst possible read of the data.
+      const touched = (cd.xp | 0) > 0 || (cd.runs | 0) > 0 || (cd.bestWave | 0) > 0
+        || Object.keys(cd.talents || {}).length > 0
+        || Object.keys(cd.gear || {}).length > 0
+        || Object.keys(cd.forge || {}).length > 0;
+      if (touched) played.push([cls, cd]);
+    }
+
+    this.data.nextCharId = 1;
+    this.data.characters = played.map(([cls, cd]) => ({
+      ...emptyCharacter(cls, this.data.nextCharId++),
+      ...cd,
+      // The old record had no identity of its own, so these three come from
+      // the conversion rather than from the save.
+      id: this.data.nextCharId - 1,
+      name: cls.name,
+      classId: cls.id,
+    }));
+    // Land on whichever they played last, so the update does not silently
+    // switch which character the main menu is talking about.
+    const last = this.data.characters.find((c) => c.classId === parsed.lastClass);
+    this.data.activeChar = last ? last.id : (this.data.characters[0] || {}).id ?? null;
+    return true;
+  }
+
+  /**
    * Talent points used to come from best wave. They now come from level, and a
    * save written before levels existed has no XP at all — so every player with
    * a talent build would have opened this update to find it wiped and no
@@ -162,12 +241,11 @@ export class Profile {
    *
    * So: grant whatever XP their old point total was worth. They keep every
    * point they had, their spent talents still validate, and from here on the
-   * points come from levelling like everyone else's. Runs first for anyone who
-   * has played, so someone deep in the game does not start at level 1.
+   * points come from levelling like everyone else's.
    */
   migrateToLevels() {
     let changed = false;
-    for (const cd of Object.values(this.data.classes)) {
+    for (const cd of this.data.characters) {
       if (cd.xp || !cd.bestWave) continue;
       const owed = talentPointsForBestWave(cd.bestWave);
       if (owed <= 0) continue;
@@ -188,8 +266,9 @@ export class Profile {
    * equivalent of "level 74 Titanbane" in a shop that no longer sells boss
    * damage, and inventing one would be a guess dressed up as a conversion.
    */
-  forgeLevels(classId) {
-    const cd = this.data.classes[classId];
+  forgeLevels(charId) {
+    const cd = this.character(charId);
+    if (!cd) return {};
     if (!cd.forge) cd.forge = {};
     return cd.forge;
   }
@@ -208,7 +287,7 @@ export class Profile {
       changed = true;
     }
     // And per-class bags, for anything retired or now above the cap.
-    for (const cd of Object.values(this.data.classes)) {
+    for (const cd of this.characters) {
       for (const [id, level] of Object.entries(cd.forge || {})) {
         const def = PERMANENT_BY_ID[id];
         const keep = def ? Math.min(level, def.max) : 0;
@@ -261,7 +340,7 @@ export class Profile {
    * no build ever sold.
    */
   normaliseGear() {
-    for (const cd of Object.values(this.data.classes)) {
+    for (const cd of this.characters) {
       const clean = {};
       for (const slot of GEAR_SLOT_IDS) {
         const t = ownedTier(cd.gear, slot);
@@ -299,13 +378,144 @@ export class Profile {
 
   get settings() { return this.data.settings; }
 
-  classData(classId) { return this.data.classes[classId]; }
+  // --- The roster ----------------------------------------------------------
+
+  /** Every character on the account, in the order they were made. */
+  get characters() {
+    if (!Array.isArray(this.data.characters)) this.data.characters = [];
+    return this.data.characters;
+  }
+
+  /**
+   * One character by id, or the active one when called with nothing.
+   *
+   * Every per-character method funnels through here, so a stale id — a deleted
+   * character still referenced by a menu that has not refreshed — resolves to
+   * *something* rather than throwing halfway through drawing a screen. It
+   * falls back to the active character, then to the first one on the roster.
+   */
+  character(charId) {
+    const list = this.characters;
+    if (charId !== undefined && charId !== null) {
+      const found = list.find((c) => c.id === charId);
+      if (found) return found;
+    }
+    const active = list.find((c) => c.id === this.data.activeChar);
+    return active || list[0] || null;
+  }
+
+  /**
+   * Resolve "who is playing" from either a character id or a class definition.
+   *
+   * Character ids are numbers and class definitions are objects, so the two
+   * can never be confused. The class form exists for the harnesses — a
+   * balance sim wants "run this as a Warrior" and has no interest in the
+   * roster — and it finds that class's first character, making one if the
+   * account has none. Returns a character id.
+   */
+  resolveChar(who) {
+    if (who && typeof who === 'object' && who.id !== undefined && typeof who.id === 'string') {
+      const existing = this.characters.find((c) => c.classId === who.id);
+      if (existing) return existing.id;
+      const made = this.createCharacter(who.id);
+      return made ? made.id : null;
+    }
+    const ch = this.character(who);
+    return ch ? ch.id : null;
+  }
+
+  /** The class definition a character plays. */
+  classOf(charId) {
+    const ch = this.character(charId);
+    return CLASSES.find((c) => c.id === (ch && ch.classId)) || CLASSES[0];
+  }
+
+  /** Which character the menus are talking about. */
+  get activeChar() {
+    const ch = this.character();
+    return ch ? ch.id : null;
+  }
+
+  setActive(charId) {
+    if (!this.characters.some((c) => c.id === charId)) return false;
+    this.data.activeChar = charId;
+    this.save();
+    return true;
+  }
+
+  /** Room for another? The cap governs creation only — see MAX_CHARACTERS. */
+  canCreate() { return this.characters.length < MAX_CHARACTERS; }
+
+  /**
+   * Make a character and select it.
+   *
+   * Names are automatic and only disambiguate: the second Warrior is
+   * "Warrior 2". A roster of eight where three are called Warrior is a roster
+   * you cannot navigate, and asking a player to type a name before they have
+   * played is a wall in front of the game.
+   */
+  createCharacter(classId) {
+    if (!this.canCreate()) return null;
+    const cls = CLASSES.find((c) => c.id === classId) || CLASSES[0];
+    const sameClass = this.characters.filter((c) => c.classId === cls.id).length;
+    const name = sameClass ? `${cls.name} ${sameClass + 1}` : cls.name;
+    const ch = emptyCharacter(cls, this.data.nextCharId || 1, name);
+    this.data.nextCharId = (this.data.nextCharId || 1) + 1;
+    this.characters.push(ch);
+    this.data.activeChar = ch.id;
+    this.save();
+    return ch;
+  }
+
+  /**
+   * Delete one, freeing its slot. Its gold stays on the account — gold was
+   * never the character's, and taking it back would punish a player for
+   * clearing out a slot they had stopped using.
+   */
+  deleteCharacter(charId) {
+    const i = this.characters.findIndex((c) => c.id === charId);
+    if (i < 0) return false;
+    this.characters.splice(i, 1);
+    if (this.data.activeChar === charId) {
+      this.data.activeChar = this.characters.length ? this.characters[0].id : null;
+    }
+    this.save();
+    return true;
+  }
+
+  /**
+   * Change which class a character plays, keeping everything that is not about
+   * the class.
+   *
+   * Level, gear, Forge, raid record and potions all survive, because none of
+   * them is class-specific — a tier 3 chest is a tier 3 chest. Talents cannot:
+   * the trees are different shapes and a Warrior's Arms ranks mean nothing on
+   * a Priest. So the points come back unspent, which is a respec rather than a
+   * loss, and the skill bar resets to what the new class starts with.
+   */
+  switchClass(charId, classId) {
+    const ch = this.character(charId);
+    const cls = CLASSES.find((c) => c.id === classId);
+    if (!ch || !cls || ch.classId === classId) return false;
+    ch.classId = cls.id;
+    ch.talents = {};
+    ch.loadout = defaultLoadout(cls, this.level(ch.id)).map((s) => s.id);
+    // Rename only if the old name was the one we gave it. A name the player
+    // never chose should follow the class; one they did choose is theirs.
+    if (CLASSES.some((c) => ch.name === c.name || ch.name.startsWith(c.name + ' '))) {
+      const others = this.characters.filter((c) => c !== ch && c.classId === cls.id).length;
+      ch.name = others ? `${cls.name} ${others + 1}` : cls.name;
+    }
+    this.save();
+    return true;
+  }
 
   // --- Gear ------------------------------------------------------------------
 
   /** A class's six slots. Shared gold, separate gear — see `armor.js`. */
-  gear(classId) {
-    const cd = this.data.classes[classId];
+  gear(charId) {
+    const cd = this.character(charId);
+    if (!cd) return {};
     if (!cd.gear) cd.gear = {};
     return cd.gear;
   }
@@ -317,13 +527,14 @@ export class Profile {
    * that crosses between classes — a Core earned on the Hunter buys the Hunter
    * nothing on the Warrior, which is the whole point of the two being separate.
    */
-  cores(classId) {
-    return earnedCores(this.raidState(classId));
+  cores(charId) {
+    return earnedCores(this.raidState(charId));
   }
 
   /** Which raid bosses this class has put down. */
-  raidState(classId) {
-    const cd = this.data.classes[classId];
+  raidState(charId) {
+    const cd = this.character(charId);
+    if (!cd) return emptyRaidState();
     if (!cd.raid) cd.raid = emptyRaidState();
     return cd.raid;
   }
@@ -335,10 +546,12 @@ export class Profile {
    * disabled and the purchase that is refused agree by construction instead of
    * by two copies of the same conditions staying in step.
    */
-  buyGear(classId, slotId) {
-    const gear = this.gear(classId);
-    const verdict = canBuy(classId, slotId, gear, this.level(classId), this.souls,
-      this.cores(classId));
+  buyGear(charId, slotId) {
+    const gear = this.gear(charId);
+    // canBuy is keyed by *class* — the piece names and their flavour come from
+    // it — while everything else here is keyed by character.
+    const verdict = canBuy(this.classOf(charId).id, slotId, gear, this.level(charId),
+      this.souls, this.cores(charId));
     if (!verdict.ok) return verdict;
     this.data.souls -= verdict.cost;
     gear[slotId] = verdict.next;
@@ -349,20 +562,21 @@ export class Profile {
   // --- The Potion Shop -----------------------------------------------------
 
   /** What this class is carrying, `{ health: 3 }`. Live object — mutate it. */
-  potions(classId) {
-    const cd = this.data.classes[classId];
+  potions(charId) {
+    const cd = this.character(charId);
+    if (!cd) return {};
     if (!cd.potions) cd.potions = {};
     return cd.potions;
   }
 
   /** How many of one kind this class holds. */
-  potionCount(classId, potionId) {
-    return Math.max(0, Math.min(POTION_STACK, (this.potions(classId)[potionId] | 0)));
+  potionCount(charId, potionId) {
+    return Math.max(0, Math.min(POTION_STACK, (this.potions(charId)[potionId] | 0)));
   }
 
   /** What one costs this class right now — the price follows its level. */
-  potionPriceFor(classId, potionId) {
-    return potionPrice(potionId, this.level(classId));
+  potionPriceFor(charId, potionId) {
+    return potionPrice(potionId, this.level(charId));
   }
 
   /**
@@ -371,13 +585,14 @@ export class Profile {
    *
    * Returns `{ ok, reason, cost, count }`.
    */
-  buyPotion(classId, potionId) {
-    const cost = this.potionPriceFor(classId, potionId);
-    const held = this.potionCount(classId, potionId);
+  buyPotion(charId, potionId) {
+    if (!this.character(charId)) return { ok: false, reason: 'nobody', cost: 0, count: 0 };
+    const cost = this.potionPriceFor(charId, potionId);
+    const held = this.potionCount(charId, potionId);
     if (held >= POTION_STACK) return { ok: false, reason: 'full', cost, count: held };
     if (this.souls < cost) return { ok: false, reason: 'poor', cost, count: held };
     this.data.souls -= cost;
-    this.potions(classId)[potionId] = held + 1;
+    this.potions(charId)[potionId] = held + 1;
     this.save();
     return { ok: true, cost, count: held + 1 };
   }
@@ -390,10 +605,10 @@ export class Profile {
    * drunk on the wave that killed you is spent, and a player who closed the
    * tab mid-fight should not find it back on the shelf.
    */
-  consumePotion(classId, potionId) {
-    const held = this.potionCount(classId, potionId);
+  consumePotion(charId, potionId) {
+    const held = this.potionCount(charId, potionId);
     if (held <= 0) return false;
-    const rack = this.potions(classId);
+    const rack = this.potions(charId);
     if (held === 1) delete rack[potionId];
     else rack[potionId] = held - 1;
     this.save();
@@ -410,50 +625,54 @@ export class Profile {
    * here is the one mistake that would let a locked skill into a run, so it is
    * read from the same place the menus read it.
    */
-  loadout(cls) {
-    const cd = this.classData(cls.id);
-    return resolveLoadout(cls, cd.loadout, this.level(cls.id));
+  loadout(charId) {
+    const cd = this.character(charId);
+    if (!cd) return [];
+    return resolveLoadout(this.classOf(cd.id), cd.loadout, this.level(cd.id));
   }
 
   /** Persist a loadout, normalised so a bad list can never be stored. */
-  setLoadout(cls, ids) {
-    const cd = this.classData(cls.id);
-    cd.loadout = resolveLoadout(cls, ids, this.level(cls.id)).map((s) => s.id);
+  setLoadout(charId, ids) {
+    const cd = this.character(charId);
+    if (!cd) return [];
+    cd.loadout = resolveLoadout(this.classOf(cd.id), ids, this.level(cd.id)).map((s) => s.id);
     this.save();
     return cd.loadout;
   }
 
   // --- Mastery -------------------------------------------------------------
 
-  masteryRank(classId) { return masteryRank(this.classData(classId).mastery || 0); }
+  masteryRank(charId) { return masteryRank((this.character(charId) || {}).mastery || 0); }
 
-  masteryProgress(classId) { return masteryProgress(this.classData(classId).mastery || 0); }
+  masteryProgress(charId) { return masteryProgress((this.character(charId) || {}).mastery || 0); }
 
-  spentTalentPoints(classId) {
-    const ranks = this.data.classes[classId].talents;
+  spentTalentPoints(charId) {
+    const ranks = (this.character(charId) || {}).talents || {};
     return Object.values(ranks).reduce((a, b) => a + b, 0);
   }
 
   // --- Levels ---------------------------------------------------------------
 
   /** Total XP this class has banked. */
-  classXp(classId) { return this.data.classes[classId].xp || 0; }
+  classXp(charId) { return (this.character(charId) || {}).xp || 0; }
 
-  level(classId) { return levelFromXp(this.classXp(classId)); }
+  level(charId) { return levelFromXp(this.classXp(charId)); }
 
   /** Level, progress into it, and the raw numbers the bar is drawn from. */
-  levelProgress(classId) { return levelProgress(this.classXp(classId)); }
+  levelProgress(charId) { return levelProgress(this.classXp(charId)); }
 
-  totalTalentPoints(classId) {
-    return talentPointsForLevel(this.level(classId));
+  totalTalentPoints(charId) {
+    return talentPointsForLevel(this.level(charId));
   }
 
-  availableTalentPoints(classId) {
-    return this.totalTalentPoints(classId) - this.spentTalentPoints(classId);
+  availableTalentPoints(charId) {
+    return this.totalTalentPoints(charId) - this.spentTalentPoints(charId);
   }
 
-  respec(classId) {
-    this.data.classes[classId].talents = {};
+  respec(charId) {
+    const cd = this.character(charId);
+    if (!cd) return;
+    cd.talents = {};
     this.save();
   }
 
@@ -491,14 +710,15 @@ export class Profile {
 
   rerollCost(q) { return rerollCost(q); }
 
-  finishRun(classId, { wave, kills, souls, duration, quests, xp }) {
-    const cd = this.data.classes[classId];
+  finishRun(charId, { wave, kills, souls, duration, quests, xp }) {
+    const cd = this.character(charId);
+    if (!cd) return;
     // Banked before anything else so `lastLevelUps` is available to the
     // results screen in the same call that produced it.
-    const before = this.level(classId);
+    const before = this.level(charId);
     cd.xp = (cd.xp || 0) + Math.max(0, Math.round(xp || 0));
     this.lastLevelUps = [];
-    for (let L = before + 1; L <= this.level(classId); L++) this.lastLevelUps.push(L);
+    for (let L = before + 1; L <= this.level(charId); L++) this.lastLevelUps.push(L);
     cd.runs++;
     cd.kills += kills;
     cd.bestWave = Math.max(cd.bestWave, wave);
@@ -510,7 +730,6 @@ export class Profile {
     this.data.stats.bestWave = Math.max(this.data.stats.bestWave, wave);
     this.data.stats.timePlayed += duration;
     this.data.stats.deaths++;
-    this.data.lastClass = classId;
     // Quest progress is banked here so it lands in the same write as the run
     // it came from — two separate saves means a crash between them can pay a
     // quest for a run that was never recorded, or the reverse.

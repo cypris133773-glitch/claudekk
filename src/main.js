@@ -115,8 +115,8 @@ const menus = new Menus(uiRoot, {
     isOn: () => isFullscreen(),
     toggle: () => { if (isFullscreen()) exitFullscreen(); else enterFullscreen(); },
   },
-  startRun: (cls) => startRun(cls),
-  startRaid: (cls, raid) => startRaid(cls, raid),
+  startRun: (charId) => startRun(charId),
+  startRaid: (charId, raid) => startRaid(charId, raid),
   continueRaid: () => continueRaid(),
   leaveRaid: (to) => leaveRaid(to),
   resumeRun: () => resumeRun(),
@@ -236,7 +236,7 @@ function hideLoading() { loadingEl.classList.add('hidden'); }
 /** Yield twice so the browser actually paints before a blocking step. */
 const nextPaint = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
 
-async function startRun(cls) {
+async function startRun(charId) {
   // Both of these need the user gesture that is still on the stack.
   audio.ensure();
   // Desktop benefits from this as much as a phone does — a windowed browser
@@ -254,7 +254,7 @@ async function startRun(cls) {
   try {
     // Generating and meshing the arena blocks for a moment on a phone; the
     // loading screen above is already painted, so it reads as loading.
-    game.startRun(cls);
+    game.startRun(charId);
     applyAimAssist();
   } catch (err) {
     hideLoading();
@@ -271,17 +271,17 @@ async function startRun(cls) {
 }
 
 /**
- * Enter a raid at whatever boss this class has left standing. Shares startRun's
+ * Enter a raid at whatever boss this character has left standing. Shares startRun's
  * whole preamble — audio, fullscreen, the loading screen — because the failure
  * it guards against is the same one: generating an arena blocks for a moment on
  * a phone, and a frozen black screen reads as a crash.
  */
-async function startRaid(cls, raid) {
+async function startRaid(charId, raid) {
   audio.ensure();
   if (profile.settings.fullscreenOnPlay && fullscreenUsable) enterFullscreen();
   document.getElementById('rotate-hint').classList.add('hidden');
 
-  const st = profile.raidState(cls.id);
+  const st = profile.raidState(charId);
   const next = nextBoss(st, raid);
   if (!next) return;
 
@@ -289,7 +289,7 @@ async function startRaid(cls, raid) {
   showLoading('Opening the gates…', 15);
   await nextPaint();
   try {
-    game.startRaid(cls, raid, next.index);
+    game.startRaid(charId, raid, next.index);
     applyAimAssist();
   } catch (err) {
     hideLoading();

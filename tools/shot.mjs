@@ -65,16 +65,21 @@ function startServer() {
 
 function prime() {
   const B = window.CRAFTARENA;
-  const cls = B.CLASSES[0];
-  if (!B.game.running) B.game.startRun(cls);
+  while (B.profile.canCreate()) {
+    B.profile.createCharacter(B.CLASSES[B.profile.characters.length % B.CLASSES.length].id);
+  }
+  const charId = B.profile.characters[0].id;
+  B.profile.setActive(charId);
+  B.menus.selectedChar = charId;
+  B.menus.talentChar = charId;
+  if (!B.game.running) B.game.startRun(charId);
   B.game.wave = 7;
   B.game.soulsEarned = 420;
   B.profile.data.souls = 250000;
   // Optional: hand the shown class a level and a full set, so gear screens can
   // be photographed in the state that matters rather than empty.
   if (window.__shotGear !== undefined) {
-    for (const c of B.CLASSES) {
-      const cd = B.profile.data.classes[c.id];
+    for (const cd of B.profile.characters) {
       cd.xp = 1e9;
       cd.gear = {};
       for (const s of B.GEAR_SLOT_IDS) cd.gear[s] = window.__shotGear;
@@ -122,7 +127,7 @@ if (process.env.SHOT_RAID) {
   await frame.evaluate((id) => {
     const B = window.CRAFTARENA;
     B.menus.show(null);
-    B.game.startRaid(B.CLASSES[0], B.RAID_BY_ID[id], Number(window.__shotBoss || 0));
+    B.game.startRaid(B.profile.characters[0].id, B.RAID_BY_ID[id], Number(window.__shotBoss || 0));
   }, process.env.SHOT_RAID);
   await page.waitForTimeout(900);
   // Walk the aim lock onto the boss so the outline is in the shot.

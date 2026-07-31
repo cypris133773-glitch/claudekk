@@ -47,16 +47,32 @@ export function makeHarness(opts = {}) {
       classes, souls: 0, stats: {},
     },
     settings: { showDamage: false, difficulty: opts.difficulty || 1 },
-    classData: (id) => classes[id],
-    // The Forge moved into the per-class bag; the harness keeps one bag per
-    // class so a fixture can hand a single class a stocked Forge.
+    // The game addresses progress by character id. The harness keeps one
+    // character per class and uses the class id as the character id, so a
+    // fixture still says "run this as a Warrior" and gets exactly one Warrior.
+    resolveChar: (who) => (who && typeof who === 'object' ? who.id : who),
+    classOf: (id) => CLASSES.find((c) => c.id === id) || CLASSES[0],
+    character: (id) => classes[id],
+    // The Forge moved into the per-character bag; the harness keeps one bag
+    // per class so a fixture can hand a single one a stocked Forge.
     forgeLevels: (id) => (classes[id].forge || (classes[id].forge = {})),
     gear: (id) => classes[id].gear,
     raidState: (id) => (classes[id].raid || (classes[id].raid = { killed: {} })),
     level: () => level,
     // Level 60 by default: a harness that only ever saw a level-1 pool would
     // test two skills out of thirteen.
-    loadout: (cls) => resolveLoadout(cls, classes[cls.id].loadout, level),
+    loadout: (id) => resolveLoadout(
+      CLASSES.find((c) => c.id === id) || CLASSES[0], classes[id].loadout, level),
+    // The potion belt. Empty unless a fixture stocks it, so a run in the
+    // harness never quietly heals itself off a rack nobody asked for.
+    potions: (id) => (classes[id].potions || (classes[id].potions = {})),
+    potionCount: (id, pid) => ((classes[id].potions || {})[pid] | 0),
+    consumePotion: (id, pid) => {
+      const rack = classes[id].potions || (classes[id].potions = {});
+      if (!rack[pid]) return false;
+      rack[pid]--;
+      return true;
+    },
     finishRun() {}, save() {},
   };
 

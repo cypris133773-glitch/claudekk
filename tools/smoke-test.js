@@ -301,17 +301,17 @@ check('a save loses no gold when the Forge shrinks', async () => {
   profile.data = {
     souls: 0,
     permanent: { [retired]: 40 },              // the old account-wide bag
-    classes: { warrior: { forge: { [live.id]: 60 } } },   // and a per-class one
+    characters: [{ id: 1, classId: 'warrior', forge: { [live.id]: 60 } }],
   };
 
   assert(profile.refundForge(), 'the refund did nothing');
   assert(profile.data.permanent[retired] === undefined, 'a retired track survived');
-  // The account-wide bag is emptied outright: the shop is per class now, and
-  // there is no honest way to decide which of nine classes an account-wide
+  // The account-wide bag is emptied outright: the shop is per character now,
+  // and there is no honest way to decide which character an account-wide
   // purchase should belong to.
   assert(Object.keys(profile.data.permanent).length === 0, 'the account-wide bag survived');
-  assert(profile.data.classes.warrior.forge[live.id] === live.max,
-    `the surviving track sits at ${profile.data.classes.warrior.forge[live.id]}`);
+  assert(profile.data.characters[0].forge[live.id] === live.max,
+    `the surviving track sits at ${profile.data.characters[0].forge[live.id]}`);
 
   // Paid back at exactly what it cost — the levels taken away are [keep, had).
   let want = 0;
@@ -667,7 +667,7 @@ check('tiers are level-gated and cannot be skipped', () => {
   assert(poor.poor && !poor.locked, 'being broke reads as being under-levelled');
 });
 
-check('one class clearing a raid buys another class nothing', async () => {
+check('one character clearing a raid buys another character nothing', async () => {
   // The bug this exists for, reported from play: a Hunter cleared tier 0, and
   // the account's level-1 Warrior could then buy the whole T0 set. Gold is
   // global by design, so the Hunter's winnings fund the Warrior — and without
@@ -679,34 +679,44 @@ check('one class clearing a raid buys another class nothing', async () => {
 
   const p = new Profile();
   p.data.souls = 5e6;
+  const hunter = p.createCharacter('hunter').id;
+  const warrior = p.createCharacter('warrior').id;
   // The Hunter clears tier 0 outright.
-  for (const b of raid.bosses) p.raidState('hunter').killed[b.id] = true;
+  for (const b of raid.bosses) p.raidState(hunter).killed[b.id] = true;
   // And the Warrior is levelled past the gate but has never been in a raid.
-  p.data.classes.warrior.xp = 1e6;
-  assert(p.level('warrior') >= raid.level, 'the fixture warrior is under-levelled');
+  p.character(warrior).xp = 1e6;
+  assert(p.level(warrior) >= raid.level, 'the fixture warrior is under-levelled');
 
   for (const slot of GEAR_SLOT_IDS) {
-    const v = p.buyGear('warrior', slot);
+    const v = p.buyGear(warrior, slot);
     assert(!v.ok && v.needsCore,
       `the warrior bought a ${slot} on the hunter's clear (${v.reason})`);
-    assert(ownedTier(p.gear('warrior'), slot) === -1, `${slot} was written anyway`);
+    assert(ownedTier(p.gear(warrior), slot) === -1, `${slot} was written anyway`);
   }
   assert(p.souls === 5e6, 'gold was spent on a refused purchase');
 
   // The Hunter, which did the work, can buy its set.
   for (const slot of GEAR_SLOT_IDS) {
-    assert(p.cores('hunter').has(coreId(0, slot)), `hunter is missing its ${slot} core`);
+    assert(p.cores(hunter).has(coreId(0, slot)), `hunter is missing its ${slot} core`);
   }
-  p.data.classes.hunter.xp = 1e6;
-  const bought = p.buyGear('hunter', 'weapon');
-  assert(bought.ok && ownedTier(p.gear('hunter'), 'weapon') === 0,
-    'the class that cleared the raid could not buy its own piece');
+  p.character(hunter).xp = 1e6;
+  const bought = p.buyGear(hunter, 'weapon');
+  assert(bought.ok && ownedTier(p.gear(hunter), 'weapon') === 0,
+    'the character that cleared the raid could not buy its own piece');
 
   // And the Core only ever opens the tier it came from. Clearing tier 0 six
   // times over does not put a T1 piece within reach.
-  p.data.classes.hunter.gear = Object.fromEntries(GEAR_SLOT_IDS.map((s) => [s, 0]));
-  const next = p.buyGear('hunter', 'weapon');
+  p.character(hunter).gear = Object.fromEntries(GEAR_SLOT_IDS.map((s) => [s, 0]));
+  const next = p.buyGear(hunter, 'weapon');
   assert(!next.ok && next.needsCore, `a T0 clear sold a T1 weapon (${next.reason})`);
+
+  // And two Warriors are two characters. The second one starts with nothing,
+  // which is the thing a per-class save could not express at all.
+  const warrior2 = p.createCharacter('warrior').id;
+  assert(warrior2 !== warrior, 'the second warrior reused the first one\'s slot');
+  p.character(warrior).gear = { weapon: 3 };
+  assert(ownedTier(p.gear(warrior2), 'weapon') === -1,
+    'the second warrior inherited the first one\'s weapon');
 });
 
 check('catching up on gear costs a fraction of a run', () => {
@@ -1275,16 +1285,62 @@ check('an older save keeps the talent points it already had', async () => {
   // talent build in the game and leave no points to rebuild with.
   const profile = Object.create(Profile.prototype);
   profile.data = {
-    classes: { warrior: { talents: { w_a1: 4 }, bestWave: 30, xp: 0 } },
+    characters: [{ id: 1, classId: 'warrior', talents: { w_a1: 4 }, bestWave: 30, xp: 0 }],
+    activeChar: 1,
   };
   const owed = talentPointsForBestWave(30);
   assert(profile.migrateToLevels(), 'the migration did nothing');
-  assert(profile.totalTalentPoints('warrior') >= owed,
-    `player had ${owed} points and the migration left ${profile.totalTalentPoints('warrior')}`);
+  assert(profile.totalTalentPoints(1) >= owed,
+    `player had ${owed} points and the migration left ${profile.totalTalentPoints(1)}`);
   // Idempotent: booting twice must not keep granting XP.
-  const after = profile.data.classes.warrior.xp;
+  const after = profile.data.characters[0].xp;
   assert(!profile.migrateToLevels(), 'the migration ran a second time');
-  assert(profile.data.classes.warrior.xp === after, 'a second boot granted more XP');
+  assert(profile.data.characters[0].xp === after, 'a second boot granted more XP');
+});
+
+check('a per-class save becomes a roster without losing anybody', async () => {
+  // The save format changed under every existing account. Progress was filed
+  // by class; it is filed by character now. Getting this wrong does not throw
+  // — it silently opens the game on an empty roster, which from the player's
+  // side is indistinguishable from the update having deleted everything.
+  const { Profile, MAX_CHARACTERS } = await import('../src/core/save.js');
+  const profile = Object.create(Profile.prototype);
+  profile.data = { characters: [], nextCharId: 1 };
+  const legacy = {
+    lastClass: 'mage',
+    classes: {
+      warrior: { xp: 5000, bestWave: 12, talents: { w_a1: 3 }, gear: { helm: 2 } },
+      mage: { xp: 900, bestWave: 4 },
+      // Never touched. An untouched class is not a character — a roster
+      // prefilled with nine of them is a roster you have to clear before use.
+      priest: { xp: 0, bestWave: 0, runs: 0, talents: {}, gear: {}, forge: {} },
+    },
+  };
+  assert(profile.migrateToCharacters(legacy), 'the migration did nothing');
+  assert(profile.characters.length === 2,
+    `converted ${profile.characters.length} characters, wanted the 2 that were played`);
+  const w = profile.characters.find((c) => c.classId === 'warrior');
+  assert(w.xp === 5000 && w.bestWave === 12, 'the warrior lost its progress');
+  assert(w.talents.w_a1 === 3, 'the warrior lost its talents');
+  assert(w.gear.helm === 2, 'the warrior lost its gear');
+  assert(w.name === 'Warrior' && w.id !== undefined, 'the warrior has no identity');
+  // Lands on whoever they played last, or the update silently switches
+  // which character every menu is talking about.
+  assert(profile.classOf(profile.data.activeChar).id === 'mage', 'the last-played class was not selected');
+  // Idempotent: a save already in the new shape is left alone.
+  assert(!profile.migrateToCharacters({ characters: profile.characters }), 'the migration ran twice');
+
+  // And nine played classes all survive, even though the cap is eight. Hiding
+  // one to respect a limit invented afterwards is data loss dressed as a rule.
+  const full = Object.create(Profile.prototype);
+  full.data = { characters: [], nextCharId: 1 };
+  full.migrateToCharacters({
+    classes: Object.fromEntries(CLASSES.map((c) => [c.id, { xp: 100, bestWave: 3 }])),
+  });
+  assert(full.characters.length === CLASSES.length,
+    `${CLASSES.length} played classes became ${full.characters.length} characters`);
+  assert(!full.canCreate(), 'an over-cap roster still offers a new slot');
+  assert(MAX_CHARACTERS === 8, 'the slot count moved without this test noticing');
 });
 
 // --- Armoury depth ---------------------------------------------------------
@@ -1777,6 +1833,75 @@ check('a keyboard can play the whole game', async () => {
   }
 });
 
+check('switching a class keeps everything that is not about the class', async () => {
+  const { Profile } = await import('../src/core/save.js');
+  const p = new Profile();
+  const id = p.createCharacter('warrior').id;
+  const ch = p.character(id);
+  ch.xp = 250000;
+  ch.gear = { weapon: 3, chest: 2 };
+  ch.forge = { p_alch: 2 };
+  ch.raid.killed.jindo = true;
+  ch.potions = { health: 3 };
+  ch.talents = { w_a1: 5 };
+  const level = p.level(id);
+
+  assert(p.switchClass(id, 'priest'), 'the switch was refused');
+  // A tier 3 chest is a tier 3 chest. None of these is about the class, so
+  // none of them should notice.
+  assert(p.level(id) === level, `level went from ${level} to ${p.level(id)}`);
+  assert(p.gear(id).weapon === 3, 'the gear was lost');
+  assert(p.forgeLevels(id).p_alch === 2, 'the Forge was lost');
+  assert(p.raidState(id).killed.jindo, 'the raid record was lost');
+  assert(p.potionCount(id, 'health') === 3, 'the potion rack was lost');
+
+  // Talents cannot survive: a Warrior's Arms ranks name nodes a Priest does
+  // not have. The points come back unspent, which is a respec, not a loss.
+  assert(Object.keys(p.character(id).talents).length === 0, 'Warrior talents survived on a Priest');
+  assert(p.availableTalentPoints(id) === p.totalTalentPoints(id),
+    'the refunded points did not come back');
+  // And the loadout has to be the new class's, or a run casts skills the
+  // character does not have.
+  const { CLASS_BY_ID } = await import('../src/data/classes.js');
+  const priestSkills = new Set(CLASS_BY_ID.priest.skills.map((s) => s.id));
+  for (const s of p.loadout(id)) {
+    assert(priestSkills.has(s.id), `${s.id} is not a Priest skill`);
+  }
+  // The auto-name follows, because the player never chose it.
+  assert(p.character(id).name === 'Priest', `the name stayed ${p.character(id).name}`);
+});
+
+check('deleting a character frees its slot and keeps the gold', async () => {
+  const { Profile, MAX_CHARACTERS } = await import('../src/core/save.js');
+  const p = new Profile();
+  p.data.souls = 12345;
+  const ids = [];
+  while (p.canCreate()) ids.push(p.createCharacter('warrior').id);
+  assert(ids.length === MAX_CHARACTERS, `made ${ids.length} of ${MAX_CHARACTERS}`);
+  assert(!p.createCharacter('mage'), 'a ninth character was made');
+
+  // Gold was never the character's — taking it back would punish a player for
+  // clearing a slot they had stopped using.
+  assert(p.deleteCharacter(ids[0]), 'the delete was refused');
+  assert(p.souls === 12345, `deleting cost ${12345 - p.souls} gold`);
+  assert(p.canCreate(), 'the slot was not freed');
+  assert(p.characters.length === MAX_CHARACTERS - 1, 'the roster did not shrink');
+
+  // The active character has to still exist, or every menu is about nobody.
+  p.setActive(ids[1]);
+  p.deleteCharacter(ids[1]);
+  assert(p.characters.some((c) => c.id === p.activeChar),
+    'deleting the active character left the roster pointing at a ghost');
+
+  // And an empty roster is a state the accessors must survive, not crash on.
+  for (const c of [...p.characters]) p.deleteCharacter(c.id);
+  assert(p.characters.length === 0, 'the roster would not empty');
+  assert(p.activeChar === null, 'an empty roster still names somebody');
+  assert(p.level() === 1 && p.gear() && p.potionCount(null, 'health') === 0
+    && p.forgeLevels().p_alch === undefined && p.raidState().killed,
+    'an accessor threw or lied on an empty roster');
+});
+
 check('the Potion Shop is a restock, not a second gear track', async () => {
   const { POTIONS, POTION_STACK, potionPrice } = await import('../src/data/potions.js');
   const { gearCost, GEAR_TIERS, GEAR_SLOTS } = await import('../src/data/armor.js');
@@ -1809,56 +1934,63 @@ check('the Potion Shop is a restock, not a second gear track', async () => {
   }
 });
 
-check('a potion rack is bought, spent, and kept by one class', async () => {
+check('a potion rack is bought, spent, and kept by one character', async () => {
   const { Profile } = await import('../src/core/save.js');
   const { POTION_STACK } = await import('../src/data/potions.js');
   const p = new Profile();
   p.data.souls = 1e6;
+  const a = p.createCharacter('warrior').id;
+  const b = p.createCharacter('mage').id;
 
   // Stacks cap. Without one the shop would sell you out of ever being in
   // trouble, and the arena would stop being the thing that kills you.
-  for (let i = 0; i < POTION_STACK + 3; i++) p.buyPotion('warrior', 'health');
-  assert(p.potionCount('warrior', 'health') === POTION_STACK,
-    `carried ${p.potionCount('warrior', 'health')}, cap is ${POTION_STACK}`);
-  const full = p.buyPotion('warrior', 'health');
+  for (let i = 0; i < POTION_STACK + 3; i++) p.buyPotion(a, 'health');
+  assert(p.potionCount(a, 'health') === POTION_STACK,
+    `carried ${p.potionCount(a, 'health')}, cap is ${POTION_STACK}`);
+  const full = p.buyPotion(a, 'health');
   assert(!full.ok && full.reason === 'full', 'a full rack still sold one');
 
-  // Per class, like the gear. A stocked main must not hand a fresh alt a rack.
-  assert(p.potionCount('mage', 'health') === 0, 'the mage inherited the warrior rack');
+  // Per character, like the gear. A stocked main must not hand a fresh alt a
+  // rack — and that includes a second character of the same class.
+  assert(p.potionCount(b, 'health') === 0, 'the mage inherited the warrior rack');
+  const a2 = p.createCharacter('warrior').id;
+  assert(p.potionCount(a2, 'health') === 0, 'the second warrior inherited the first one\'s rack');
 
   // Gold actually leaves.
   const before = p.souls;
-  const cost = p.potionPriceFor('mage', 'damage');
-  assert(p.buyPotion('mage', 'damage').ok, 'the mage could not buy one');
+  const cost = p.potionPriceFor(b, 'damage');
+  assert(p.buyPotion(b, 'damage').ok, 'the mage could not buy one');
   assert(p.souls === before - cost, `spent ${before - p.souls}, priced at ${cost}`);
 
   // Drinking spends it, and an empty shelf refuses rather than going negative.
-  assert(p.consumePotion('mage', 'damage'), 'could not drink the one just bought');
-  assert(p.potionCount('mage', 'damage') === 0, 'drinking left it on the shelf');
-  assert(!p.consumePotion('mage', 'damage'), 'drank from an empty shelf');
-  assert(p.potionCount('mage', 'damage') === 0, 'an empty shelf went negative');
+  assert(p.consumePotion(b, 'damage'), 'could not drink the one just bought');
+  assert(p.potionCount(b, 'damage') === 0, 'drinking left it on the shelf');
+  assert(!p.consumePotion(b, 'damage'), 'drank from an empty shelf');
+  assert(p.potionCount(b, 'damage') === 0, 'an empty shelf went negative');
 
   // Not enough gold is a refusal, not a debt.
   p.data.souls = 0;
-  const broke = p.buyPotion('priest', 'speed');
+  const broke = p.buyPotion(b, 'speed');
   assert(!broke.ok && broke.reason === 'poor', 'bought a potion with no gold');
   assert(p.souls === 0, 'gold went negative');
 });
 
 check('a save from before the Potion Shop still loads', async () => {
-  // Every class gained a `potions` key. A save written last week has none, and
-  // the normaliser is the only thing standing between that and a crash on the
-  // first shop visit.
+  // Every character gained a `potions` key. A save written last week has none,
+  // and the normaliser is the only thing standing between that and a crash on
+  // the first shop visit.
   const { Profile } = await import('../src/core/save.js');
-  const p = new Profile();
-  delete p.data.classes.warrior.potions;
-  p.data.classes.mage.potions = { health: -4, nonesuch: 9, damage: 999 };
-  p.normaliseGear();
-  assert(p.potionCount('warrior', 'health') === 0, 'a missing rack did not become empty');
-  assert(p.potionCount('mage', 'health') === 0, 'a negative count survived');
-  assert(p.potions('mage').nonesuch === undefined, 'a potion that does not exist survived');
   const { POTION_STACK } = await import('../src/data/potions.js');
-  assert(p.potionCount('mage', 'damage') === POTION_STACK, 'an over-cap count was not clamped');
+  const p = new Profile();
+  const a = p.createCharacter('warrior').id;
+  const b = p.createCharacter('mage').id;
+  delete p.character(a).potions;
+  p.character(b).potions = { health: -4, nonesuch: 9, damage: 999 };
+  p.normaliseGear();
+  assert(p.potionCount(a, 'health') === 0, 'a missing rack did not become empty');
+  assert(p.potionCount(b, 'health') === 0, 'a negative count survived');
+  assert(p.potions(b).nonesuch === undefined, 'a potion that does not exist survived');
+  assert(p.potionCount(b, 'damage') === POTION_STACK, 'an over-cap count was not clamped');
 });
 
 check('every talent effect can be explained on screen', async () => {
@@ -2053,28 +2185,36 @@ check('you can see across every arena', async () => {
   }
 });
 
-check('the Forge is bought and kept by one class at a time', async () => {
+check('the Forge is bought and kept by one character at a time', async () => {
   const { Profile } = await import('../src/core/save.js');
   const { PERMANENT, permanentMods } = await import('../src/data/permanent.js');
   const p = new Profile();
   const track = PERMANENT[0];
+  const hunterId = p.createCharacter('hunter').id;
+  const warriorId = p.createCharacter('warrior').id;
 
-  p.forgeLevels('hunter')[track.id] = track.max;
-  assert(!(track.id in p.forgeLevels('warrior')),
-    'a Forge track bought on one class appeared on another');
-  const hunter = permanentMods(p.forgeLevels('hunter'));
-  const warrior = permanentMods(p.forgeLevels('warrior'));
+  p.forgeLevels(hunterId)[track.id] = track.max;
+  assert(!(track.id in p.forgeLevels(warriorId)),
+    'a Forge track bought on one character appeared on another');
+  const hunter = permanentMods(p.forgeLevels(hunterId));
+  const warrior = permanentMods(p.forgeLevels(warriorId));
   assert(Object.keys(hunter).length > 0, 'the hunter got nothing for a maxed track');
   assert(Object.keys(warrior).length === 0, 'the warrior inherited the hunter\'s Forge');
 
+  // Two of the same class are two characters, which is exactly what the old
+  // per-class bag could not say.
+  const hunter2 = p.createCharacter('hunter').id;
+  assert(!(track.id in p.forgeLevels(hunter2)),
+    'the second hunter inherited the first one\'s Forge');
+
   // And the run reads the same bag the menu writes. Account-wide, the Forge was
-  // the one system that made a fresh class start strong — every point of it
-  // arrived the moment you picked one, which is what made nine classes play the
-  // same.
+  // the one system that made a fresh character start strong — every point of it
+  // arrived the moment you made one, which is what made every character play
+  // the same.
   const { readFile } = await import('node:fs/promises');
   const game = await readFile(new URL('../src/game/game.js', import.meta.url), 'utf8');
-  assert(game.includes('permanentMods(this.profile.forgeLevels(classDef.id))'),
-    'a run no longer reads the per-class Forge');
+  assert(game.includes('permanentMods(this.profile.forgeLevels(this.charId))'),
+    'a run no longer reads the per-character Forge');
 });
 
 check('every raid room keeps the promises the mechanics rely on', async () => {

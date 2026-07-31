@@ -877,6 +877,107 @@ button:disabled { opacity: 0.35; cursor: default; }
 .forge-pips i.on { background: var(--gold); }
 
 /* --------------------------------------------------------------------- */
+/* The roster                                                             */
+/* --------------------------------------------------------------------- */
+
+/* Who you are playing, above the title menu. Every screen below it is about
+   one character, and with two Warriors on the roster the class name alone no
+   longer answers "which one". */
+.char-bar {
+  width: min(420px, 100%);
+  margin-top: 12px;
+  padding: 9px 14px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 2px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent, var(--gold));
+  background: rgba(255, 255, 255, 0.045);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.char-bar:hover { border-color: var(--accent, var(--gold)); }
+.char-bar-name { font-weight: 800; font-size: 15px; }
+.char-bar-sub { grid-column: 1; font-size: 11.5px; color: var(--dim); }
+.char-bar-go {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--accent, var(--gold));
+}
+
+.roster-grid {
+  display: grid;
+  /* Two columns on a 390px phone. Eight cards in one column is taller than
+     any phone, and the roster is a screen you scan rather than read. */
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+.roster-card {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent, var(--line));
+  border-radius: 14px;
+  padding: 11px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.roster-card.active { border-color: var(--gold); background: rgba(255, 210, 74, 0.07); }
+.roster-name { font-weight: 800; font-size: 15px; }
+.roster-class { font-size: 11.5px; color: var(--dim); }
+.roster-meta { display: flex; gap: 8px; font-size: 10.5px; color: var(--dim); flex-wrap: wrap; }
+.roster-pts { color: var(--gold); font-weight: 700; }
+.roster-actions { display: flex; gap: 6px; align-items: center; margin-top: 7px; }
+.roster-actions .buy-btn { flex: 1; }
+.tiny-btn.danger { border-color: rgba(224, 71, 60, 0.5); color: #ff9d92; }
+/* The confirmation names what it will destroy, so it needs room for a
+   sentence rather than the icon the button normally holds. */
+.tiny-btn.danger.confirm {
+  flex: 0 0 auto;
+  width: auto;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 800;
+  background: rgba(224, 71, 60, 0.22);
+  border-color: #e0473c;
+  color: #ffd6d1;
+}
+
+/* An empty slot. Drawn rather than hidden: a grid that grows as you fill it
+   never tells you how much room is left, and that is the question this
+   screen exists to answer. */
+.roster-card.empty {
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 92px;
+  border-style: dashed;
+  border-left-style: dashed;
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--dim);
+  cursor: pointer;
+}
+.roster-card.empty:hover { border-color: var(--gold); color: var(--gold); }
+.roster-plus { font-size: 26px; font-weight: 300; line-height: 1; }
+
+/* The level beside a character's name in the pickers that head the Forge,
+   Armoury, Talents and Potion Shop. Two Warriors need it to be told apart. */
+.pill-lv {
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 800;
+  opacity: 0.7;
+}
+.class-tagline { font-size: 11px; color: var(--dim); line-height: 1.35; margin-top: 3px; }
+
+/* --------------------------------------------------------------------- */
 /* The Potion Shop                                                        */
 /* --------------------------------------------------------------------- */
 

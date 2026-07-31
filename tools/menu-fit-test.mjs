@@ -77,8 +77,8 @@ function startServer() {
 
 /** Every screen, including the three that only appear during a run. */
 const SCREENS = [
-  'title', 'classes', 'loadout', 'talents', 'forge', 'armoury',
-  'raids', 'raid',
+  'title', 'roster', 'classes', 'loadout', 'talents', 'forge', 'armoury',
+  'potions', 'raids', 'raid',
   'stats', 'settings', 'howto', 'diag',
   'pause', 'upgrade', 'results', 'raidkill', 'raidwipe',
 ];
@@ -90,8 +90,18 @@ const SCREENS = [
  */
 function primeRun() {
   const B = window.CRAFTARENA;
-  const cls = B.CLASSES.find((c) => c.id === B.profile.data.lastClass) || B.CLASSES[0];
-  if (!B.game.running) B.game.startRun(cls);
+  // A full roster, because the character pickers that head the Forge, the
+  // Armoury, the Talents and the Potion Shop wrap once they run out of width —
+  // and a wrapped pill under the fixed corner control looks placed and cannot
+  // be tapped. Measuring one character proves nothing about eight.
+  while (B.profile.canCreate()) {
+    B.profile.createCharacter(B.CLASSES[B.profile.characters.length % B.CLASSES.length].id);
+  }
+  const charId = B.profile.characters[0].id;
+  B.profile.setActive(charId);
+  B.menus.selectedChar = charId;
+  B.menus.talentChar = charId;
+  if (!B.game.running) B.game.startRun(charId);
   B.game.wave = 7;
   B.game.soulsEarned = 420;
   // A seven-figure balance is the widest the souls badge ever gets, and width
@@ -116,8 +126,8 @@ function primeRun() {
   // Black Temple at level 41 with no T4 gear is shut on the *set* gate, which
   // is the longest sentence raidAccess ever writes.
   B.menus.raidId = 'blacktemple';
-  B.profile.data.classes[cls.id].xp = 3.2e6;         // comfortably past level 41
-  const st = B.profile.raidState(cls.id);
+  B.profile.character(charId).xp = 3.2e6;           // comfortably past level 41
+  const st = B.profile.raidState(charId);
   for (const b of B.RAID_BY_ID.zulgurub.bosses) st.killed[b.id] = true;
   st.killed.najentus = true;      // one Core taken, so both row states draw
   // The between-fights window reads the live game, so it needs one.

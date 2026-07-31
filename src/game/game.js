@@ -121,16 +121,33 @@ export class Game {
   // -------------------------------------------------------------------------
 
   /** `opts.layout` forces an arena layout; used by the balance harness. */
-  startRun(classDef, opts = {}) {
+  /**
+   * Start a run for one character.
+   *
+   * Takes a character id, not a class. Progress is filed under the character
+   * now — two Warriors have their own levels, gear and Forge — so the class
+   * def is derived from it rather than passed alongside it, and there is no
+   * way to start a run with a class that disagrees with whose gear is loaded.
+   */
+  startRun(who, opts = {}) {
     this.reset();
+    // `who` is a character id. The harnesses pass a class definition instead —
+    // a balance sim wants "run this as a Warrior" and has no roster — and
+    // resolveChar turns that into this account's first character of the class.
+    const charId = this.profile.resolveChar(who);
+    const cd = this.profile.character(charId);
+    const classDef = this.profile.classOf(charId);
+    // The id resolveChar handed back, not `cd.id`. The record is a plain bag
+    // of progress and does not have to carry its own key — the harness's does
+    // not — so the id the lookup succeeded with is the one to keep.
+    this.charId = charId;
     this.cls = classDef;
-    const cd = this.profile.classData(classDef.id);
     // Permanent power comes from three sources that all flatten into the same
-    // bag: the Forge, the Armoury and this class's mastery rank. All three are
-    // per class now — only gold is shared — so a fresh class starts with the
-    // level it has earned and nothing it has not.
-    const perm = permanentMods(this.profile.forgeLevels(classDef.id));
-    for (const [k, v] of Object.entries(gearMods(classDef.id, this.profile.gear(classDef.id)))) {
+    // bag: the Forge, the Armoury and this character's mastery rank. All three
+    // are per character now — only gold is shared — so a fresh character starts
+    // with the level it has earned and nothing it has not.
+    const perm = permanentMods(this.profile.forgeLevels(this.charId));
+    for (const [k, v] of Object.entries(gearMods(classDef.id, this.profile.gear(this.charId)))) {
       perm[k] = (perm[k] || 0) + v;
     }
     for (const [k, v] of Object.entries(masteryMods(masteryRank(cd.mastery || 0)))) {
@@ -141,7 +158,7 @@ export class Game {
     // player bank the higher soul rate and then dial the danger back down.
     this.difficulty = difficultyFor(
       opts.difficulty !== undefined ? opts.difficulty : this.profile.settings.difficulty);
-    this.loadout = this.profile.loadout(classDef);
+    this.loadout = this.profile.loadout(this.charId);
     this.baseMods = () => buildMods(classDef, cd.talents, perm);
 
     // Fixed for the run: the affix draw must survive a pause, a HUD redraw and
@@ -165,7 +182,7 @@ export class Game {
     // model. `-1` is "no weapon bought" and draws the class's plain starting
     // look, which is what a level-1 character should be holding.
     this.player.weapon = weaponAppearance(
-      classDef, ownedTier(this.profile.gear(classDef.id), 'weapon'));
+      classDef, ownedTier(this.profile.gear(this.charId), 'weapon'));
     this.director = new WaveDirector(this.difficulty);
     this.rerollsLeft = perm.rerolls || 0;
     this.running = true;
@@ -209,10 +226,10 @@ export class Game {
    * offers the next; dying takes nothing at all, which is the rule the entire
    * progression rests on.
    */
-  startRaid(classDef, raid, bossIndex) {
+  startRaid(who, raid, bossIndex) {
     const boss = raid.bosses[bossIndex];
     if (!boss) return false;
-    this.startRun(classDef, { layout: RAID_LAYOUT, theme: raidTheme(raid), raid });
+    this.startRun(who, { layout: RAID_LAYOUT, theme: raidTheme(raid), raid });
     this.mode = 'raid';
     this.raid = raid;
     this.raidBossIndex = bossIndex;
@@ -272,7 +289,7 @@ export class Game {
   awardCore() {
     const raid = this.raid;
     const boss = raid.bosses[this.raidBossIndex];
-    const state = this.profile.raidState(this.cls.id);
+    const state = this.profile.raidState(this.charId);
     if (state.killed[boss.id]) return;
     state.killed[boss.id] = true;
     const slot = coreSlotFor(this.raidBossIndex);
@@ -366,7 +383,7 @@ export class Game {
   nextWave() {
     this.wave++;
     // The one moment a run stops being routine. Called out once, loudly.
-    const best = (this.profile.classData(this.cls.id) || {}).bestWave || 0;
+    const best = (this.profile.character(this.charId) || {}).bestWave || 0;
     if (!this.recordBeaten && best > 0 && this.wave > best) {
       this.recordBeaten = true;
       this.notify('NEW RECORD', 3.2);
@@ -475,7 +492,7 @@ export class Game {
       duration,
       damageDealt: Math.round(this.player.damageDealt),
     };
-    this.profile.finishRun(this.cls.id, {
+    this.profile.finishRun(this.charId, {
       wave: wavesCleared, kills: this.player.kills,
       souls: this.result.souls, duration,
       quests: this.questReport(wavesCleared),
@@ -1062,7 +1079,7 @@ export class Game {
   drinkCarried(potionId) {
     const def = POTION_BY_ID[potionId];
     if (!def || this.player.dead) return false;
-    if (!this.profile.consumePotion(this.cls.id, potionId)) {
+    if (!this.profile.consumePotion(this.charId, potionId)) {
       this.audio.play('deny');
       return false;
     }

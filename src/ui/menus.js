@@ -6,7 +6,7 @@
 // are paged, dense ones are tabbed, and fitScreen() is the safety net that
 // scales a screen down rather than letting it run off the bottom.
 
-import { CLASSES, LOADOUT_SIZE, unlockOrder, unlockLevelOf } from '../data/classes.js';
+import { CLASSES, LOADOUT_SIZE, unlockOrder, unlockLevelOf, defaultLoadout } from '../data/classes.js';
 import {
   PERMANENT, upgradeCost, talentPointsForBestWave, masteryProgress,
 } from '../data/permanent.js';
@@ -21,7 +21,7 @@ import {
 } from '../data/raids.js';
 
 import { skillCost, skillCooldown } from '../game/skills.js';
-import { storage } from '../core/save.js';
+import { storage, MAX_CHARACTERS } from '../core/save.js';
 import { DIFFICULTIES } from '../data/difficulty.js';
 import { skillIconElement, iconElement, schoolFor, SCHOOLS } from './icons.js';
 import { QUEST_COUNT } from '../data/quests.js';
@@ -103,8 +103,11 @@ export class Menus {
     this.root = root;
     this.ctx = ctx;              // { profile, audio, startRun, resumeRun, quitRun, game }
     this.screen = null;
-    this.selectedClass = ctx.profile.data.lastClass || CLASSES[0].id;
-    this.talentClass = this.selectedClass;
+    // Which character every screen is talking about. A character id, not a
+    // class id: progress is filed under the character now, and two Warriors
+    // are two different answers to "show me my gear".
+    this.selectedChar = ctx.profile.activeChar;
+    this.talentChar = this.selectedChar;
     this.talentBranch = 0;
     this.pages = {};             // screen name -> current page index
     // Re-fit on rotation and on the address bar sliding away.
@@ -134,6 +137,7 @@ export class Menus {
     const builder = {
       title: () => this.buildTitle(),
       classes: () => this.buildClassSelect(),
+      roster: () => this.buildRoster(),
       loadout: () => this.buildLoadout(),
       talents: () => this.buildTalents(),
       quests: () => this.buildQuests(),
@@ -202,8 +206,8 @@ export class Menus {
    * along", and at level 40 the difference between somewhere along and eleven
    * more runs is the entire decision about what to play tonight.
    */
-  levelBarHtml(classId) {
-    const p = this.profile.levelProgress(classId);
+  levelBarHtml(charId) {
+    const p = this.profile.levelProgress(charId);
     const label = p.maxed
       ? `MAX · ${p.total.toLocaleString()} XP`
       : `${p.into.toLocaleString()} / ${p.need.toLocaleString()} XP`;
@@ -266,31 +270,66 @@ export class Menus {
     wrap.appendChild(logo);
     wrap.appendChild(this.soulsBadge());
 
+    // Who you are playing, above the menu. Every screen below this point is
+    // about one character, and with two Warriors on the roster the class name
+    // alone no longer answers "which one" — so the bar names the character and
+    // is itself the way to change it.
+    const active = this.profile.character();
+    if (active) {
+      const acls = this.profile.classOf(active.id);
+      const bar = el('button', 'char-bar');
+      bar.style.setProperty('--accent', acls.color);
+      // Drop the class name when the character is still called after it:
+      // "Warrior / Warrior · level 1" prints one word twice.
+      const sub = active.name === acls.name
+        ? `${acls.role} \u00b7 level ${this.profile.level(active.id)}`
+        : `${acls.name} \u00b7 level ${this.profile.level(active.id)}`;
+      bar.innerHTML = `<span class="char-bar-name">${active.name}</span>
+        <span class="char-bar-sub">${sub}</span>
+        <span class="char-bar-go">Switch \u203a</span>`;
+      wrap.appendChild(this.click(bar, () => this.show('roster')));
+    }
+
     const menu = el('div', 'main-menu grid');
     const best = this.profile.data.stats.bestWave;
-    const rating = gearRating(this.profile.gear(this.selectedClass));
+    const rating = gearRating(this.profile.gear(this.charId()));
+    // With nobody on the roster every tile below is about a character that
+    // does not exist. PLAY still works — it lands on creation — so the honest
+    // thing is to say so rather than draw eight buttons that cannot do
+    // anything yet.
+    const empty = !this.profile.characters.length;
     // A claimable reward sitting unnoticed behind a menu is a reward that
     // never happened, so the count is on the button itself.
     const quests = this.profile.activeQuests();
     const ready = quests.filter((q) => q.done).length;
     const questDone = this.profile.questState.completed;
     const items = [
-      { label: 'PLAY', hint: best ? `Best: wave ${best}` : 'Start your first run', primary: true, go: () => this.show('classes') },
+      // Always PLAY, even with nobody on the roster — it is the one button a
+      // new player has to find, and a label that changes depending on state
+      // they have not learned yet is a label they have to read. With no
+      // character it lands on creation, which is the same journey.
+      { label: 'PLAY',
+        hint: empty ? 'Pick a class to begin' : (best ? `Best: wave ${best}` : 'Start your first run'),
+        primary: true,
+        go: () => { this.creatingChar = empty; this.show('classes'); } },
       // Second, beside PLAY, because it is the other thing you *do*. Not
       // primary: the arena funds the raids — a boss pays half what its piece
       // costs — and two gold buttons would say the two are interchangeable.
-      { label: 'RAID', hint: this.raidHint(this.selectedClass), go: () => this.show('raids') },
+      { label: 'RAID', hint: this.raidHint(this.charId()), go: () => this.show('raids') },
       { label: 'THE FORGE', hint: 'Permanent upgrades', go: () => this.show('forge') },
       { label: 'ARMOURY', hint: rating ? `${rating} of 42 pieces` : 'Buy and upgrade gear', go: () => this.show('armoury') },
       { label: 'TALENTS', hint: 'Spend talent points', go: () => this.show('talents') },
-      { label: 'POTION SHOP', hint: this.potionHint(this.selectedClass), go: () => this.show('potions') },
+      { label: 'POTION SHOP', hint: this.potionHint(this.charId()), go: () => this.show('potions') },
       { label: 'QUESTS', hint: ready ? `${ready} ready to claim` : `${questDone} of 500 done`, go: () => this.show('quests') },
       { label: 'RECORDS', hint: 'Career statistics', go: () => this.show('stats') },
       { label: 'SETTINGS', hint: 'Controls & display', go: () => this.show('settings') },
       { label: 'HOW TO PLAY', hint: 'Controls reference', go: () => this.show('howto') },
+      { label: 'CHARACTERS', hint: `${this.profile.characters.length} of ${MAX_CHARACTERS} slots`, go: () => this.show('roster') },
       { label: 'DIAGNOSTICS', hint: 'If something is broken, screenshot this', go: () => this.show('diag') },
     ];
     for (const it of items) {
+      if (empty && !it.primary && it.label !== 'SETTINGS' && it.label !== 'HOW TO PLAY'
+        && it.label !== 'DIAGNOSTICS') continue;
       const b = el('button', 'menu-btn' + (it.primary ? ' primary' : ''));
       b.appendChild(el('span', 'menu-label', it.label));
       b.appendChild(el('span', 'menu-hint', it.hint));
@@ -311,9 +350,9 @@ export class Menus {
     return bar;
   }
 
-  /** The endless per-class progress bar, shown wherever a class is chosen. */
-  masteryBar(classId) {
-    const m = masteryProgress(this.profile.classData(classId).mastery || 0);
+  /** The endless per-character progress bar, shown wherever one is chosen. */
+  masteryBar(charId) {
+    const m = masteryProgress((this.profile.character(charId) || {}).mastery || 0);
     const pct = Math.round((m.into / m.need) * 100);
     const box = el('div', 'mastery');
     box.innerHTML = `
@@ -326,48 +365,221 @@ export class Menus {
   }
 
   // -------------------------------------------------------------------------
-  // Class select
+  // The roster — eight character slots
+  // -------------------------------------------------------------------------
+
+  /**
+   * Which character the menus are talking about, repaired on every read.
+   *
+   * `selectedChar` is a plain id held across screen rebuilds, and a character
+   * can be deleted from underneath it. Rather than hunt every place that could
+   * go stale, resolve it here: an id that no longer names anybody falls back
+   * to the active character, and the roster is the only screen that has to
+   * cope with there being nobody at all.
+   */
+  charId(preferred) {
+    const want = preferred !== undefined ? preferred : this.selectedChar;
+    const ch = this.profile.character(want);
+    return ch ? ch.id : null;
+  }
+
+  /**
+   * The row of character pills that heads the Forge, Armoury, Talents and
+   * Potion Shop. It replaced a row of *class* pills, and does the same job for
+   * the same reason: without it there is no way to tell whose gear you are
+   * looking at — only now two of them can be Warriors, so the name has to
+   * carry the level too.
+   */
+  charPicker(onPick, current) {
+    const picker = el('div', 'class-picker');
+    const active = current !== undefined ? current : this.charId();
+    for (const ch of this.profile.characters) {
+      const cls = this.profile.classOf(ch.id);
+      const b = el('button', 'pill' + (ch.id === active ? ' active' : ''));
+      b.appendChild(el('span', null, ch.name));
+      b.appendChild(el('span', 'pill-lv', String(this.profile.level(ch.id))));
+      b.style.setProperty('--accent', cls.color);
+      this.click(b, () => {
+        if (onPick) onPick(ch.id);
+        else this.selectedChar = ch.id;
+        this.refresh();
+      });
+      picker.appendChild(b);
+    }
+    return picker;
+  }
+
+  /**
+   * The roster: every character, plus the empty slots.
+   *
+   * Empty slots are drawn rather than hidden. A grid that grows as you fill it
+   * never tells you how much room is left, and "how many more can I make" is
+   * the question a slot screen exists to answer.
+   */
+  buildRoster() {
+    const wrap = el('div', 'screen');
+    wrap.appendChild(this.backBar('title'));
+    const chars = this.profile.characters;
+    const p = this.panel('Your characters',
+      `${chars.length} of ${MAX_CHARACTERS} slots used · gold is shared, everything else is theirs`);
+
+    // Characters and empty slots are one paged list. Eight cards is taller
+    // than a 568px phone even in two columns, and the roster is the last
+    // screen that should need scrolling — it is how you get to everything
+    // else. `null` stands for an empty slot.
+    const slots = [...chars];
+    while (slots.length < MAX_CHARACTERS) slots.push(null);
+    const grid = el('div', 'roster-grid');
+    p.appendChild(this.paged('roster', slots, byHeight(4, 6, 8), grid, (ch) => {
+      if (!ch) {
+        const slot = el('button', 'roster-card empty');
+        slot.appendChild(el('div', 'roster-plus', '+'));
+        slot.appendChild(el('div', 'roster-class', 'New character'));
+        return this.click(slot, () => { this.creatingChar = true; this.show('classes'); });
+      }
+      const cls = this.profile.classOf(ch.id);
+      const active = ch.id === this.profile.activeChar;
+      const card = el('div', 'roster-card' + (active ? ' active' : ''));
+      card.style.setProperty('--accent', cls.color);
+      // The class line drops the class name when the character is still
+      // called after it — "Warrior / Warrior · Melee Bruiser" is one word of
+      // information printed twice.
+      const named = ch.name === cls.name;
+      const pts = this.profile.availableTalentPoints(ch.id);
+      card.innerHTML = `
+        <div class="roster-name">${ch.name}</div>
+        <div class="roster-class">${named ? cls.role : `${cls.name} · ${cls.role}`}</div>
+        <div class="roster-meta">
+          <span>Lv ${this.profile.level(ch.id)}</span>
+          <span>wave ${ch.bestWave || 0}</span>
+          ${pts ? `<span class="roster-pts">${pts} pts</span>` : ''}
+        </div>`;
+      const row = el('div', 'roster-actions');
+      const play = el('button', 'buy-btn', active ? 'PLAYING' : 'SELECT');
+      this.click(play, () => {
+        this.profile.setActive(ch.id);
+        this.selectedChar = ch.id;
+        this.talentChar = ch.id;
+        this.ctx.audio.play('buy');
+        this.show('classes');
+      });
+      row.appendChild(play);
+      // Deleting is two taps, and the second one is on a button that says what
+      // it will destroy. A roster is the one screen where a mis-tap is not
+      // recoverable, so the confirmation names the character and its level.
+      const del = el('button', 'tiny-btn danger',
+        this.pendingDelete === ch.id ? `Delete Lv ${this.profile.level(ch.id)}?` : '🗑');
+      if (this.pendingDelete === ch.id) del.classList.add('confirm');
+      this.click(del, () => {
+        if (this.pendingDelete === ch.id) {
+          this.profile.deleteCharacter(ch.id);
+          this.pendingDelete = null;
+          this.selectedChar = this.profile.activeChar;
+          this.ctx.audio.play('deny');
+        } else {
+          this.pendingDelete = ch.id;
+        }
+        this.refresh();
+      });
+      row.appendChild(del);
+      card.appendChild(row);
+      return card;
+    }));
+    wrap.appendChild(p);
+    return wrap;
+  }
+
+  // -------------------------------------------------------------------------
+  // Class select — makes a character, or shows the one you have
   // -------------------------------------------------------------------------
 
   buildClassSelect() {
+    // Two screens in one, because they are the same screen at different times.
+    // With no character — a fresh account, or an empty slot tapped on the
+    // roster — this is character creation and the class cards are the choice.
+    // With one, it is the pre-run screen and the cards switch which class the
+    // character plays.
+    const creating = this.creatingChar || !this.profile.characters.length;
+    // Switching an existing character's class is a third state, and a rare
+    // one. It borrows the same card grid rather than living beside it: nine
+    // cards *plus* the kit, the mastery bar, the difficulty row and the play
+    // button is more than a 320px phone has, and the version of this screen
+    // you see every time you press PLAY should be about playing.
+    const changing = !creating && this.changingClass;
     const wrap = el('div', 'screen');
-    wrap.appendChild(this.backBar('title'));
-    const p = this.panel('Choose your class');
-    const grid = el('div', 'class-grid');
+    wrap.appendChild(this.backBar(creating && this.profile.characters.length ? 'roster' : 'title'));
+    const charId = creating ? null : this.charId();
+    const p = this.panel(
+      creating ? 'Choose your class'
+        : changing ? `${this.profile.character(charId).name} — change class`
+          : this.profile.character(charId).name,
+      creating
+        ? 'It decides your skills and your talent trees — and you can change it later'
+        : changing
+          ? 'Keeps your level, gear, Forge and raid record. Talent points come back unspent.'
+          : `${this.profile.classOf(charId).name} · level ${this.profile.level(charId)}`);
 
+    const currentClass = creating ? null : this.profile.classOf(charId).id;
+    if (creating || changing) {
+    const grid = el('div', 'class-grid');
     for (const cls of CLASSES) {
-      const cd = this.profile.classData(cls.id);
-      const card = el('div', 'class-card' + (cls.id === this.selectedClass ? ' selected' : ''));
+      const card = el('div', 'class-card' + (cls.id === currentClass ? ' selected' : ''));
       card.style.setProperty('--accent', cls.color);
+      const kit = defaultLoadout(cls, 60).slice(0, 4)
+        .map((s) => `<span title="${s.name}">${s.icon}</span>`).join('');
       card.innerHTML = `
         <div class="class-name">${cls.name}</div>
         <div class="class-role">${cls.role}</div>
-        <div class="class-skills">
-          ${this.profile.loadout(cls).map((s) => `<span title="${s.name}">${s.icon}</span>`).join('')}
-        </div>
-        <div class="class-meta">
-          <span>wave ${cd.bestWave}</span>
-          <span>${this.profile.availableTalentPoints(cls.id)} pts</span>
-        </div>
-        ${this.levelBarHtml(cls.id)}
+        <div class="class-skills">${kit}</div>
+        <div class="class-tagline">${cls.tagline}</div>
         <div class="class-diff">${'★'.repeat(cls.difficulty)}${'☆'.repeat(3 - cls.difficulty)}</div>`;
       this.click(card, () => {
-        this.selectedClass = cls.id;
-        this.talentClass = cls.id;
-        this.show('classes');
+        if (creating) {
+          const made = this.profile.createCharacter(cls.id);
+          if (!made) { this.ctx.audio.play('deny'); return; }
+          this.creatingChar = false;
+          this.selectedChar = made.id;
+          this.talentChar = made.id;
+          this.profile.setActive(made.id);
+          this.ctx.audio.play('buy');
+        } else {
+          // Switching keeps the level, the gear, the Forge and the raid
+          // record — none of those is about the class — and refunds the
+          // talents, because the trees are different shapes.
+          if (cls.id !== currentClass) this.profile.switchClass(charId, cls.id);
+          this.changingClass = false;
+          this.ctx.audio.play('buy');
+        }
+        this.refresh();
       });
       grid.appendChild(card);
     }
     p.appendChild(grid);
+    }
 
-    const cls = CLASSES.find((c) => c.id === this.selectedClass);
+    if (creating) {
+      wrap.appendChild(p);
+      return wrap;
+    }
+    if (changing) {
+      const back = el('div', 'actions');
+      back.appendChild(this.click(el('button', 'ghost-btn', 'Keep my class'), () => {
+        this.changingClass = false;
+        this.refresh();
+      }));
+      p.appendChild(back);
+      wrap.appendChild(p);
+      return wrap;
+    }
+
+    const cls = this.profile.classOf(charId);
     const detail = el('div', 'class-detail');
     detail.innerHTML = `<h3 style="color:${cls.color}">${cls.name} — ${cls.tagline}</h3>`;
     // The equipped kit as four icons. The six-number stat table this replaced
     // was the densest block of text on the screen and told a player less than
     // seeing which four skills they are taking in.
     const strip = el('div', 'kit-icons');
-    for (const sk of this.profile.loadout(cls)) {
+    for (const sk of this.profile.loadout(charId)) {
       const slot = el('div', 'kit-icon');
       slot.appendChild(skillIconElement(sk, 34));
       slot.title = `${sk.name} — ${sk.desc}`;
@@ -377,7 +589,7 @@ export class Menus {
     edit.title = 'Change skills';
     strip.appendChild(edit);
     detail.appendChild(strip);
-    detail.appendChild(this.masteryBar(cls.id));
+    detail.appendChild(this.masteryBar(charId));
     p.appendChild(detail);
 
     // Difficulty, as three buttons rather than a slider buried in Settings:
@@ -390,7 +602,7 @@ export class Menus {
       b.style.setProperty('--accent', d.accent);
       b.appendChild(iconElement(d.icon, 26, { ready: d.id === current }));
       b.appendChild(el('span', 'diff-name', d.name));
-      b.appendChild(el('span', 'diff-souls', `×${d.souls} 🪙`));
+      b.appendChild(el('span', 'diff-souls', `\u00d7${d.souls} \ud83e\ude99`));
       b.title = d.blurb;
       this.click(b, () => {
         this.profile.settings.difficulty = d.id;
@@ -404,11 +616,16 @@ export class Menus {
     const actions = el('div', 'actions');
     actions.appendChild(this.click(el('button', 'ghost-btn', 'Skills'), () => this.show('loadout')));
     actions.appendChild(this.click(el('button', 'ghost-btn', 'Talents'), () => {
-      this.talentClass = this.selectedClass;
+      this.talentChar = charId;
       this.show('talents');
     }));
+    actions.appendChild(this.click(el('button', 'ghost-btn', 'Class'), () => {
+      this.changingClass = true;
+      this.refresh();
+    }));
     actions.appendChild(this.click(el('button', 'big-btn', 'ENTER THE ARENA'), () => {
-      this.ctx.startRun(cls);
+      this.profile.setActive(charId);
+      this.ctx.startRun(charId);
     }));
     p.appendChild(actions);
     wrap.appendChild(p);
@@ -420,8 +637,9 @@ export class Menus {
   // -------------------------------------------------------------------------
 
   buildLoadout() {
-    const cls = CLASSES.find((c) => c.id === this.selectedClass);
-    const equipped = this.profile.loadout(cls).map((s) => s.id);
+    const charId = this.charId();
+    const cls = this.profile.classOf(charId);
+    const equipped = this.profile.loadout(charId).map((s) => s.id);
 
     const wrap = el('div', 'screen');
     wrap.appendChild(this.backBar('classes'));
@@ -434,7 +652,7 @@ export class Menus {
     // speccing the tree are the same decision, so the screen where you pick
     // has to say which skills you have already invested in — otherwise the
     // points are found by accident, or paid for twice.
-    const cd = this.profile.classData(cls.id);
+    const cd = this.profile.character(charId);
     const invested = {};
     for (const branch of cls.talents) {
       for (const node of branch.nodes) {
@@ -449,10 +667,10 @@ export class Menus {
     const describe = (sk) => {
       const pts = invested[sk.id] || 0;
       const need = unlockLevelOf(cls, sk.id);
-      const locked = need > this.profile.level(cls.id);
+      const locked = need > this.profile.level(charId);
       detail.innerHTML = `<b>${sk.name}</b><span>${sk.desc}</span>`
         + (locked
-          ? `<i class="locked-note">🔒 Unlocks at level ${need} — you are level ${this.profile.level(cls.id)}</i>`
+          ? `<i class="locked-note">🔒 Unlocks at level ${need} — you are level ${this.profile.level(charId)}</i>`
           : `<i>${sk.cost} ${cls.resource.name} · ${sk.cooldown}s`
             + `${pts ? ` · ${pts} Mastery point${pts > 1 ? 's' : ''} invested` : ''}</i>`);
     };
@@ -461,7 +679,7 @@ export class Menus {
     // Hiding them would make a class look like it has two abilities; showing
     // them greyed with the level they arrive at turns the same screen into the
     // reason to keep levelling.
-    const level = this.profile.level(cls.id);
+    const level = this.profile.level(charId);
     for (const sk of unlockOrder(cls)) {
       const need = unlockLevelOf(cls, sk.id);
       const locked = need > level;
@@ -486,18 +704,18 @@ export class Menus {
           // skill first and then picking one would be two.
           : [...equipped.slice(equipped.length >= LOADOUT_SIZE ? 1 : 0), sk.id];
         if (!next.length) { this.ctx.audio.play('deny'); return; }
-        this.profile.setLoadout(cls, next);
+        this.profile.setLoadout(charId, next);
         this.refresh();
       });
       grid.appendChild(btn);
     }
-    describe(this.profile.loadout(cls)[0]);
+    describe(this.profile.loadout(charId)[0]);
     p.appendChild(grid);
     p.appendChild(detail);
 
     const actions = el('div', 'actions');
     actions.appendChild(this.click(el('button', 'ghost-btn', 'Reset'), () => {
-      this.profile.setLoadout(cls, []);
+      this.profile.setLoadout(charId, []);
       this.refresh();
     }));
     actions.appendChild(this.click(el('button', 'big-btn', '▶ Play'),
@@ -597,29 +815,25 @@ export class Menus {
 
   buildTalents() {
     const wrap = el('div', 'screen talents-screen');
-    const picker = el('div', 'class-picker');
-    for (const c of CLASSES) {
-      const b = el('button', 'pill' + (c.id === this.talentClass ? ' active' : ''), c.name);
-      b.style.setProperty('--accent', c.color);
-      this.click(b, () => { this.talentClass = c.id; this.talentBranch = 0; this.show('talents'); });
-      picker.appendChild(b);
-    }
     // The picker gets its own row rather than riding inside the back bar.
-    // With nine classes it wraps, and a wrapped pill lands underneath the
+    // With a full roster it wraps, and a wrapped pill lands underneath the
     // fixed corner control — which looks placed but cannot be tapped.
+    const picker = this.charPicker((id) => { this.talentChar = id; this.talentBranch = 0; },
+      this.talentChar);
     wrap.appendChild(this.backBar('title'));
     wrap.appendChild(picker);
 
-    const cls = CLASSES.find((c) => c.id === this.talentClass);
-    const cd = this.profile.classData(cls.id);
-    const avail = this.profile.availableTalentPoints(cls.id);
+    const charId = this.charId(this.talentChar);
+    const cls = this.profile.classOf(charId);
+    const cd = this.profile.character(charId);
+    const avail = this.profile.availableTalentPoints(charId);
     const total = talentPointsForBestWave(cd.bestWave);
 
     const p = this.panel(`${cls.name} Talents`,
       // Points come from levels, not from waves, and have for a while. The old
       // line sent a player back to the arena to grind the wrong number.
       `${avail} of ${total} points · one a level, and a tree costs far more`);
-    p.appendChild(this.masteryBar(cls.id));
+    p.appendChild(this.masteryBar(charId));
 
     // Branch tabs. Three full columns do not fit a phone, and a tab is a
     // better fit for the trees anyway: you commit to a branch, not a row.
@@ -642,7 +856,7 @@ export class Menus {
     // Which four skills this class will take in. A Mastery node is worth
     // nothing unless its skill is one of them, and a player cannot be expected
     // to hold the loadout in their head while reading the tree.
-    const equipped = new Set(this.profile.loadout(cls).map((s) => s.id));
+    const equipped = new Set(this.profile.loadout(charId).map((s) => s.id));
 
     // A Classic-style tree: a fixed grid of icon cells with arrows running from
     // a node to the one it gates. The old screen was a list of six description
@@ -769,7 +983,7 @@ export class Menus {
       this.refresh();
     });
     this.click(plus, () => {
-      if (this.profile.availableTalentPoints(cls.id) <= 0) { this.ctx.audio.play('deny'); return; }
+      if (this.profile.availableTalentPoints(charId) <= 0) { this.ctx.audio.play('deny'); return; }
       cd.talents[sel.id] = (cd.talents[sel.id] || 0) + 1;
       this.profile.save();
       this.ctx.audio.play('buy');
@@ -783,12 +997,13 @@ export class Menus {
 
     const actions = el('div', 'actions');
     actions.appendChild(this.click(el('button', 'ghost-btn', 'Reset points'), () => {
-      this.profile.respec(cls.id);
+      this.profile.respec(charId);
       this.refresh();
     }));
-    actions.appendChild(this.click(el('button', 'big-btn', 'Play as ' + cls.name), () => {
-      this.selectedClass = cls.id;
-      this.ctx.startRun(cls);
+    actions.appendChild(this.click(el('button', 'big-btn', 'Play as ' + this.profile.character(charId).name), () => {
+      this.selectedChar = charId;
+      this.profile.setActive(charId);
+      this.ctx.startRun(charId);
     }));
     p.appendChild(actions);
     wrap.appendChild(p);
@@ -801,21 +1016,12 @@ export class Menus {
 
   buildForge() {
     const wrap = el('div', 'screen');
-    const cls = CLASSES.find((c) => c.id === this.selectedClass) || CLASSES[0];
-    // The Forge is per class, so the screen needs a class picker like the
-    // talent tree has — and for the same reason: without it there is no way to
-    // tell whose upgrades you are looking at.
-    const picker = el('div', 'class-picker');
-    for (const c of CLASSES) {
-      const b = el('button', 'pill' + (c.id === cls.id ? ' active' : ''), c.name);
-      b.style.setProperty('--accent', c.color);
-      this.click(b, () => { this.selectedClass = c.id; this.refresh(); });
-      picker.appendChild(b);
-    }
+    const charId = this.charId();
+    const cls = this.profile.classOf(charId);
     wrap.appendChild(this.backBar('title'));
-    wrap.appendChild(picker);
+    wrap.appendChild(this.charPicker());
 
-    const forge = this.profile.forgeLevels(cls.id);
+    const forge = this.profile.forgeLevels(charId);
     const spent = PERMANENT.reduce((n, d) => n + (forge[d.id] || 0), 0);
     const total = PERMANENT.reduce((n, d) => n + d.max, 0);
     const p = this.panel(`${cls.name} — The Forge`,
@@ -884,26 +1090,20 @@ export class Menus {
 
   buildPotionShop() {
     const wrap = el('div', 'screen');
-    const cls = CLASSES.find((c) => c.id === this.selectedClass) || CLASSES[0];
-    const picker = el('div', 'class-picker');
-    for (const c of CLASSES) {
-      const b = el('button', 'pill' + (c.id === cls.id ? ' active' : ''), c.name);
-      b.style.setProperty('--accent', c.color);
-      this.click(b, () => { this.selectedClass = c.id; this.refresh(); });
-      picker.appendChild(b);
-    }
+    const charId = this.charId();
+    const cls = this.profile.classOf(charId);
     wrap.appendChild(this.backBar('title'));
-    wrap.appendChild(picker);
+    wrap.appendChild(this.charPicker());
 
-    const level = this.profile.level(cls.id);
-    const carried = POTIONS.reduce((n, d) => n + this.profile.potionCount(cls.id, d.id), 0);
+    const level = this.profile.level(charId);
+    const carried = POTIONS.reduce((n, d) => n + this.profile.potionCount(charId, d.id), 0);
     const p = this.panel(`${cls.name} — Potion Shop`,
       `Level ${level} prices · carrying ${carried} of ${POTIONS.length * POTION_STACK}`);
 
     const grid = el('div', 'potion-grid');
     for (const def of POTIONS) {
-      const held = this.profile.potionCount(cls.id, def.id);
-      const cost = this.profile.potionPriceFor(cls.id, def.id);
+      const held = this.profile.potionCount(charId, def.id);
+      const cost = this.profile.potionPriceFor(charId, def.id);
       const full = held >= POTION_STACK;
       const afford = this.profile.souls >= cost;
 
@@ -929,7 +1129,7 @@ export class Menus {
       const buy = el('button', 'buy-btn', full ? 'FULL' : `🪙 ${cost}`);
       buy.disabled = full || !afford;
       this.click(buy, () => {
-        const res = this.profile.buyPotion(cls.id, def.id);
+        const res = this.profile.buyPotion(charId, def.id);
         this.ctx.audio.play(res.ok ? 'buy' : 'deny');
         this.refresh();
       });
@@ -980,22 +1180,16 @@ export class Menus {
 
   buildRaids() {
     const wrap = el('div', 'screen');
-    const cls = CLASSES.find((c) => c.id === this.selectedClass) || CLASSES[0];
+    const charId = this.charId();
+    const cls = this.profile.classOf(charId);
     // Progress is per class, so — like the Forge, the Armoury and the talent
     // tree — the screen leads with whose progress you are reading.
-    const picker = el('div', 'class-picker');
-    for (const c of CLASSES) {
-      const b = el('button', 'pill' + (c.id === cls.id ? ' active' : ''), c.name);
-      b.style.setProperty('--accent', c.color);
-      this.click(b, () => { this.selectedClass = c.id; this.refresh(); });
-      picker.appendChild(b);
-    }
     wrap.appendChild(this.backBar('title'));
-    wrap.appendChild(picker);
+    wrap.appendChild(this.charPicker());
 
-    const st = this.profile.raidState(cls.id);
-    const level = this.profile.level(cls.id);
-    const gear = this.profile.gear(cls.id);
+    const st = this.profile.raidState(charId);
+    const level = this.profile.level(charId);
+    const gear = this.profile.gear(charId);
     const total = RAIDS.reduce((n, r) => n + bossesDown(st, r), 0);
     const p = this.panel('Raids', `${cls.name} · ${total} of 42 bosses down`);
 
@@ -1075,10 +1269,11 @@ export class Menus {
 
   buildRaid() {
     const raid = RAID_BY_ID[this.raidId] || RAIDS[0];
-    const cls = CLASSES.find((c) => c.id === this.selectedClass) || CLASSES[0];
-    const st = this.profile.raidState(cls.id);
-    const gear = this.profile.gear(cls.id);
-    const level = this.profile.level(cls.id);
+    const charId = this.charId();
+    const cls = this.profile.classOf(charId);
+    const st = this.profile.raidState(charId);
+    const gear = this.profile.gear(charId);
+    const level = this.profile.level(charId);
     const access = raidAccess(raid, { level, raidState: st, gear });
     const next = nextBoss(st, raid);
     const down = bossesDown(st, raid);
@@ -1164,7 +1359,10 @@ export class Menus {
     const g = this.ctx.game;
     const raid = g.raid;
     const cls = g.cls;
-    const st = this.profile.raidState(cls.id);
+    // The running character, not the selected one. This screen only exists
+    // mid-raid, and the roster pill could have moved on since it started.
+    const charId = g.charId;
+    const st = this.profile.raidState(charId);
     const down = bossesDown(st, raid);
     const boss = g.lastBoss;               // the one just fought, dead or not
     const next = nextBoss(st, raid);
@@ -1242,22 +1440,16 @@ export class Menus {
 
   buildArmoury() {
     const wrap = el('div', 'screen');
-    const cls = CLASSES.find((c) => c.id === this.selectedClass) || CLASSES[0];
+    const charId = this.charId();
+    const cls = this.profile.classOf(charId);
     // Gear is per class, so — like the Forge and the talent tree — the screen
     // leads with whose kit you are looking at. Shared gold, separate gear.
-    const picker = el('div', 'class-picker');
-    for (const c of CLASSES) {
-      const b = el('button', 'pill' + (c.id === cls.id ? ' active' : ''), c.name);
-      b.style.setProperty('--accent', c.color);
-      this.click(b, () => { this.selectedClass = c.id; this.refresh(); });
-      picker.appendChild(b);
-    }
     wrap.appendChild(this.backBar('title'));
-    wrap.appendChild(picker);
+    wrap.appendChild(this.charPicker());
 
-    const gear = this.profile.gear(cls.id);
-    const level = this.profile.level(cls.id);
-    const cores = this.profile.cores(cls.id);
+    const gear = this.profile.gear(charId);
+    const level = this.profile.level(charId);
+    const cores = this.profile.cores(charId);
     const rating = gearRating(gear);
     const set = setTier(gear);
     const cap = maxTierForLevel(level);
@@ -1318,7 +1510,7 @@ export class Menus {
       // the player's head.
       if (!verdict.ok && !verdict.maxed) buy.title = verdict.reason;
       this.click(buy, () => {
-        const done = this.profile.buyGear(cls.id, def.id);
+        const done = this.profile.buyGear(charId, def.id);
         if (!done.ok) { this.ctx.audio.play('deny'); return; }
         this.ctx.audio.play('buy');
         this.refresh();
@@ -1354,19 +1546,19 @@ export class Menus {
     }
     p.appendChild(grid);
 
-    // Paged rather than a single column: nine classes is more rows than a
+    // Paged rather than a single column: a full roster is more rows than a
     // 568px-tall phone has room for, and this screen has no scrollbar.
     const table = el('div', 'class-stats');
-    this.paged('stats:classes', CLASSES, byHeight(4, 6, 9), table, (c) => {
-      const cd = this.profile.classData(c.id);
+    this.paged('stats:classes', this.profile.characters, byHeight(4, 6, 9), table, (cd) => {
+      const c = this.profile.classOf(cd.id);
       const row = el('div', 'cs-row');
       row.innerHTML = `
-        <span class="cs-name" style="color:${c.color}">${c.name}</span>
-        <span>Lv ${this.profile.level(c.id)}</span>
+        <span class="cs-name" style="color:${c.color}">${cd.name}</span>
+        <span>Lv ${this.profile.level(cd.id)}</span>
         <span>wave ${cd.bestWave}</span>
         <span>${cd.kills} kills</span>
-        <span>mastery ${this.profile.masteryRank(c.id)}</span>
-        <span>${this.profile.availableTalentPoints(c.id)} pts</span>`;
+        <span>mastery ${this.profile.masteryRank(cd.id)}</span>
+        <span>${this.profile.availableTalentPoints(cd.id)} pts</span>`;
       return row;
     });
     p.appendChild(table);
@@ -1690,7 +1882,7 @@ export class Menus {
       `${g.cls.name} · ${res.kills} kills · ${fmtTime(res.duration)}`);
 
     const grid = el('div', 'stat-grid');
-    const cd = this.profile.classData(g.cls.id);
+    const cd = this.profile.character(g.charId);
     const rows = [
       ['Gold', '🪙 ' + res.souls],
       ['Experience', '+' + (res.xp || 0).toLocaleString()],
@@ -1714,7 +1906,7 @@ export class Menus {
         ? `⬆ LEVEL ${ups[0]}`
         : `⬆ LEVEL ${ups[ups.length - 1]} · ${ups.length} levels gained`));
     }
-    lvl.innerHTML += this.levelBarHtml(g.cls.id);
+    lvl.innerHTML += this.levelBarHtml(g.charId);
     p.appendChild(lvl);
 
     // What you are closest to. A results screen that only reports the past
@@ -1737,7 +1929,7 @@ export class Menus {
     actions.appendChild(this.click(el('button', 'ghost-btn', '⚒'), () => this.show('forge')));
     actions.appendChild(this.click(el('button', 'ghost-btn', '🛡'), () => this.show('armoury')));
     actions.appendChild(this.click(el('button', 'ghost-btn', '✦'), () => {
-      this.talentClass = g.cls.id;
+      this.talentChar = g.charId;
       this.show('talents');
     }));
     actions.appendChild(this.click(el('button', 'big-btn', '▶ RUN IT BACK'), () => {
@@ -1753,12 +1945,12 @@ export class Menus {
   nextGoals(g) {
     const out = [];
     const souls = this.profile.souls;
-    const cd = this.profile.classData(g.cls.id);
+    const cd = this.profile.character(g.charId);
 
     // The cheapest Forge track they cannot yet afford — or can.
     let bestForge = null;
     for (const def of PERMANENT) {
-      const lv = this.profile.forgeLevels(this.selectedClass)[def.id] || 0;
+      const lv = this.profile.forgeLevels(this.charId())[def.id] || 0;
       if (lv >= def.max) continue;
       const cost = upgradeCost(def, lv);
       if (!bestForge || cost < bestForge.cost) bestForge = { def, cost, lv };
@@ -1776,11 +1968,11 @@ export class Menus {
     // The cheapest gear upgrade this class can actually buy right now. Cheapest
     // rather than best, because the answer has to be something they can act on
     // when they close this screen.
-    const gear = this.profile.gear(g.cls.id);
-    const level = this.profile.level(g.cls.id);
+    const gear = this.profile.gear(g.charId);
+    const level = this.profile.level(g.charId);
     let bestGear = null;
     for (const slot of GEAR_SLOTS) {
-      const v = canBuy(g.cls.id, slot.id, gear, level, souls, this.profile.cores(g.cls.id));
+      const v = canBuy(g.cls.id, slot.id, gear, level, souls, this.profile.cores(g.charId));
       if (v.maxed || v.locked || v.needsCore) continue;
       if (!bestGear || v.cost < bestGear.v.cost) bestGear = { slot, v };
     }
@@ -1795,7 +1987,7 @@ export class Menus {
     }
 
     // The next mastery rank for this class.
-    const m = this.profile.masteryProgress(g.cls.id);
+    const m = this.profile.masteryProgress(g.charId);
     out.push({
       icon: '★',
       label: `${g.cls.name} mastery ${m.rank + 1}`,
@@ -1803,7 +1995,7 @@ export class Menus {
     });
 
     // A talent point waiting to be spent beats anything you have to earn.
-    const free = this.profile.availableTalentPoints(g.cls.id);
+    const free = this.profile.availableTalentPoints(g.charId);
     if (free > 0) {
       out.unshift({ icon: '✦', label: 'Unspent talent points', need: String(free) });
     }
