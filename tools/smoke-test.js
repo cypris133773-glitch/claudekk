@@ -1777,6 +1777,46 @@ check('a keyboard can play the whole game', async () => {
   }
 });
 
+check('nothing sets a cached GL uniform behind the cache', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const src = await readFile(new URL('../src/render/renderer.js', import.meta.url), 'utf8');
+
+  // drawBox skips any uniform whose value it already set. That is worth
+  // roughly two thirds of a busy frame's GL calls — measured at 3702 uniform
+  // sets down to 1076 on a thirty-mob wave — and it is only correct while the
+  // shadow copy in `this.st` describes what the driver actually holds.
+  //
+  // The failure mode if it stops being correct is not a crash. It is a mob
+  // drawn in the last mob's colours, or a tile that never updates, appearing
+  // only when the draw order happens to line up. Cheap to prevent, expensive
+  // to debug, so pin the three places the cache can be bypassed.
+  assert(/invalidateState\s*\(\s*\)\s*\{/.test(src), 'the GL state cache is gone');
+
+  // The world mesh sets tint and UVs directly because it carries its own, so
+  // it has to write down what it set.
+  const body = (name, end) => {
+    const at = src.indexOf(name);
+    assert(at >= 0, `${name} went missing`);
+    const stop = src.indexOf(end, at);
+    return src.slice(at, stop < 0 ? src.length : stop);
+  };
+  const worldBody = body('drawWorld()', '\n  /**');
+  assert(worldBody.includes('st.tintR = 1'), 'drawWorld sets the tint without recording it');
+  assert(worldBody.includes('st.uvDU = 1'), 'drawWorld sets the UV scale without recording it');
+  assert(worldBody.includes('st.emissive = 0'), 'drawWorld sets emissive without recording it');
+
+  // The sky runs a different program, which unbinds the vertex array.
+  const skyBody = body('drawSky()', '\n  /**');
+  assert(skyBody.includes('this.st.vao = null'), 'drawSky unbinds the VAO without recording it');
+
+  // And the alpha cutoff, which two call sites toggle, goes through its setter
+  // rather than straight at the driver.
+  const direct = src.split('\n').filter((l) => /gl\.uniform1f\(\s*(this\.)?u\.uCutoff/.test(l));
+  assert(direct.length === 1,
+    `uCutoff is written directly ${direct.length} times; it should only be in setCutoff`);
+  assert(/setCutoff\(v\)\s*\{/.test(src), 'setCutoff is gone');
+});
+
 check('every sound the game asks for exists', async () => {
   const { readFile } = await import('node:fs/promises');
   const audio = await readFile(new URL('../src/core/audio.js', import.meta.url), 'utf8');

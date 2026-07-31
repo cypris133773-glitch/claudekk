@@ -6,6 +6,7 @@ import { Input, isTouchDevice } from './core/input.js';
 import { Audio } from './core/audio.js';
 import { Profile, storage } from './core/save.js';
 import { Game } from './game/game.js';
+import { MOB_TYPES } from './game/mobs.js';
 import { Hud } from './ui/hud.js';
 import { Menus } from './ui/menus.js';
 import { CLASSES } from './data/classes.js';
@@ -513,5 +514,5 @@ document.addEventListener('gesturestart', (e) => e.preventDefault());
 // shipped build is a single file, so there is nothing else to inspect with.
 window.CRAFTARENA = {
   game, profile, renderer, audio, menus, input, CLASSES, AFFIXES, GEAR_SLOT_IDS,
-  RAID_BY_ID,
+  RAID_BY_ID, MOB_TYPES,
 };
