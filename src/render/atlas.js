@@ -234,14 +234,18 @@ function buildAtlasPixels() {
   // outside a crack takes a dimmer, darker orange, which is what stops the
   // network reading as painted-on lines.
   paint(data, T.BASALT, (x, y) => {
-    const crack = hash2(x >> 2, y >> 2, 56) > 0.62;
-    if (crack) return [200, 70, 20];
-    const near = hash2((x + 1) >> 2, y >> 2, 56) > 0.62
-      || hash2((x - 1) >> 2, y >> 2, 56) > 0.62
-      || hash2(x >> 2, (y + 1) >> 2, 56) > 0.62
-      || hash2(x >> 2, (y - 1) >> 2, 56) > 0.62;
-    if (near) return [90, 26, 10];
-    return shade([30, 22, 20], (hash2(x, y, 57) - 0.5) * 16);
+    // Cracks as *lines*, not as a threshold on a coarse grid. The first version
+    // put a 4x4 cell above a cutoff and painted the whole cell, which at
+    // sixteen cells a tile came out as a black square with nothing in it.
+    //
+    // Two wandering seams instead, each a sine of the other axis, with a
+    // cooling halo either side. Three colours: rock, halo, core.
+    const seamA = Math.abs(y - (4 + Math.sin(x * 0.55) * 2.2));
+    const seamB = Math.abs(x - (11 + Math.sin(y * 0.42 + 2) * 2.6));
+    const d = Math.min(seamA, seamB);
+    if (d < 0.8) return shade([214, 92, 26], (hash2(x, y, 56) - 0.5) * 30);
+    if (d < 1.9) return shade([96, 34, 14], (hash2(x, y, 57) - 0.5) * 22);
+    return shade([34, 26, 24], (hash2(x, y, 58) - 0.5) * 20);
   });
 
   // No noise, deliberately. Every other stone in the atlas is noisy and noise
@@ -265,25 +269,52 @@ function buildAtlasPixels() {
   // scales, which is what makes it read as a hide at thirty blocks, and the
   // per-scale gradient, which is what stops it reading as a grid at three.
   paint(data, T.SCALE, (x, y) => {
-    const row = Math.floor(y / 4);
-    const ox = (row & 1) * 2;
-    const sx = (x + ox) % 4, sy = y % 4;
-    const d = Math.hypot(sx - 1.5, sy - 3.0);
-    return shade([176, 168, 148],
-      (d > 2.4 ? -46 : 0) + (1.5 - sy) * 6 + (hash2(x, y, 48) - 0.5) * 14);
+    // Real scallops. The first version measured from a point below the cell and
+    // thresholded the distance, which put the arc outside the cell entirely and
+    // came out as horizontal brickwork.
+    //
+    // Each scale is a disc whose centre sits above its own cell, so the visible
+    // part is the round top edge — which is what a scale is. Alternate rows are
+    // offset by half a scale, the way they overlap on an actual hide.
+    // A parabola, not a circle. Measuring distance to a point below the cell
+    // makes an arc so shallow it comes out as a horizontal line, which is how
+    // two attempts at this ended up as brickwork.
+    //
+    // Each scale is a cell whose *bottom* edge curves: the boundary sits at
+    // v = 3 - u^2 * 0.35, so the middle of a scale reaches lower than its
+    // corners. That is the shape, and it is one expression.
+    const ROW = 4, COL = 5;
+    const row = Math.floor(y / ROW);
+    const sx = (x + (row & 1) * 2) % COL;
+    const sy = y % ROW;
+    const u = sx - (COL - 1) / 2;
+    const edge = (ROW - 0.5) - u * u * 0.42;
+    if (sy > edge) return shade([104, 97, 82], (hash2(x, y, 48) - 0.5) * 10);
+    // Lit along the top lip and falling away toward the curve.
+    return shade([186, 178, 156], (1.6 - sy) * 11 + (hash2(x, y, 49) - 0.5) * 10);
   });
 
   // The channel colour is a fixed cold grey rather than a shade of the base, so
   // a plate tinted bronze keeps a cool groove and a plate tinted steel-blue
   // does not. One tile, two materials, out of one hardcoded triple.
   paint(data, T.RUNEPLATE, (x, y) => {
-    const border = x < 1 || y < 1 || x > 14 || y > 14;
-    const groove = (Math.abs(x - 8) < 1 && y > 2 && y < 13)
-      || (Math.abs(y - 8) < 1 && x > 2 && x < 13);
-    const r = Math.hypot(x - 8, y - 8);
-    if (groove || (r < 2.2 && r > 1.2)) return [96, 118, 140];
-    return shade([150, 154, 162],
-      (border ? -34 : 0) + (((x + y) & 7) === 0 ? 12 : 0) + (hash2(x, y, 49) - 0.5) * 16);
+    // A plate, then a mark on it. The first version cut a full cross through
+    // the middle and came out reading as a crosshair rather than as metal.
+    //
+    // Now the structure is the *panel* — a bevelled edge and four rivets, which
+    // is what says "plate" — and the rune is one short offset bar that never
+    // touches the border. The channel colour stays a fixed cold grey so a plate
+    // tinted bronze keeps a cool groove.
+    const border = x === 0 || y === 0 || x === 15 || y === 15;
+    const bevel = x === 1 || y === 1 || x === 14 || y === 14;
+    if (border) return shade([88, 92, 100], (hash2(x, y, 49) - 0.5) * 10);
+    const rivet = (x === 3 || x === 12) && (y === 3 || y === 12);
+    if (rivet) return [198, 204, 214];
+    const bar = y > 6 && y < 9 && x > 4 && x < 11;
+    const tick = x === 5 && y > 4 && y < 11;
+    if (bar || tick) return [92, 114, 138];
+    return shade([154, 158, 166],
+      (bevel ? 18 : 0) + (((x + y) & 7) === 0 ? 9 : 0) + (hash2(x, y, 50) - 0.5) * 14);
   });
 
   // The holes are denser at the top because this goes on bodies and limbs, and
@@ -291,10 +322,27 @@ function buildAtlasPixels() {
   // rising, one that dissolves downward reads as broken. They are literal a=0,
   // so they discard rather than blend and cost nothing in draw order.
   paint(data, T.SPECTRAL, (x, y) => {
-    const n = hash2(x >> 1, (y + Math.floor(x / 5)) >> 1, 50);
-    if (n < 0.30 && y < 11) return [0, 0, 0, 0];
-    const wisp = Math.sin(x * 0.9 + y * 0.35) * 12;
-    return shade([236, 238, 244], wisp + (y > 12 ? -30 : 0) + (hash2(x, y, 51) - 0.5) * 18);
+    // Wisps, not damage. The first version punched 30% of the tile out in 2x2
+    // blocks, which is a lot of hole and all of it the same size — it read as
+    // something eaten rather than as something not entirely there.
+    //
+    // The holes are single pixels now and rarer, and they gather toward the top
+    // where the vertical streaks are already thinnest. A figure that dissolves
+    // upward reads as rising; one that dissolves evenly reads as broken.
+    // Streaks first, holes second. The previous pass was a near-flat white
+    // field with holes punched in it, and a field with holes in it reads as
+    // damage — the thing that says "ghost" is the *streaking*, and the holes
+    // are only what happens at the ends of it.
+    //
+    // Columns of alternating brightness running head to foot, with a slow
+    // wobble so they are not a barcode, and single-pixel gaps that gather
+    // toward the top where the streaks are already thinnest.
+    const wobble = Math.sin(y * 0.42) * 1.4;
+    const band = Math.sin((x + wobble) * 1.15);
+    const fade = (11 - y) / 11;
+    if (fade > 0 && band < -0.55 && hash2(x, y, 51) < 0.55 * fade) return [0, 0, 0, 0];
+    const hem = y > 13 ? -40 : 0;
+    return shade([214, 222, 238], band * 26 + hem + (hash2(x, y, 52) - 0.5) * 10);
   });
 
   // --- Raid faces -----------------------------------------------------------
@@ -339,10 +387,14 @@ function buildAtlasPixels() {
   // a tooth row — the two must not collide, because a raid that summons
   // Bonecasters puts them on screen together.
   paint(data, T.FACE_HOLLOW, (x, y) => {
+    // Sockets with a brow over them and a jaw hanging open under. The first
+    // version was two squares and nothing else, which at ten blocks is a domino.
+    if (rect(x, y, 2, 3, 13, 4)) return [120, 116, 104];        // brow ridge
     if (rect(x, y, 3, 5, 6, 8) || rect(x, y, 9, 5, 12, 8)) return [10, 12, 16];
-    if (rect(x, y, 5, 11, 10, 11) && x % 2 === 0) return [200, 198, 186];
-    if (rect(x, y, 5, 11, 10, 14)) return [14, 14, 18];
-    return shade([244, 242, 232], (hash2(x, y, 55) - 0.5) * 20);
+    if (rect(x, y, 7, 8, 8, 10)) return [150, 146, 132];        // nose ridge
+    if (rect(x, y, 4, 12, 11, 15)) return [14, 14, 18];         // the open jaw
+    if (rect(x, y, 4, 11, 11, 11) && x % 2 === 0) return [206, 202, 188];
+    return shade([244, 242, 232], (hash2(x, y, 55) - 0.5) * 18);
   });
 
   paint(data, T.FACE_BOSS, (x, y) => {
@@ -430,6 +482,11 @@ export function tryLoadCustomHead(gl, tex, url = 'assets/enemy-head.png') {
 }
 
 /** Upload the generated atlas as a GL texture with nearest filtering. */
+/** The atlas as raw RGBA, for tooling that wants to look at it. */
+export function atlasImageData() {
+  return buildAtlasPixels();
+}
+
 export function createAtlasTexture(gl) {
   const pixels = buildAtlasPixels();
   const tex = gl.createTexture();

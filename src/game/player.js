@@ -549,7 +549,7 @@ export class Player extends Entity {
     // from your own hands — and at the old distance it was a sliver in the
     // corner. Closer to the eye is the only lever that makes it big without
     // making it clip through walls.
-    const reach = 0.50 + ease * 0.12;
+    const reach = 0.62 + ease * 0.13;
     const side = (lefty ? -1 : 1) * (0.26 + bobX) - ease * 0.05;
     const drop = -0.30 + bobY + ease * 0.09;
     const px = camera.x + fwd[0] * reach + rx * side;
@@ -565,7 +565,7 @@ export class Player extends Entity {
     // stay exactly as they were and only the size changes. The tier scales it
     // further: a T6 weapon is about a quarter larger than a T0 one, which is
     // the cheapest way to make a tier readable at a glance.
-    const S = 1.6 * (w.scale || 1);
+    const S = 1.45 * (w.scale || 1);
     // The tier's flourishes. Each one is a couple of extra boxes on a shape
     // that already exists, which is what makes sixty-three appearances
     // affordable: nothing here is modelled, it is all dials on one mesh.

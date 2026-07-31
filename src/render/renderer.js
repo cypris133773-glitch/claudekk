@@ -18,7 +18,12 @@ function cubeVerts() {
   const uv = [[0, 0], [0, 1], [1, 1], [1, 0]];
   const out = [];
   for (const f of F) {
-    const quad = f.c.map((c, i) => [c[0], c[1], c[2], uv[i][0], uv[i][1], f.s]);
+    // Seven floats, not six: the world mesh gained a glow channel and this
+    // buffer is bound with the same stride. A cube emitting six read every
+    // attribute from the wrong offset — models came out sheared, mis-textured
+    // and unlit, which is what "the enemies and weapons look ugly" was.
+    // Entities carry no baked glow of their own; the trailing 0 is that.
+    const quad = f.c.map((c, i) => [c[0], c[1], c[2], uv[i][0], uv[i][1], f.s, 0]);
     for (const i of [0, 1, 2, 0, 2, 3]) out.push(...quad[i]);
   }
   return new Float32Array(out);

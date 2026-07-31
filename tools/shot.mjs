@@ -118,6 +118,7 @@ fs.mkdirSync(OUT, { recursive: true });
 // where they will be when a player walks in.
 if (process.env.SHOT_RAID) {
   await frame.evaluate((n) => { window.__shotBoss = n; }, Number(process.env.SHOT_BOSS || 0));
+  await frame.evaluate((v) => { window.__shotStay = v; }, !!process.env.SHOT_STAY);
   await frame.evaluate((id) => {
     const B = window.CRAFTARENA;
     B.menus.show(null);
@@ -128,6 +129,7 @@ if (process.env.SHOT_RAID) {
   await frame.evaluate(() => {
     const B = window.CRAFTARENA;
     const b = B.game.raidBoss, p = B.game.player;
+    if (window.__shotStay) return;
     // Stand off and look straight at it, so the outline is what the shot is of.
     const dx = b.x - p.x, dz = b.z - p.z;
     const d = Math.hypot(dx, dz) || 1;
