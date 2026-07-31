@@ -108,6 +108,59 @@ first (§1), then async PvP, then real-time — because accounts and a
 leaderboard are prerequisites for both, and async PvP tells you whether people
 actually want to fight each other before you pay for game servers.
 
+### 2b. What if the *player* hosts the arena?
+
+This is a genuinely different proposition from §2 and a much smaller one, so it
+deserves its own answer rather than being folded into "multiplayer is hard".
+
+**Short version: yes, 1v1 / 2v2 / 3v3 with a player as host is buildable, and
+it is weeks of work rather than months.** Two browsers can talk directly over
+WebRTC data channels, which is exactly the transport this needs: unreliable,
+unordered, low-latency, and already in every browser the game runs in. Six
+players is a small enough group that the host can simply run the simulation it
+already runs and broadcast the result.
+
+**What changes in this codebase.** Less than §2 implies, because the hard part
+of §2 was *moving* the simulation somewhere neither player controls. Here it
+stays where it is:
+
+- The host keeps running `Game.update` at the fixed 60 Hz step it already uses.
+- A joining player sends input frames instead of applying them locally, and
+  renders entity snapshots the host sends back at ~20 Hz, interpolated between.
+- Your own movement is predicted locally and reconciled, or it feels 80 ms
+  late. Everyone else's is interpolated, which is invisible at these speeds.
+- Mobs, waves and the wave director do not need to change at all — they are
+  already only ever simulated in one place.
+
+**What it costs that "serverless" makes sound free.** Peer-to-peer removes the
+*game* server, not every server:
+
+- **Signalling.** Two browsers cannot find each other without exchanging a
+  connection description first. That is a few hundred bytes over any channel at
+  all — including, for a first version, an invite code the host copies and
+  pastes into a chat. That version needs literally no infrastructure and is a
+  real product for "play with a friend". It is not matchmaking.
+- **STUN**, to discover your own public address. Free public servers exist. It
+  is an external request, which this game currently makes zero of — a
+  deliberate constraint worth breaking knowingly rather than by accident.
+- **TURN**, a relay for the roughly 10–20% of pairs whose networks refuse a
+  direct connection. This one costs money, because the traffic flows through
+  it. It is the only unavoidable running cost, and it scales with the fraction
+  of matches that need it, not with players.
+
+**The trust model changes but does not improve.** Under §2 nobody is trusted;
+here the host is. A host who edits the page decides what damage they took. For
+friends agreeing to duel, that is fine and always has been — this is how every
+peer-hosted shooter has worked. For anything with a leaderboard attached it is
+not, and no amount of client-side validation fixes it.
+
+**So the honest recommendation:** peer-hosted private matches are the cheapest
+real PvP this game can have, and they are worth building *for what they are* —
+you and your friends, an invite code, a duel. They are not a step toward
+ranked play. If ranked is the destination, async ghosts (above) remain the
+first thing to build, because they answer "do people want to fight each other"
+without needing either a game server or a trusted host.
+
 ---
 
 ## 3. Making the repository private
