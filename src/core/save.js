@@ -17,6 +17,7 @@ import {
   legacyArmorRefund, canBuy, ownedTier, GEAR_SLOT_IDS, MAX_TIER,
 } from '../data/armor.js';
 import { emptyRaidState, normaliseRaidState, earnedCores } from '../data/raids.js';
+import { POTIONS, POTION_STACK, potionPrice } from '../data/potions.js';
 
 const KEY = 'craftarena.save.v1';
 // The game shipped as BLOCKFRAY, and anyone who played it has their whole
@@ -72,6 +73,10 @@ function emptyProfile() {
       // Which raid bosses this class has put down. Per class like everything
       // else here; only gold is shared.
       raid: emptyRaidState(),
+      // Potions bought from the shop and not yet drunk, `{ health: 3 }`. Per
+      // class for the same reason as the gear: a stocked main should not hand
+      // a fresh alt a rack of potions it never paid for.
+      potions: {},
     };
   }
   return {
@@ -264,6 +269,15 @@ export class Profile {
       }
       cd.gear = clean;
       cd.raid = normaliseRaidState(cd.raid);
+      // A save written before the Potion Shop existed has no rack at all, and
+      // a hand-edited one could have a negative count or a potion that was
+      // since removed. Both become an empty shelf rather than a crash.
+      const rack = {};
+      for (const def of POTIONS) {
+        const n = Math.floor(Number((cd.potions || {})[def.id]) || 0);
+        if (n > 0) rack[def.id] = Math.min(POTION_STACK, n);
+      }
+      cd.potions = rack;
     }
   }
 
@@ -330,6 +344,60 @@ export class Profile {
     gear[slotId] = verdict.next;
     this.save();
     return verdict;
+  }
+
+  // --- The Potion Shop -----------------------------------------------------
+
+  /** What this class is carrying, `{ health: 3 }`. Live object — mutate it. */
+  potions(classId) {
+    const cd = this.data.classes[classId];
+    if (!cd.potions) cd.potions = {};
+    return cd.potions;
+  }
+
+  /** How many of one kind this class holds. */
+  potionCount(classId, potionId) {
+    return Math.max(0, Math.min(POTION_STACK, (this.potions(classId)[potionId] | 0)));
+  }
+
+  /** What one costs this class right now — the price follows its level. */
+  potionPriceFor(classId, potionId) {
+    return potionPrice(potionId, this.level(classId));
+  }
+
+  /**
+   * Buy one, or say why not. Mirrors `buyGear`: the verdict is computed in one
+   * place so the disabled button and the refused purchase cannot disagree.
+   *
+   * Returns `{ ok, reason, cost, count }`.
+   */
+  buyPotion(classId, potionId) {
+    const cost = this.potionPriceFor(classId, potionId);
+    const held = this.potionCount(classId, potionId);
+    if (held >= POTION_STACK) return { ok: false, reason: 'full', cost, count: held };
+    if (this.souls < cost) return { ok: false, reason: 'poor', cost, count: held };
+    this.data.souls -= cost;
+    this.potions(classId)[potionId] = held + 1;
+    this.save();
+    return { ok: true, cost, count: held + 1 };
+  }
+
+  /**
+   * Drink one. Returns false if the shelf was empty, so the caller can play a
+   * refusal rather than a swallow.
+   *
+   * Written through immediately rather than at the end of the run: a potion
+   * drunk on the wave that killed you is spent, and a player who closed the
+   * tab mid-fight should not find it back on the shelf.
+   */
+  consumePotion(classId, potionId) {
+    const held = this.potionCount(classId, potionId);
+    if (held <= 0) return false;
+    const rack = this.potions(classId);
+    if (held === 1) delete rack[potionId];
+    else rack[potionId] = held - 1;
+    this.save();
+    return true;
   }
 
   // --- Skill loadout -------------------------------------------------------

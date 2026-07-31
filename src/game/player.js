@@ -7,6 +7,7 @@ import { clamp, forwardVec, rand } from '../core/math.js';
 import { castSkill, skillCooldown } from './skills.js';
 import { LOADOUT_SIZE } from '../data/classes.js';
 import { weaponAppearance } from '../data/armor.js';
+import { POTIONS } from '../data/potions.js';
 
 /** Sum every modifier source into one flat bag of numbers. */
 export function buildMods(cls, talentRanks, permanent) {
@@ -331,6 +332,18 @@ export class Player extends Entity {
         // runs for pets and for the harness — a quest for "cast 600 skills"
         // must mean the player's own casts.
         if (castSkill(game, this, i) && game.tally) game.tally.skillsCast++;
+      }
+    }
+
+    // The belt. Not gated by `disabled` the way skills are: being silenced or
+    // stunned is exactly when you reach for a potion, and a heal you bought
+    // that the fight can lock away is a heal you cannot count on.
+    if (input.potions) {
+      for (let i = 0; i < input.potions.length; i++) {
+        if (!input.potions[i]) continue;
+        input.potions[i] = false;
+        const def = POTIONS[i];
+        if (def) game.drinkCarried(def.id);
       }
     }
 

@@ -75,6 +75,43 @@ export const POTION_LIFETIME = 22;
  * Pick a potion type. Health is the most common because it is the one that
  * answers the situation potions exist for — being in trouble.
  */
+/**
+ * How many of each potion you may carry into a run.
+ *
+ * A cap at all is the point. Without one, the Potion Shop turns every fight
+ * into a resource the player already bought — you would never be in trouble,
+ * only out of money, and the arena would stop being the thing that kills you.
+ * Five is enough to survive a bad wave you would otherwise lose and not
+ * enough to survive four of them.
+ */
+export const POTION_STACK = 5;
+
+/**
+ * What one costs, in gold, at a given character level.
+ *
+ * Two things are being balanced. A potion has to stay worth buying at level
+ * 60, where it heals a third of a much larger health bar — so a flat price
+ * would make late-game potions free in practice. And it has to stay *cheap*:
+ * this is a consumable you restock between runs, not a purchase you save for.
+ * A tier of armour costs 800 gold at its cheapest and 3.3 million at its
+ * dearest; a full potion rack should never read as competing with that.
+ *
+ * So: a small base, growing about seven-fold across the sixty levels. In
+ * practice a full restock of all three types lands near one good run's takings
+ * at any level, which is the ratio that keeps it a habit rather than a saving.
+ *
+ * Health is the cheapest because it is the most common drop, and pricing it
+ * above the buffs would make the shop disagree with the arena about what a
+ * potion is worth.
+ */
+export const POTION_BASE_PRICE = { health: 50, damage: 85, speed: 75 };
+
+export function potionPrice(potionId, level) {
+  const base = POTION_BASE_PRICE[potionId] || 60;
+  const lv = Math.max(1, Math.min(60, level | 0));
+  return Math.round(base * (1 + (lv - 1) * 0.11));
+}
+
 export function rollPotion(random = Math.random) {
   let total = 0;
   for (const p of POTIONS) total += p.weight;

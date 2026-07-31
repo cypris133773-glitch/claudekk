@@ -27,6 +27,10 @@ export class Input {
       jump: false,
       sprint: false,
       skills: [false, false, false, false],
+      // One flag per potion type on the belt, in POTIONS order. Separate from
+      // skills because a potion is not on a cooldown and never fails for
+      // resource — the only thing that stops it is having none left.
+      potions: [false, false, false],
       pause: false,
     };
     this.keys = new Set();
@@ -90,6 +94,11 @@ export class Input {
       if (k === 'KeyE') this.state.skills[1] = true;
       if (k === 'KeyR') this.state.skills[2] = true;
       if (k === 'KeyF') this.state.skills[3] = true;
+      // The belt continues the number row where the skills stop, so the whole
+      // action bar is one run of keys under the left hand.
+      if (k === 'Digit5') this.state.potions[0] = true;
+      if (k === 'Digit6') this.state.potions[1] = true;
+      if (k === 'Digit7') this.state.potions[2] = true;
       if (k === 'Escape') this.state.pause = true;
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(k)) e.preventDefault();
     });
@@ -467,6 +476,9 @@ export class Input {
 
     for (let i = 0; i < 4; i++) {
       if (this.buttonHits.has('skill' + i)) s.skills[i] = true;
+    }
+    for (let i = 0; i < s.potions.length; i++) {
+      if (this.buttonHits.has('potion' + i)) s.potions[i] = true;
     }
     if (this.buttonHits.has('pause')) s.pause = true;
     this.buttonHits.clear();

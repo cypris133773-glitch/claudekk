@@ -1777,6 +1777,90 @@ check('a keyboard can play the whole game', async () => {
   }
 });
 
+check('the Potion Shop is a restock, not a second gear track', async () => {
+  const { POTIONS, POTION_STACK, potionPrice } = await import('../src/data/potions.js');
+  const { gearCost, GEAR_TIERS, GEAR_SLOTS } = await import('../src/data/armor.js');
+
+  for (const def of POTIONS) {
+    // Rising with level is the point — a flat price would make a potion that
+    // heals a third of a level-60 health bar effectively free.
+    const low = potionPrice(def.id, 1);
+    const high = potionPrice(def.id, 60);
+    assert(high > low * 4, `${def.id} barely gets dearer: ${low} -> ${high}`);
+    // And it is affordable on the first run, where a wave clear pays under a
+    // hundred and nobody has savings yet.
+    assert(low <= 120, `${def.id} costs ${low} at level 1`);
+  }
+
+  // The shop must stay a restock. At every level a full rack of everything is
+  // a fraction of the armour a character at that level is actually saving for
+  // — and a shrinking fraction, so potions never become the thing you grind.
+  const rackAt = (lv) => POTIONS.reduce((n, d) => n + potionPrice(d.id, lv), 0) * POTION_STACK;
+  let lastShare = Infinity;
+  for (const t of GEAR_TIERS) {
+    const set = gearCost(t.tier) * GEAR_SLOTS.length;
+    const rack = rackAt(t.level);
+    const share = rack / set;
+    assert(share < 0.35,
+      `at level ${t.level} a full rack costs ${rack} against a ${set} T${t.tier} set`);
+    assert(share < lastShare,
+      `potions got relatively dearer at level ${t.level} (${share.toFixed(3)} vs ${lastShare.toFixed(3)})`);
+    lastShare = share;
+  }
+});
+
+check('a potion rack is bought, spent, and kept by one class', async () => {
+  const { Profile } = await import('../src/core/save.js');
+  const { POTION_STACK } = await import('../src/data/potions.js');
+  const p = new Profile();
+  p.data.souls = 1e6;
+
+  // Stacks cap. Without one the shop would sell you out of ever being in
+  // trouble, and the arena would stop being the thing that kills you.
+  for (let i = 0; i < POTION_STACK + 3; i++) p.buyPotion('warrior', 'health');
+  assert(p.potionCount('warrior', 'health') === POTION_STACK,
+    `carried ${p.potionCount('warrior', 'health')}, cap is ${POTION_STACK}`);
+  const full = p.buyPotion('warrior', 'health');
+  assert(!full.ok && full.reason === 'full', 'a full rack still sold one');
+
+  // Per class, like the gear. A stocked main must not hand a fresh alt a rack.
+  assert(p.potionCount('mage', 'health') === 0, 'the mage inherited the warrior rack');
+
+  // Gold actually leaves.
+  const before = p.souls;
+  const cost = p.potionPriceFor('mage', 'damage');
+  assert(p.buyPotion('mage', 'damage').ok, 'the mage could not buy one');
+  assert(p.souls === before - cost, `spent ${before - p.souls}, priced at ${cost}`);
+
+  // Drinking spends it, and an empty shelf refuses rather than going negative.
+  assert(p.consumePotion('mage', 'damage'), 'could not drink the one just bought');
+  assert(p.potionCount('mage', 'damage') === 0, 'drinking left it on the shelf');
+  assert(!p.consumePotion('mage', 'damage'), 'drank from an empty shelf');
+  assert(p.potionCount('mage', 'damage') === 0, 'an empty shelf went negative');
+
+  // Not enough gold is a refusal, not a debt.
+  p.data.souls = 0;
+  const broke = p.buyPotion('priest', 'speed');
+  assert(!broke.ok && broke.reason === 'poor', 'bought a potion with no gold');
+  assert(p.souls === 0, 'gold went negative');
+});
+
+check('a save from before the Potion Shop still loads', async () => {
+  // Every class gained a `potions` key. A save written last week has none, and
+  // the normaliser is the only thing standing between that and a crash on the
+  // first shop visit.
+  const { Profile } = await import('../src/core/save.js');
+  const p = new Profile();
+  delete p.data.classes.warrior.potions;
+  p.data.classes.mage.potions = { health: -4, nonesuch: 9, damage: 999 };
+  p.normaliseGear();
+  assert(p.potionCount('warrior', 'health') === 0, 'a missing rack did not become empty');
+  assert(p.potionCount('mage', 'health') === 0, 'a negative count survived');
+  assert(p.potions('mage').nonesuch === undefined, 'a potion that does not exist survived');
+  const { POTION_STACK } = await import('../src/data/potions.js');
+  assert(p.potionCount('mage', 'damage') === POTION_STACK, 'an over-cap count was not clamped');
+});
+
 check('every talent effect can be explained on screen', async () => {
   const { EFFECT_INFO, talentLines } = await import('../src/data/talentinfo.js');
   for (const cls of CLASSES) {

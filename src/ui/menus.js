@@ -26,6 +26,7 @@ import { DIFFICULTIES } from '../data/difficulty.js';
 import { skillIconElement, iconElement, schoolFor, SCHOOLS } from './icons.js';
 import { QUEST_COUNT } from '../data/quests.js';
 import { talentLines, talentNextGain } from '../data/talentinfo.js';
+import { POTIONS, POTION_STACK } from '../data/potions.js';
 
 // Presentation only, so it lives here and not in raids.js — the same reason
 // TALENT_GLYPHS does. One glyph per raid; the field colour comes from the
@@ -138,6 +139,7 @@ export class Menus {
       quests: () => this.buildQuests(),
       forge: () => this.buildForge(),
       armoury: () => this.buildArmoury(),
+      potions: () => this.buildPotionShop(),
       raids: () => this.buildRaids(),
       raid: () => this.buildRaid(),
       raidkill: () => this.buildRaidGate('kill'),
@@ -281,6 +283,7 @@ export class Menus {
       { label: 'THE FORGE', hint: 'Permanent upgrades', go: () => this.show('forge') },
       { label: 'ARMOURY', hint: rating ? `${rating} of 42 pieces` : 'Buy and upgrade gear', go: () => this.show('armoury') },
       { label: 'TALENTS', hint: 'Spend talent points', go: () => this.show('talents') },
+      { label: 'POTION SHOP', hint: this.potionHint(this.selectedClass), go: () => this.show('potions') },
       { label: 'QUESTS', hint: ready ? `${ready} ready to claim` : `${questDone} of 500 done`, go: () => this.show('quests') },
       { label: 'RECORDS', hint: 'Career statistics', go: () => this.show('stats') },
       { label: 'SETTINGS', hint: 'Controls & display', go: () => this.show('settings') },
@@ -849,6 +852,94 @@ export class Menus {
       card.appendChild(buy);
       return card;
     }));
+    wrap.appendChild(p);
+    return wrap;
+  }
+
+  // -------------------------------------------------------------------------
+  // The Potion Shop
+  // -------------------------------------------------------------------------
+
+  /**
+   * Buy the same three potions the arena drops, for gold, and carry them in.
+   *
+   * Four of the nine classes have no heal of their own, and the drip of
+   * dropped potions is the whole of their sustain — which makes surviving a
+   * bad wave partly a question of what the floor happened to give you. A
+   * stocked belt is the answer to that: it does not make you stronger, it
+   * makes the answer available at the moment you need it rather than wherever
+   * it happened to fall.
+   *
+   * Per class, like the gear and the Forge, and for the same reason. The price
+   * follows the class's level so it stays a real cost at 60 rather than the
+   * rounding error a flat price would become.
+   */
+  /** The POTION SHOP tile's hint: what this class is carrying right now. */
+  potionHint(classId) {
+    const cls = classId || (CLASSES[0] && CLASSES[0].id);
+    const n = POTIONS.reduce((s, d) => s + this.profile.potionCount(cls, d.id), 0);
+    if (!n) return 'Stock up before a run';
+    return `Carrying ${n} of ${POTIONS.length * POTION_STACK}`;
+  }
+
+  buildPotionShop() {
+    const wrap = el('div', 'screen');
+    const cls = CLASSES.find((c) => c.id === this.selectedClass) || CLASSES[0];
+    const picker = el('div', 'class-picker');
+    for (const c of CLASSES) {
+      const b = el('button', 'pill' + (c.id === cls.id ? ' active' : ''), c.name);
+      b.style.setProperty('--accent', c.color);
+      this.click(b, () => { this.selectedClass = c.id; this.refresh(); });
+      picker.appendChild(b);
+    }
+    wrap.appendChild(this.backBar('title'));
+    wrap.appendChild(picker);
+
+    const level = this.profile.level(cls.id);
+    const carried = POTIONS.reduce((n, d) => n + this.profile.potionCount(cls.id, d.id), 0);
+    const p = this.panel(`${cls.name} — Potion Shop`,
+      `Level ${level} prices · carrying ${carried} of ${POTIONS.length * POTION_STACK}`);
+
+    const grid = el('div', 'potion-grid');
+    for (const def of POTIONS) {
+      const held = this.profile.potionCount(cls.id, def.id);
+      const cost = this.profile.potionPriceFor(cls.id, def.id);
+      const full = held >= POTION_STACK;
+      const afford = this.profile.souls >= cost;
+
+      const card = el('div', 'potion-card' + (full ? ' full' : '') + (!afford && !full ? ' poor' : ''));
+      card.style.setProperty('--vial', def.color);
+      card.style.setProperty('--vial-glow', def.glow);
+
+      // The same round glass the belt draws, so the thing you buy and the
+      // thing you tap mid-fight are recognisably one object.
+      const vial = el('div', 'potion-vial');
+      vial.appendChild(el('i', 'potion-shine'));
+      card.appendChild(vial);
+
+      const body = el('div', 'potion-body');
+      body.appendChild(el('div', 'potion-name', def.name));
+      body.appendChild(el('div', 'potion-desc', def.blurb));
+      const pips = el('div', 'potion-pips');
+      for (let i = 0; i < POTION_STACK; i++) pips.appendChild(el('i', i < held ? 'on' : null));
+      body.appendChild(pips);
+      body.appendChild(el('div', 'potion-held', `${held} / ${POTION_STACK} carried`));
+      card.appendChild(body);
+
+      const buy = el('button', 'buy-btn', full ? 'FULL' : `🪙 ${cost}`);
+      buy.disabled = full || !afford;
+      this.click(buy, () => {
+        const res = this.profile.buyPotion(cls.id, def.id);
+        this.ctx.audio.play(res.ok ? 'buy' : 'deny');
+        this.refresh();
+      });
+      card.appendChild(buy);
+      grid.appendChild(card);
+    }
+    p.appendChild(grid);
+    p.appendChild(el('p', 'shop-note',
+      'Drink with the round icons in the top-left corner, or the 5, 6 and 7 keys. '
+      + 'What you drink is gone — the rack is not refilled between runs.'));
     wrap.appendChild(p);
     return wrap;
   }

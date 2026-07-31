@@ -877,6 +877,59 @@ button:disabled { opacity: 0.35; cursor: default; }
 .forge-pips i.on { background: var(--gold); }
 
 /* --------------------------------------------------------------------- */
+/* The Potion Shop                                                        */
+/* --------------------------------------------------------------------- */
+
+.potion-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+}
+.potion-card {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--vial);
+  border-radius: 14px;
+  padding: 12px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.potion-card.full { border-color: rgba(255, 210, 74, 0.45); border-left-color: var(--gold); }
+.potion-card.poor { opacity: 0.72; }
+
+/* The same round glass the HUD belt draws, so what you buy here and what you
+   tap mid-fight read as one object rather than two icons of the same thing. */
+.potion-vial {
+  position: relative;
+  width: 44px; height: 44px;
+  flex: 0 0 44px;
+  border-radius: 50%;
+  border: 2px solid var(--vial-glow);
+  background: radial-gradient(circle at 32% 30%,
+    var(--vial-glow) 8%, var(--vial) 55%, rgba(0, 0, 0, 0.55) 100%);
+}
+.potion-shine {
+  position: absolute;
+  left: 16%; top: 14%;
+  width: 20%; height: 20%;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.55);
+}
+.potion-body { flex: 1; min-width: 0; }
+.potion-name { font-weight: 800; font-size: 14px; }
+.potion-desc { font-size: 11.5px; color: var(--dim); line-height: 1.4; margin: 2px 0 6px; }
+.potion-pips { display: flex; gap: 3px; }
+.potion-pips i {
+  width: 12px; height: 5px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.14);
+}
+.potion-pips i.on { background: var(--vial-glow); }
+.potion-held { font-size: 10.5px; color: var(--dim); margin-top: 4px; }
+.shop-note { font-size: 11.5px; color: var(--dim); line-height: 1.45; margin: 10px 0 0; }
+
+/* --------------------------------------------------------------------- */
 /* Stats / settings                                                       */
 /* --------------------------------------------------------------------- */
 
@@ -2029,7 +2082,12 @@ body.show-popout-btn #popout-btn { display: block; }
    rather than auto-fit: at 358px of content minmax(190px, 1fr) resolves to a
    single track and the grid silently becomes a list again. */
 @media (max-width: 430px) {
-  .main-menu.grid { grid-template-columns: repeat(2, 1fr); }
+  /* minmax(0, 1fr), not 1fr. A `1fr` track is floored by its content's
+     minimum width, and the nowrap hint below has no minimum — so the two
+     tracks grew to fit the longest hint and pushed the right-hand column
+     clean off a 390px screen. Ten tiles happened to stay inside; the
+     eleventh did not, which is how a layout bug this old got found. */
+  .main-menu.grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   /* Uniform row heights are what a two-column grid costs: one three-line hint
      inflates the whole row. */
   .menu-hint { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

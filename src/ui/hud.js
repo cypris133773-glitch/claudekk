@@ -5,6 +5,7 @@ import { skillCooldown, skillCost } from '../game/skills.js';
 import { clamp } from '../core/math.js';
 import { drawSkillIcon } from './icons.js';
 import { levelProgress } from '../data/levels.js';
+import { POTIONS } from '../data/potions.js';
 import { humanoidBoxes } from '../game/entity.js';
 
 const FONT = "700 %spx 'Segoe UI', system-ui, -apple-system, sans-serif";
@@ -114,6 +115,7 @@ export class Hud {
     this.drawVitals(p);
     this.drawWaveInfo();
     this.drawAffixes();
+    this.drawPotionBelt(p);
     this.drawBuffs(p);
     this.drawCombo();
     this.drawXpPops();
@@ -430,12 +432,100 @@ export class Hud {
     c.fillText(`${g.player.kills} kills`, rightEdge, top + 22);
   }
 
+  /**
+   * The belt: what this class bought in the Potion Shop and has not drunk yet.
+   *
+   * Round, because everything else stacked down this edge is a rectangle — a
+   * bar, a buff, an affix — and the belt has to be findable without reading
+   * it. Mid-fight the only question being asked here is "do I still have a
+   * red one", and a circle among rectangles answers that in peripheral vision.
+   *
+   * An empty slot stays on the belt rather than collapsing the row. A belt
+   * that reflows as you drink means the icon under your thumb changes while
+   * your thumb is moving toward it, and the potion you meant to drink is not
+   * the one you drink.
+   */
+  drawPotionBelt(p) {
+    const g = this.game;
+    if (!g.cls) return;
+    const c = this.ctx;
+    const r = this.touchMode ? 19 : 17;
+    const gap = this.touchMode ? 12 : 10;
+    let x = 16 + this.safe.l + r;
+    const y = (this.touchMode ? this.leftColY : 68) + r;
+
+    this.potionRects = [];
+    for (let i = 0; i < POTIONS.length; i++) {
+      const def = POTIONS[i];
+      const held = this.profile.potionCount(g.cls.id, def.id);
+      const dim = held <= 0;
+
+      c.save();
+      c.globalAlpha = dim ? 0.32 : 1;
+      // The glass: the potion's own colour, lit from the top left so it reads
+      // as a bottle rather than a token.
+      const grad = c.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.1, x, y, r);
+      grad.addColorStop(0, def.glow);
+      grad.addColorStop(0.55, def.color);
+      grad.addColorStop(1, 'rgba(0,0,0,0.55)');
+      c.beginPath();
+      c.arc(x, y, r, 0, Math.PI * 2);
+      c.fillStyle = grad;
+      c.fill();
+      c.lineWidth = 2;
+      c.strokeStyle = dim ? 'rgba(255,255,255,0.25)' : def.glow;
+      c.stroke();
+      // A single specular dot. Cheap, and it is what makes the circle read as
+      // glass instead of a flat disc.
+      c.beginPath();
+      c.arc(x - r * 0.34, y - r * 0.36, r * 0.20, 0, Math.PI * 2);
+      c.fillStyle = 'rgba(255,255,255,0.55)';
+      c.fill();
+      c.restore();
+
+      // Count, in a badge at the lower right so it never sits over the glass.
+      c.beginPath();
+      c.arc(x + r * 0.72, y + r * 0.72, r * 0.52, 0, Math.PI * 2);
+      c.fillStyle = held > 0 ? '#14161d' : 'rgba(20,22,29,0.7)';
+      c.fill();
+      c.lineWidth = 1.5;
+      c.strokeStyle = held > 0 ? '#ffd24a' : 'rgba(255,255,255,0.22)';
+      c.stroke();
+      this.font(Math.round(r * 0.72));
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.fillStyle = held > 0 ? '#ffd24a' : 'rgba(255,255,255,0.35)';
+      c.fillText(String(held), x + r * 0.72, y + r * 0.75);
+
+      // On a keyboard the belt continues the action bar's number row.
+      if (!this.touchMode) {
+        this.font(10);
+        c.fillStyle = 'rgba(255,255,255,0.5)';
+        c.fillText(String(5 + i), x, y + r + 9);
+      }
+
+      this.potionRects.push({
+        name: 'potion' + i, cx: x, cy: y,
+        r: Math.max(MIN_TOUCH / 2, r + gap / 2),
+      });
+      x += r * 2 + gap;
+    }
+    // Everything stacked below follows the same cursor, so the buffs cannot
+    // land on top of the belt. On touch that cursor is the shared one the
+    // vitals block sets; on desktop the buffs are the only thing under here.
+    const bottom = y + r + (this.touchMode ? 10 : 20);
+    if (this.touchMode) this.leftColY = bottom;
+    this.buffTop = bottom;
+  }
+
   drawBuffs(p) {
     const c = this.ctx;
     // Sit below the vitals block, wherever that ended up.
     const size = 34;
     let x = 16 + this.safe.l;
-    let y = this.touchMode ? this.leftColY : 68;
+    // Below the belt, which is drawn first because it is always there and the
+    // buffs are not — a fixture the transient thing flows around.
+    let y = this.buffTop !== undefined ? this.buffTop : (this.touchMode ? this.leftColY : 68);
     this.font(11);
     c.textAlign = 'center';
     c.textBaseline = 'middle';
@@ -996,6 +1086,15 @@ export class Hud {
       // rests on, so it cannot be hit by accident mid-fight.
       this.touchButton(this.w / 2, s.t + 26, 22, '❚❚', 'pause', rects, '#cfd6e6');
     }
+    // The belt is drawn far earlier but registers here, because this one call
+    // replaces the whole rect list — appending from two places would mean
+    // whichever ran second silently deleted the other's buttons.
+    //
+    // Last in the list on purpose: hits resolve in order, so the belt can
+    // never steal a tap from a skill button it happens to overlap on a small
+    // screen. Both are in the top-left only in landscape, but that is exactly
+    // where a mis-resolved tap would cost the most.
+    if (this.potionRects) for (const q of this.potionRects) rects.push(q);
     this.input.setButtonRects(rects);
   }
 

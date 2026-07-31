@@ -11,7 +11,7 @@ import { WaveDirector, waveScaling, waveClearBonus, isBossWave } from './waves.j
 import { permanentMods, masteryMods, masteryRank } from '../data/permanent.js';
 import { difficultyFor } from '../data/difficulty.js';
 import { affixesForWave, affixSoulBonus } from '../data/affixes.js';
-import { rollPotion, DROP_CHANCE, ELITE_DROP_CHANCE, BOSS_DROPS, POTION_LIFETIME } from '../data/potions.js';
+import { rollPotion, POTIONS, POTION_BY_ID, DROP_CHANCE, ELITE_DROP_CHANCE, BOSS_DROPS, POTION_LIFETIME } from '../data/potions.js';
 import { xpForRun, xpForWave, XP_PER_KILL, XP_ELITE_MULT, XP_BOSS_MULT } from '../data/levels.js';
 import { gearMods, ownedTier, weaponAppearance, gearCost, GEAR_BY_ID } from '../data/armor.js';
 import { MECHANICS, coreSlotFor, bossGold } from '../data/raids.js';
@@ -1049,9 +1049,40 @@ export class Game {
     if (drops) this.audio.play('drop');
   }
 
+  /**
+   * Drink one off the belt — the rack bought in the Potion Shop, drunk with a
+   * tap on its icon or the 5/6/7 keys.
+   *
+   * The same effect as walking over a dropped one, deliberately. A bought
+   * potion that were stronger would make the shop the correct answer to every
+   * fight, and one that were weaker would make it a tax on not finding drops.
+   * What you buy is convenience: having it when the wave turns, rather than
+   * having to cross the arena to where it fell.
+   */
+  drinkCarried(potionId) {
+    const def = POTION_BY_ID[potionId];
+    if (!def || this.player.dead) return false;
+    if (!this.profile.consumePotion(this.cls.id, potionId)) {
+      this.audio.play('deny');
+      return false;
+    }
+    this.applyPotion(def);
+    const p = this.player;
+    this.burst(p.x, p.y + 0.9, p.z, 18, def.glow);
+    this.shockwave(p.x, p.y, p.z, 1.8, def.glow);
+    return true;
+  }
+
   /** Walked over a potion. */
   collectPotion(potion) {
     const def = potion.def;
+    this.applyPotion(def);
+    this.burst(potion.x, potion.y + 0.3, potion.z, 18, def.glow);
+    this.shockwave(potion.x, potion.y, potion.z, 1.8, def.glow);
+  }
+
+  /** What a potion does, wherever it came from. */
+  applyPotion(def) {
     const p = this.player;
     // Potency lifts what a potion does, not how often one shows up — those are
     // separate tracks so a player can chase either without buying the other.
@@ -1073,8 +1104,6 @@ export class Game {
     this.tally.potionsDrunk++;
     this.notify(`${def.name} — ${def.blurb}`, 2.0);
     this.audio.play(def.heal ? 'quaff' : 'buff');
-    this.burst(potion.x, potion.y + 0.3, potion.z, 18, def.glow);
-    this.shockwave(potion.x, potion.y, potion.z, 1.8, def.glow);
   }
 
   /** Leave a lingering hazard on the ground. */
