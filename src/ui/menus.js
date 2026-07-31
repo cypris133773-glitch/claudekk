@@ -9,11 +9,12 @@
 import { CLASSES, LOADOUT_SIZE, unlockOrder, unlockLevelOf, defaultLoadout } from '../data/classes.js';
 import {
   PERMANENT, upgradeCost, talentPointsForBestWave, masteryProgress,
+  permanentMods, masteryMods, masteryRank,
 } from '../data/permanent.js';
 import {
   GEAR_SLOTS, GEAR_SLOT_IDS, GEAR_TIERS, MAX_TIER, canBuy, ownedTier, gearRating, setTier,
   maxTierForLevel, tierLevel, tierColor, gearName, slotDesc, slotSummary,
-  GEAR_BY_ID, gearCost,
+  GEAR_BY_ID, gearCost, gearMods,
 } from '../data/armor.js';
 import {
   RAIDS, RAID_BY_ID, RAID_BY_TIER, MECHANICS, CORE_ORDER, coreSlotFor, bossGold,
@@ -21,6 +22,7 @@ import {
 } from '../data/raids.js';
 
 import { skillCost, skillCooldown } from '../game/skills.js';
+import { buildMods } from '../game/player.js';
 import { storage, MAX_CHARACTERS } from '../core/save.js';
 import { DIFFICULTIES } from '../data/difficulty.js';
 import { skillIconElement, iconElement, schoolFor, SCHOOLS } from './icons.js';
@@ -148,6 +150,8 @@ export class Menus {
       raid: () => this.buildRaid(),
       raidkill: () => this.buildRaidGate('kill'),
       raidwipe: () => this.buildRaidGate('wipe'),
+      sheet: () => this.buildSheet(),
+      options: () => this.buildOptions(),
       settings: () => this.buildSettings(),
       stats: () => this.buildStats(),
       pause: () => this.buildPause(),
@@ -303,33 +307,58 @@ export class Menus {
     const quests = this.profile.activeQuests();
     const ready = quests.filter((q) => q.done).length;
     const questDone = this.profile.questState.completed;
+    // Five doors, not twelve.
+    //
+    // Twelve top-level buttons is not a menu, it is a list, and three of them
+    // — THE FORGE, ARMOURY, TALENTS — all mean "make my character stronger"
+    // with nothing on the screen saying so. A player who does not already know
+    // this game cannot tell them apart, and a child cannot tell what any of
+    // them are. Everything is still one tap further in; it is the *choosing*
+    // that got smaller.
+    //
+    // The hints are written to be understood by someone who has never played
+    // a game like this, which is a harder constraint than it sounds: no
+    // jargon, no nouns invented by this game, and each one says what you get
+    // rather than what the screen is called.
+    const level = this.charId() !== null ? this.profile.level(this.charId()) : 1;
+    const spendable = this.charId() === null ? 0
+      : this.profile.availableTalentPoints(this.charId());
     const items = [
       // Always PLAY, even with nobody on the roster — it is the one button a
       // new player has to find, and a label that changes depending on state
       // they have not learned yet is a label they have to read. With no
       // character it lands on creation, which is the same journey.
       { label: 'PLAY',
-        hint: empty ? 'Pick a class to begin' : (best ? `Best: wave ${best}` : 'Start your first run'),
+        hint: empty ? 'Pick a hero to begin' : (best ? `Best: wave ${best}` : 'Fight monsters that keep coming'),
         primary: true,
         go: () => { this.creatingChar = empty; this.show('classes'); } },
       // Second, beside PLAY, because it is the other thing you *do*. Not
       // primary: the arena funds the raids — a boss pays half what its piece
       // costs — and two gold buttons would say the two are interchangeable.
-      { label: 'RAID', hint: this.raidHint(this.charId()), go: () => this.show('raids') },
-      { label: 'THE FORGE', hint: 'Permanent upgrades', go: () => this.show('forge') },
-      { label: 'ARMOURY', hint: rating ? `${rating} of 42 pieces` : 'Buy and upgrade gear', go: () => this.show('armoury') },
-      { label: 'TALENTS', hint: 'Spend talent points', go: () => this.show('talents') },
-      { label: 'POTION SHOP', hint: this.potionHint(this.charId()), go: () => this.show('potions') },
-      { label: 'QUESTS', hint: ready ? `${ready} ready to claim` : `${questDone} of 500 done`, go: () => this.show('quests') },
-      { label: 'RECORDS', hint: 'Career statistics', go: () => this.show('stats') },
-      { label: 'SETTINGS', hint: 'Controls & display', go: () => this.show('settings') },
-      { label: 'HOW TO PLAY', hint: 'Controls reference', go: () => this.show('howto') },
-      { label: 'CHARACTERS', hint: `${this.profile.characters.length} of ${MAX_CHARACTERS} slots`, go: () => this.show('roster') },
-      { label: 'DIAGNOSTICS', hint: 'If something is broken, screenshot this', go: () => this.show('diag') },
+      //
+      // Hidden entirely below level 6. The first raid gates at 8, so before
+      // that this is a door that only ever says no.
+      { label: 'BOSS FIGHTS', hint: this.raidHint(this.charId()),
+        hide: level < 6, go: () => this.show('raids') },
+      { label: 'GET STRONGER',
+        hint: spendable ? `${spendable} points to spend` : 'Spend your gold and your points',
+        go: () => this.show('sheet') },
+      { label: 'JOBS',
+        hint: ready ? `${ready} ready to claim` : 'Small goals that pay you gold',
+        go: () => this.show('quests') },
+      { label: 'MY HEROES',
+        hint: `${this.profile.characters.length} of ${MAX_CHARACTERS} slots used`,
+        hide: level < 3 && this.profile.characters.length < 2,
+        go: () => this.show('roster') },
+      { label: 'OPTIONS', hint: 'Sound, controls, and help', go: () => this.show('options') },
     ];
+
     for (const it of items) {
-      if (empty && !it.primary && it.label !== 'SETTINGS' && it.label !== 'HOW TO PLAY'
-        && it.label !== 'DIAGNOSTICS') continue;
+      // With nobody on the roster every door but PLAY and OPTIONS is about a
+      // character that does not exist. `hide` is the same idea one level down:
+      // a door that can only say no is worse than no door.
+      if (it.hide) continue;
+      if (empty && !it.primary && it.label !== 'OPTIONS') continue;
       const b = el('button', 'menu-btn' + (it.primary ? ' primary' : ''));
       b.appendChild(el('span', 'menu-label', it.label));
       b.appendChild(el('span', 'menu-hint', it.hint));
@@ -362,6 +391,137 @@ export class Menus {
       </div>
       <div class="mastery-bar"><i style="width:${pct}%"></i></div>`;
     return box;
+  }
+
+  // -------------------------------------------------------------------------
+  // GET STRONGER — the character sheet, which is also the hub
+  // -------------------------------------------------------------------------
+
+  /**
+   * What your character actually is, and which screen made it that way.
+   *
+   * Four systems — gear, points, training, level — all flatten into one bag of
+   * numbers, and until now a player could inspect every *input* on its own
+   * screen and never see the *output* anywhere. That is also why the Forge,
+   * the Armoury and the Talents were indistinguishable from the title screen:
+   * three shouty nouns that all mean "make my character stronger".
+   *
+   * So they are not three doors any more. They are rows on the sheet that says
+   * what each is currently worth, which explains what they are by construction
+   * and is the screen that sells the next purchase — "+8% health" means
+   * something next to the health number it is adding to.
+   */
+  buildSheet() {
+    const wrap = el('div', 'screen');
+    wrap.appendChild(this.backBar('title'));
+    const charId = this.charId();
+    if (charId === null) {
+      const p = this.panel('Get stronger', 'Make a hero first.');
+      wrap.appendChild(p);
+      return wrap;
+    }
+    const cls = this.profile.classOf(charId);
+    const ch = this.profile.character(charId);
+    wrap.appendChild(this.charPicker());
+
+    // Drop the class name when the character is still called after it —
+    // "Warrior / Warrior · level 60" prints one word twice.
+    const p = this.panel(ch.name, ch.name === cls.name
+      ? `${cls.role} · level ${this.profile.level(charId)}`
+      : `${cls.name} · level ${this.profile.level(charId)}`);
+
+    // The six numbers, built the same way a run builds them, so what is shown
+    // is what will be played rather than a second implementation that drifts.
+    const perm = permanentMods(this.profile.forgeLevels(charId));
+    for (const [k, v] of Object.entries(gearMods(cls.id, this.profile.gear(charId)))) {
+      perm[k] = (perm[k] || 0) + v;
+    }
+    for (const [k, v] of Object.entries(masteryMods(masteryRank(ch.mastery || 0)))) {
+      perm[k] = (perm[k] || 0) + v;
+    }
+    const mods = buildMods(cls, ch.talents, perm);
+    const b = cls.base;
+    const stats = [
+      ['Health', Math.round((b.hp + (mods.maxHp || 0)) * (1 + (mods.maxHpPct || 0)))],
+      ['Damage', Math.round(b.attackDamage * (1 + (mods.attackDamage || 0))
+        * (1 + (mods.meleeDamage || 0) + (mods.allDamage || 0)))],
+      ['Crit', `${Math.round((b.critChance + (mods.critChance || 0)) * 100)}%`],
+      ['Attack speed', `${(b.attackSpeed * (1 + (mods.attackSpeed || 0))).toFixed(2)}/s`],
+      ['Armour', `${Math.round((b.armor + (mods.armor || 0)) * 100)}%`],
+      ['Speed', (b.speed * (1 + (mods.moveSpeed || 0))).toFixed(1)],
+    ];
+    const grid = el('div', 'sheet-stats');
+    for (const [name, value] of stats) {
+      const cell = el('div', 'sheet-stat');
+      cell.appendChild(el('b', null, String(value)));
+      cell.appendChild(el('span', null, name));
+      grid.appendChild(cell);
+    }
+    p.appendChild(grid);
+
+    // The rows. Each one says what it is in words a child can read, and what
+    // it is worth right now — which is the answer to "what is the difference
+    // between these three screens".
+    const gear = this.profile.gear(charId);
+    const owned = GEAR_SLOT_IDS.filter((id) => ownedTier(gear, id) >= 0).length;
+    const forge = this.profile.forgeLevels(charId);
+    const forgeLv = PERMANENT.reduce((n, d) => n + (forge[d.id] || 0), 0);
+    const pts = this.profile.availableTalentPoints(charId);
+    const potions = POTIONS.reduce((n, d) => n + this.profile.potionCount(charId, d.id), 0);
+    const rows = [
+      { icon: '🛡', name: 'GEAR', what: 'Things your hero wears. Buy them with gold.',
+        worth: `${owned} of ${GEAR_SLOT_IDS.length} slots filled`, go: 'armoury' },
+      { icon: '✦', name: 'POINTS', what: 'One every level. Spend them to improve your skills.',
+        worth: pts ? `${pts} to spend` : 'all spent', hot: pts > 0, go: 'talents' },
+      { icon: '⚒', name: 'TRAINING', what: 'Small boosts you keep forever.',
+        worth: `${forgeLv} bought`, go: 'forge' },
+      { icon: '⚔', name: 'SKILLS', what: 'You know many. Pick the four you take in.',
+        worth: `${this.profile.loadout(charId).length} equipped`, go: 'loadout' },
+      { icon: '🧪', name: 'POTIONS', what: 'Drinks you carry in. Use one when you are in trouble.',
+        worth: potions ? `${potions} carried` : 'none carried', go: 'potions' },
+    ];
+    const list = el('div', 'sheet-rows');
+    for (const r of rows) {
+      const row = el('button', 'sheet-row' + (r.hot ? ' hot' : ''));
+      row.innerHTML = `<span class="sheet-row-icon">${r.icon}</span>
+        <span class="sheet-row-body">
+          <span class="sheet-row-name">${r.name}</span>
+          <span class="sheet-row-what">${r.what}</span>
+        </span>
+        <span class="sheet-row-worth">${r.worth}</span>`;
+      this.click(row, () => this.show(r.go));
+      list.appendChild(row);
+    }
+    p.appendChild(list);
+    p.appendChild(this.masteryBar(charId));
+    wrap.appendChild(p);
+    return wrap;
+  }
+
+  // -------------------------------------------------------------------------
+  // OPTIONS — everything that is not about a character
+  // -------------------------------------------------------------------------
+
+  buildOptions() {
+    const wrap = el('div', 'screen');
+    wrap.appendChild(this.backBar('title'));
+    const p = this.panel('Options', 'Sound, controls, and help');
+    const menu = el('div', 'main-menu');
+    const items = [
+      { label: 'HOW TO PLAY', hint: 'What the buttons do', go: 'howto' },
+      { label: 'SETTINGS', hint: 'Sound, controls and how it looks', go: 'settings' },
+      { label: 'RECORDS', hint: 'Everything you have ever done', go: 'stats' },
+      { label: 'SOMETHING IS BROKEN', hint: 'Screenshot this and send it', go: 'diag' },
+    ];
+    for (const it of items) {
+      const b = el('button', 'menu-btn');
+      b.appendChild(el('span', 'menu-label', it.label));
+      b.appendChild(el('span', 'menu-hint', it.hint));
+      menu.appendChild(this.click(b, () => this.show(it.go)));
+    }
+    p.appendChild(menu);
+    wrap.appendChild(p);
+    return wrap;
   }
 
   // -------------------------------------------------------------------------
@@ -740,7 +900,7 @@ export class Menus {
    */
   buildQuests() {
     const wrap = el('div', 'screen');
-    wrap.appendChild(this.backBar('title'));
+    wrap.appendChild(this.backBar('sheet'));
 
     const st = this.profile.questState;
     const quests = this.profile.activeQuests();
@@ -820,7 +980,7 @@ export class Menus {
     // fixed corner control — which looks placed but cannot be tapped.
     const picker = this.charPicker((id) => { this.talentChar = id; this.talentBranch = 0; },
       this.talentChar);
-    wrap.appendChild(this.backBar('title'));
+    wrap.appendChild(this.backBar('sheet'));
     wrap.appendChild(picker);
 
     const charId = this.charId(this.talentChar);
@@ -1018,7 +1178,7 @@ export class Menus {
     const wrap = el('div', 'screen');
     const charId = this.charId();
     const cls = this.profile.classOf(charId);
-    wrap.appendChild(this.backBar('title'));
+    wrap.appendChild(this.backBar('sheet'));
     wrap.appendChild(this.charPicker());
 
     const forge = this.profile.forgeLevels(charId);
@@ -1092,7 +1252,7 @@ export class Menus {
     const wrap = el('div', 'screen');
     const charId = this.charId();
     const cls = this.profile.classOf(charId);
-    wrap.appendChild(this.backBar('title'));
+    wrap.appendChild(this.backBar('sheet'));
     wrap.appendChild(this.charPicker());
 
     const level = this.profile.level(charId);
@@ -1444,7 +1604,7 @@ export class Menus {
     const cls = this.profile.classOf(charId);
     // Gear is per class, so — like the Forge and the talent tree — the screen
     // leads with whose kit you are looking at. Shared gold, separate gear.
-    wrap.appendChild(this.backBar('title'));
+    wrap.appendChild(this.backBar('sheet'));
     wrap.appendChild(this.charPicker());
 
     const gear = this.profile.gear(charId);
@@ -1528,7 +1688,7 @@ export class Menus {
 
   buildStats() {
     const wrap = el('div', 'screen');
-    wrap.appendChild(this.backBar('title'));
+    wrap.appendChild(this.backBar('options'));
     const s = this.profile.data.stats;
     const p = this.panel('Records');
     const grid = el('div', 'stat-grid');
@@ -1661,7 +1821,7 @@ export class Menus {
 
   buildHowTo() {
     const wrap = el('div', 'screen');
-    wrap.appendChild(this.backBar('title'));
+    wrap.appendChild(this.backBar('options'));
     const p = this.panel('How to play');
     const cols = [
       `<h3>Phone</h3><ul>
@@ -1705,7 +1865,7 @@ export class Menus {
    */
   buildDiagnostics() {
     const wrap = el('div', 'screen');
-    wrap.appendChild(this.backBar('title'));
+    wrap.appendChild(this.backBar('options'));
     const p = this.panel('Diagnostics',
       'Drag inside the box below, then screenshot this whole screen and send it.');
 

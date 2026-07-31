@@ -77,8 +77,8 @@ function startServer() {
 
 /** Every screen, including the three that only appear during a run. */
 const SCREENS = [
-  'title', 'roster', 'classes', 'loadout', 'talents', 'forge', 'armoury',
-  'potions', 'raids', 'raid',
+  'title', 'sheet', 'options', 'roster', 'classes', 'loadout', 'talents',
+  'forge', 'armoury', 'potions', 'raids', 'raid',
   'stats', 'settings', 'howto', 'diag',
   'pause', 'upgrade', 'results', 'raidkill', 'raidwipe',
 ];
