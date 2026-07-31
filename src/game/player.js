@@ -425,6 +425,7 @@ export class Player extends Entity {
         if (this.mods.doubleStrike && Math.random() < this.mods.doubleStrike) {
           dealt += game.dealDamage(this, m, this.attackDamage * this.stats.meleeMult * 0.6, { melee: true });
         }
+        this.applyWeaponRider(game, m, dealt);
       }
       if (this.mods.maelstrom) {
         const idx = this.skills.findIndex((s) => s.id === 'chainlightning');
@@ -446,10 +447,54 @@ export class Player extends Entity {
           x: this.x, y: this.eyeY - 0.15, z: this.z, dir: d,
           speed: w.speed, damage: this.attackDamage * this.stats.spellMult * (i === 0 ? 1 : 0.5),
           size: w.size, color: w.color, gravity: w.gravity || 0,
+          // Ranged riders travel with the shot: the rider belongs to the
+          // weapon, and for a bow the weapon's contact with the target is the
+          // arrow landing rather than the string being released.
+          onHit: (hit, proj) => this.applyWeaponRider(game, hit, proj.damage),
+          pierce: (this.mods.pierce || 0) + (this.mods.autoPierce ? 1 : 0),
         });
       }
       game.sfx('shoot');
     }
+  }
+
+  /**
+   * What this class's weapon does on top of the damage.
+   *
+   * Five of the nine need engine support and are here; the other four —
+   * mage crit, rogue haste, hunter pierce — are ordinary modifier keys the
+   * stat block already reads, which is the right answer whenever it is
+   * available. Nothing here fires on a damage-over-time tick: a rider that
+   * re-applied itself from its own dot would compound without limit.
+   */
+  applyWeaponRider(game, target, dealt) {
+    if (!target || target.dead || !(dealt > 0)) return;
+    const m = this.mods;
+    // Warrior: every swing bleeds, not only the crits.
+    if (m.autoBleed) target.applyDot(dealt * m.autoBleed / 3, 3, 'bleed', this);
+    // Warlock: rot that ticks longer and softer than the Warrior's bleed, so
+    // the two read as different things at the same numbers.
+    if (m.autoDot) target.applyDot(dealt * m.autoDot / 4, 4, 'shadow', this);
+    // Shaman: the hit arcs to one more enemy. Not a chain — one jump, so it
+    // stays an auto-attack rider rather than a free Chain Lightning.
+    if (m.autoChain) {
+      const near = game.enemiesInRadius(target.x, target.centerY, target.z, 6.5)
+        .find((e) => e !== target && !e.dead);
+      if (near) {
+        game.dealDamage(this, near, dealt * m.autoChain, { silent: true });
+        game.beam(target.x, target.centerY, target.z, near.x, near.centerY, near.z, '#7ef0ff');
+      }
+    }
+    // Demonslayer: a small splash around whatever was hit.
+    if (m.autoSplash) {
+      for (const e of game.enemiesInRadius(target.x, target.centerY, target.z, 3.2)) {
+        if (e === target || e.dead) continue;
+        game.dealDamage(this, e, dealt * m.autoSplash, { silent: true });
+      }
+    }
+    // Priest: mana back on contact. Paladin: health.
+    if (m.autoRegen) this.gainResource(m.autoRegen);
+    if (m.autoHeal) this.heal(m.autoHeal);
   }
 
   /** Roll a crit for an outgoing hit, honouring Cold Blood. */

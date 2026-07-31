@@ -175,6 +175,136 @@ export const CLASS_GEAR = {
 };
 
 /**
+ * Set bonuses, at two, four and six pieces of a tier.
+ *
+ * Two rules keep this from doubling the Armoury's power:
+ *
+ *   * Only the *highest* tier you have a complete threshold at pays out. Seven
+ *     tiers of stacking bonuses would be worth more than the gear underneath
+ *     them, and a player wearing a full T6 set would still be collecting a
+ *     bonus for the T0 set they replaced six tiers ago.
+ *   * The numbers are small on purpose. A full T6 set is already about +70%
+ *     damage and +65% health; these add roughly a tenth of that. They exist to
+ *     reward finishing a set rather than magpie-ing the cheapest upgrade, and
+ *     a reward that big enough to change what you buy is big enough to break
+ *     the price curve the whole Armoury is paced by.
+ *
+ * Per class, because that is what makes a set feel like *your* set rather than
+ * a second copy of the stat table you already read on the pieces.
+ */
+export const SET_BONUSES = {
+  warrior: {
+    2: { effect: { meleeDamage: 0.04 }, desc: '+4% melee damage' },
+    4: { effect: { maxHpPct: 0.05, thorns: 0.08 }, desc: '+5% health, +8% thorns' },
+    6: { effect: { bleedPct: 0.35, onHitGain: 1.5 }, desc: 'Crits bleed for 35%, +1.5 Rage a hit' },
+  },
+  mage: {
+    2: { effect: { spellDamage: 0.04 }, desc: '+4% spell damage' },
+    4: { effect: { aoeRadius: 0.08, critChance: 0.03 }, desc: '+8% area, +3% crit' },
+    6: { effect: { critCdr: 0.5, burnDamage: 0.20 }, desc: 'Crits cut cooldowns 0.5s, +20% burn' },
+  },
+  warlock: {
+    2: { effect: { dotDamage: 0.05 }, desc: '+5% damage over time' },
+    4: { effect: { petPower: 0.10, dotDuration: 0.6 }, desc: '+10% pet power, dots last 0.6s longer' },
+    6: { effect: { dotLifesteal: 0.05, maxPets: 1 }, desc: 'Dots heal you 5%, +1 demon' },
+  },
+  shaman: {
+    2: { effect: { spellDamage: 0.04 }, desc: '+4% spell damage' },
+    4: { effect: { totemDuration: 2, moveSpeed: 0.05 }, desc: 'Totems last 2s longer, +5% speed' },
+    6: { effect: { jumps: 1, maelstrom: 0.6 }, desc: '+1 chain jump, autos cut Chain Lightning 0.6s' },
+  },
+  priest: {
+    2: { effect: { healing: 0.05 }, desc: '+5% healing' },
+    4: { effect: { absorb: 10, spellDamage: 0.04 }, desc: '+10 shield, +4% spell damage' },
+    // Sustain rather than damage. +15% damage over time put the Priest's set
+    // at 20% of its own gear against 5% for everyone else — and a healer's
+    // six-piece paying out in rot was the wrong answer twice over.
+    6: { effect: { absorb: 14, resourceRegen: 2.5, killHeal: 10 },
+      desc: '+14 shield, +2.5 mana regen, 10 health a kill' },
+  },
+  rogue: {
+    2: { effect: { critMult: 0.08 }, desc: '+8% crit damage' },
+    4: { effect: { attackSpeed: 0.07, dodge: 0.03 }, desc: '+7% attack speed, +3% dodge' },
+    6: { effect: { doubleStrike: 0.15, critCdr: 0.4 }, desc: '15% chance to strike twice, crits cut cooldowns' },
+  },
+  demonslayer: {
+    2: { effect: { meleeDamage: 0.04 }, desc: '+4% melee damage' },
+    4: { effect: { lifesteal: 0.03, moveSpeed: 0.05 }, desc: '+3% lifesteal, +5% speed' },
+    6: { effect: { aoeRadius: 0.15, onHitGain: 1.5 }, desc: '+15% area, +1.5 Hatred a hit' },
+  },
+  paladin: {
+    2: { effect: { armor: 0.03 }, desc: '+3% armor' },
+    4: { effect: { maxHpPct: 0.06, healing: 0.06 }, desc: '+6% health, +6% healing' },
+    6: { effect: { damageReduction: 0.06, killHeal: 12 }, desc: '-6% damage taken, 12 health a kill' },
+  },
+  hunter: {
+    2: { effect: { spellDamage: 0.04 }, desc: '+4% ranged damage' },
+    4: { effect: { petPower: 0.10, critMult: 0.05 }, desc: '+10% pet power, +5% crit damage' },
+    6: { effect: { pierce: 1, extraProjectiles: 1 }, desc: '+1 pierce, +1 extra shot' },
+  },
+};
+
+export const SET_THRESHOLDS = [2, 4, 6];
+
+/** How many slots sit at `tier` or better. */
+export function piecesAt(gear, tier) {
+  let n = 0;
+  for (const s of GEAR_SLOTS) if (ownedTier(gear, s.id) >= tier) n++;
+  return n;
+}
+
+/**
+ * The one set that pays out: the highest tier with at least two pieces, and
+ * the deepest threshold met at that tier.
+ */
+export function activeSet(gear) {
+  for (let tier = MAX_TIER; tier >= 0; tier--) {
+    const n = piecesAt(gear, tier);
+    if (n < SET_THRESHOLDS[0]) continue;
+    const met = SET_THRESHOLDS.filter((t) => n >= t);
+    return { tier, pieces: n, met };
+  }
+  return null;
+}
+
+/**
+ * Weapon riders: what a class's weapon does to an ordinary attack.
+ *
+ * This is the half of the Armoury that changes how a class *plays* rather than
+ * how hard it hits. Every value scales with the weapon's own rungs, so it
+ * arrives gradually rather than switching on, and every one is deliberately
+ * small — an auto-attack rider fires several times a second, and a number that
+ * looks modest on paper is enormous once it is multiplied by an attack speed.
+ */
+export const WEAPON_RIDERS = {
+  warrior: { key: 'autoBleed', per: 0.045, desc: 'attacks bleed for {v}% over 3s' },
+  mage: { key: 'critChance', per: 0.010, desc: '+{v}% crit chance' },
+  warlock: { key: 'autoDot', per: 0.040, desc: 'attacks rot for {v}% over 4s' },
+  shaman: { key: 'autoChain', per: 0.055, desc: 'attacks arc to a second target for {v}%' },
+  priest: { key: 'autoRegen', per: 0.55, desc: '+{r} mana on every hit landed' },
+  rogue: { key: 'attackSpeed', per: 0.018, desc: '+{v}% attack speed' },
+  demonslayer: { key: 'autoSplash', per: 0.050, desc: 'attacks splash for {v}% around the target' },
+  paladin: { key: 'autoHeal', per: 0.30, desc: 'heals you {r} on every hit landed' },
+  hunter: { key: 'autoPierce', per: 0.020, desc: '+{v}% damage, and shots carry further' },
+};
+
+/** The rider a class's weapon grants at the tier it is currently at. */
+export function weaponRider(classId, gear) {
+  const spec = WEAPON_RIDERS[classId];
+  if (!spec) return null;
+  const tier = ownedTier(gear, 'weapon');
+  if (tier < 0) return null;
+  const value = spec.per * (tier + 1);
+  return { key: spec.key, value, tier, desc: riderText(spec, value) };
+}
+
+function riderText(spec, value) {
+  return spec.desc
+    .replace('{v}', (value * 100).toFixed(0))
+    .replace('{r}', value.toFixed(1));
+}
+
+/**
  * Mods that count things rather than scale them. A fractional `jumps` would
  * round up the moment it went above zero — one rung of a Trinket buying a whole
  * extra chain jump — so these accumulate as fractions and are floored once, at
@@ -208,6 +338,17 @@ export function gearMods(classId, gear) {
       mods[k] = (mods[k] || 0) + v * rungs;
     }
   }
+  // The set, and only the highest one that pays.
+  const set = activeSet(gear);
+  if (set) {
+    const table = SET_BONUSES[classId] || SET_BONUSES.warrior;
+    for (const th of set.met) {
+      for (const [k, v] of Object.entries(table[th].effect)) mods[k] = (mods[k] || 0) + v;
+    }
+  }
+  // The weapon's rider. One key per class, scaled by the weapon's own rungs.
+  const rider = weaponRider(classId, gear);
+  if (rider) mods[rider.key] = (mods[rider.key] || 0) + rider.value;
   for (const k of INTEGER_MODS) {
     if (k in mods) {
       const n = Math.floor(mods[k] + 1e-9);

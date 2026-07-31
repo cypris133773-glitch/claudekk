@@ -755,6 +755,41 @@ check('gear reinforces each class rather than flattening them', () => {
   }
 });
 
+check('a set bonus rewards finishing a set without replacing it', async () => {
+  const { SET_BONUSES, SET_THRESHOLDS, activeSet, piecesAt, weaponRider, WEAPON_RIDERS } =
+    await import('../src/data/armor.js');
+
+  for (const cls of CLASSES) {
+    const table = SET_BONUSES[cls.id];
+    assert(table, `${cls.id} has no set bonuses`);
+    for (const th of SET_THRESHOLDS) {
+      assert(table[th] && Object.keys(table[th].effect).length, `${cls.id} has no ${th}-piece bonus`);
+      assert(table[th].desc, `${cls.id}'s ${th}-piece bonus has no description`);
+    }
+    // Every class's weapon does something to an ordinary attack, and no two
+    // classes do the same thing — that is the whole point of the rider.
+    assert(WEAPON_RIDERS[cls.id], `${cls.id}'s weapon has no rider`);
+  }
+  const riderKeys = new Set(CLASSES.map((c) => WEAPON_RIDERS[c.id].key));
+  assert(riderKeys.size >= 7, `only ${riderKeys.size} distinct weapon riders across nine classes`);
+
+  // Only the highest complete tier pays. Seven tiers of stacking bonuses would
+  // be worth more than the gear underneath them.
+  const mixed = { weapon: 6, chest: 6, helm: 3, boots: 3, ring: 0, trinket: 0 };
+  const set = activeSet(mixed);
+  assert(set.tier === 6 && set.met.join() === '2',
+    `a 2/4/6 split paid out ${JSON.stringify(set)}`);
+  assert(piecesAt(mixed, 3) === 4, 'piece counting is wrong');
+  assert(activeSet({ weapon: 6 }) === null, 'one piece completed a set');
+  assert(activeSet({}) === null, 'an empty kit completed a set');
+
+  // The rider scales with the weapon and is absent without one.
+  assert(weaponRider('warrior', {}) === null, 'a rider fired with no weapon');
+  const t0 = weaponRider('warrior', { weapon: 0 });
+  const t6 = weaponRider('warrior', { weapon: 6 });
+  assert(t6.value > t0.value * 6, 'the rider barely grows across seven tiers');
+});
+
 check('a full set is a real difference and a bounded one', () => {
   for (const cls of CLASSES) {
     const full = gearMods(cls.id, Object.fromEntries(GEAR_SLOT_IDS.map((id) => [id, MAX_TIER])));
