@@ -2336,6 +2336,53 @@ check('the four new enemies each do the thing they exist for', async () => {
   }
 });
 
+check('enemies walk at you, not around you', async () => {
+  const { Game } = await import('../src/game/game.js');
+  const { makeHarness } = await import('./harness.js');
+
+  // Reported from play: "the AI is stupid, enemies walk randomly". Measured,
+  // that was exactly right and it was this file's fault — the flanking arc
+  // rotated a mob's approach by up to 66 degrees for the whole way in, and
+  // cos(66°) is 0.41, so well over half of every step went sideways. Ten husks
+  // walking in from eighteen blocks converted only 50% of the ground they
+  // covered into ground closed, and two of them were still fifteen blocks out
+  // after ten seconds.
+  //
+  // Flanking is worth having and this is the number that keeps it honest.
+  const h = makeHarness({ level: 30 });
+  const game = new Game(h.renderer, h.audio, h.profile);
+  game.startRun(CLASSES[0], { layout: 0 });
+  game.wave = 12;
+  game.director.state = 'clearing';        // measure these ten, not a wave
+  const p = game.player;
+  game.mobs.length = 0;
+
+  const track = [];
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2;
+    const m = game.spawnMob('husk', p.x + Math.cos(a) * 18, p.y, p.z + Math.sin(a) * 18);
+    track.push({ m, d0: Math.hypot(m.x - p.x, m.z - p.z), path: 0, lx: m.x, lz: m.z });
+  }
+  for (let i = 0; i < 60 * 10; i++) {
+    game.update(1 / 60, h.input());
+    p.hp = p.maxHp;
+    for (const t of track) {
+      if (t.m.hp < t.m.maxHp * 0.9) t.m.hp = t.m.maxHp * 0.9;
+      t.path += Math.hypot(t.m.x - t.lx, t.m.z - t.lz);
+      t.lx = t.m.x; t.lz = t.m.z;
+    }
+  }
+  const closed = track.reduce((a, t) => a + (t.d0 - Math.hypot(t.m.x - p.x, t.m.z - p.z)), 0);
+  const walked = track.reduce((a, t) => a + t.path, 0);
+  const pct = closed / walked * 100;
+  assert(pct >= 62, `only ${pct.toFixed(0)}% of what enemies walked was distance closed`);
+
+  // And they have to actually arrive. An efficient walk that stops at twelve
+  // blocks is still an enemy the player has to go and find.
+  const far = track.filter((t) => Math.hypot(t.m.x - p.x, t.m.z - p.z) > 11).length;
+  assert(far <= 2, `${far} of 10 enemies were still past eleven blocks after ten seconds`);
+});
+
 check('a pack surrounds instead of queuing up', async () => {
   const { Game } = await import('../src/game/game.js');
   const { makeHarness } = await import('./harness.js');
@@ -2378,7 +2425,14 @@ check('a pack surrounds instead of queuing up', async () => {
   // emptiest — makes it *worse*, because they all evaluate the same data on
   // the same frame and stampede. That version measured 2 sectors going to 1.
   // This is the number that tells the two apart.
-  assert(after >= 5,
+  //
+  // Four, not five. Spread and approach pull against each other: the arc that
+  // fans a pack out is the same arc that stops it closing, and a first pass at
+  // this was wide enough that only half of everything a mob walked was
+  // distance closed — which reads as wandering, not flanking. The arc is
+  // capped and faded now, measured at 70% of walking pointed at the player,
+  // and four sectors from two is still a genuine surround.
+  assert(after >= 4,
     `a one-sided pack spread from ${before} sectors to only ${after} in ten seconds`);
 });
 

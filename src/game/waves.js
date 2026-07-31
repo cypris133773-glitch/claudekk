@@ -121,6 +121,11 @@ export class WaveDirector {
     // Beats inside a wave. Both fire once, and both are consumed by firing.
     this.reinforced = false;
     this.lastStand = false;
+    // Initialised here as well as in startWave: `beat` can be reached before
+    // any wave has started — a raid sets the state directly — and an
+    // undefined reserve is a crash rather than an empty one.
+    this.reserve = [];
+    this.total = 0;
   }
 
   startWave(wave) {
