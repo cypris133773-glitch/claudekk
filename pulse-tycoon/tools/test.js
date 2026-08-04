@@ -7,6 +7,7 @@ import { STATIONS } from '../src/data/stations.js';
 import { UPGRADES } from '../src/data/upgrades.js';
 import { QUESTS, CHAPTERS, questsInChapter } from '../src/data/quests.js';
 import { fmt, money, duration } from '../src/core/format.js';
+import { readFileSync } from 'node:fs';
 
 let passed = 0;
 const failures = [];
@@ -381,6 +382,33 @@ check('a greedy bot reaches the fourth station inside an hour', () => {
   ok((s.levels.validator || 0) > 0, 'never reached the Validator Node');
   ok(s.advisors.length >= 2, 'hired only ' + s.advisors.length + ' advisors');
   ok(s.chapter >= 2, 'still on chapter 1 after an hour');
+});
+
+// --- deploy config -----------------------------------------------------------
+
+// Vercel schema-validates vercel.json on every deploy and rejects any key it
+// does not recognise — including a "//" comment, which is legal JSON and a
+// failed build here. Cheaper to catch it in `npm test`.
+check('vercel.json is valid and uses only known keys', () => {
+  const url = new URL('../vercel.json', import.meta.url);
+  const raw = readFileSync(url, 'utf8');
+  const cfg = JSON.parse(raw);
+  const known = new Set([
+    '$schema', 'cleanUrls', 'framework', 'buildCommand', 'outputDirectory',
+    'headers', 'redirects', 'rewrites', 'trailingSlash', 'installCommand',
+    'devCommand', 'regions', 'public', 'github', 'ignoreCommand',
+  ]);
+  for (const key of Object.keys(cfg)) ok(known.has(key), 'unknown key ' + key);
+  eq(cfg.outputDirectory, '.', 'the site is served from the project root');
+  eq(cfg.framework, null, 'there is no framework to detect');
+  for (const h of cfg.headers) ok(typeof h.source === 'string' && Array.isArray(h.headers));
+});
+
+check('the shipped site does not reach into tools/', () => {
+  const ignored = readFileSync(new URL('../.vercelignore', import.meta.url), 'utf8');
+  ok(/^tools\/$/m.test(ignored), 'tools/ is not excluded from the deploy');
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  ok(!html.includes('tools/'), 'index.html loads something from tools/');
 });
 
 // --- report ------------------------------------------------------------------

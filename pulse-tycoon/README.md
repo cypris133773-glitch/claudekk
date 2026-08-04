@@ -134,6 +134,36 @@ It is a static site with no build step, so any static host serves it as-is.
 Opening `index.html` off disk will **not** work — ES modules need `http://`, so
 use `npm start` locally.
 
+### Vercel
+
+The game lives in a subdirectory of a larger repository, so the one setting
+that matters is **Root Directory**.
+
+| Setting | Value |
+| --- | --- |
+| Root Directory | `pulse-tycoon` |
+| Framework Preset | Other |
+| Build Command | *(empty)* |
+| Output Directory | `.` |
+| Install Command | *(empty)* |
+
+`vercel.json` already sets `framework: null`, an empty `buildCommand` and
+`outputDirectory: "."`, because without them Vercel looks for a `public/`
+directory, does not find one, and fails the build. That file is
+schema-validated on every deploy and rejects any key it does not know —
+including a `"//"` comment, which is legal JSON and a failed build here.
+`npm test` guards it.
+
+`.vercelignore` keeps `tools/` off the public URL: the harnesses and the
+balance simulation are development-only.
+
+From the CLI, with the repo checked out:
+
+```bash
+cd pulse-tycoon
+npx vercel deploy --prod    # first run asks which scope and project
+```
+
 ## Saving
 
 One `localStorage` key, written every ten seconds and whenever the tab is
