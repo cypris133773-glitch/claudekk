@@ -1,7 +1,0 @@
-# The deployed site is index.html plus the modules it loads. Everything below
-# is development-only: the test harnesses and the balance simulation have no
-# business on a public URL.
-tools/
-node_modules/
-.shots/
-*.log
