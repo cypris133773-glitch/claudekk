@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Pulse Tycoon">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff45c0"/>
+      <stop offset="0.55" stop-color="#a02bff"/>
+      <stop offset="1" stop-color="#2ad2ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="#07060f"/>
+  <polygon points="256,72 415,164 415,348 256,440 97,348 97,164" fill="url(#g)"/>
+  <polygon points="256,120 373,188 373,324 256,392 139,324 139,188" fill="none" stroke="rgba(255,255,255,.7)" stroke-width="10"/>
+  <polyline points="150,256 200,256 219,201 247,315 275,180 300,290 318,256 366,256"
+            fill="none" stroke="#fff" stroke-width="16" stroke-linejoin="round" stroke-linecap="round"/>
+</svg>
