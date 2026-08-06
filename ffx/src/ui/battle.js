@@ -591,7 +591,7 @@ export function makeBattleScreen(app, encounter, onDone) {
       // The combatants stand on the region's own horizon rather than floating
       // above it: the backdrop is drawn against a virtual height chosen so its
       // horizon lands exactly where the feet go.
-      const groundY = h * (portrait ? 0.6 : 0.68);
+      const groundY = h * (portrait ? 0.66 : 0.68);
       ctx.fillStyle = shadeColor(chapter.region.ground.color, -0.6);
       ctx.fillRect(0, 0, w, h);
       back.draw(ctx, chapter.region, w, groundY / 0.74, 1200, app.t);
