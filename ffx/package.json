@@ -1,0 +1,17 @@
+{
+  "name": "final-sacrifice-x",
+  "version": "1.0.0",
+  "private": true,
+  "description": "FINAL SACRIFICE X — a turn-based JRPG parody about a blockchain cult, its maester, and the loop nobody wants to end.",
+  "type": "module",
+  "scripts": {
+    "start": "node tools/serve.js",
+    "dev": "node tools/serve.js",
+    "test": "node tools/test.js",
+    "sim": "node tools/sim.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "SEE LICENSE IN ../LICENSE"
+}

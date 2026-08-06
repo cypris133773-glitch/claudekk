@@ -1,0 +1,13 @@
+{
+  "name": "FINAL SACRIFICE X",
+  "short_name": "SACRIFICE X",
+  "description": "A turn-based JRPG parody about a blockchain cult, its maester, and the loop nobody wants to end.",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#05060f",
+  "theme_color": "#05060f",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
