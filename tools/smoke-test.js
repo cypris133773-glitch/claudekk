@@ -2590,6 +2590,80 @@ check('a pack surrounds instead of queuing up', async () => {
     + `(${bestSectors} of 8 sectors at its widest)`);
 });
 
+check('crossing elements detonates, and repeating one does not', async () => {
+  const { Game } = await import('../src/game/game.js');
+  const { castSkill } = await import('../src/game/skills.js');
+  const { elementOf } = await import('../src/game/elements.js');
+  const { makeHarness } = await import('./harness.js');
+
+  // Enough skills have to carry an element for the system to exist at all, and
+  // every class needs at least one or the combo is a Mage feature wearing a
+  // game-wide name.
+  let tagged = 0;
+  for (const cls of CLASSES) {
+    const mine = cls.skills.filter((s) => elementOf(s, s.power));
+    assert(mine.length > 0, `${cls.id} has no skill that carries an element`);
+    tagged += mine.length;
+  }
+  assert(tagged >= 25, `only ${tagged} skills carry an element`);
+
+  // Melee is not an element. A Warrior's Thunder Clap is orange because a
+  // shockwave through stone is orange, and letting hue decide would have made
+  // every physical class a caster.
+  for (const cls of CLASSES) {
+    for (const s of cls.skills) {
+      if (s.kind !== 'strike' && s.kind !== 'dash') continue;
+      if (s.power.freeze || s.power.burn) continue;   // genuinely elemental
+      assert(!elementOf(s, s.power),
+        `${cls.id}'s ${s.name} is a melee ${s.kind} and was called ${elementOf(s, s.power)}`);
+    }
+  }
+
+  const fight = () => {
+    const h = makeHarness({ level: 60 });
+    const game = new Game(h.renderer, h.audio, h.profile);
+    const mage = CLASSES.find((c) => c.id === 'mage');
+    game.startRun(mage, { layout: 0 });
+    game.mobs.length = 0;
+    const p = game.player;
+    p.resource = 1e9;
+    p.yaw = 0; p.pitch = 0;
+    const m = game.spawnMob('husk', p.x, p.y, p.z - 3);
+    m.maxHp = 1e7; m.hp = 1e7;
+    p.skills[0] = mage.skills.find((s) => s.id === 'fireball');
+    p.skills[1] = mage.skills.find((s) => s.id === 'frostnova');
+    return { game, h, p, m };
+  };
+  const cast = (f, i) => {
+    f.p.cooldowns[i] = 0;
+    f.p.resource = 1e9;
+    castSkill(f.game, f.p, i);
+    for (let k = 0; k < 60; k++) f.game.update(1 / 60, f.h.input());
+  };
+
+  const a = fight();
+  cast(a, 0);
+  assert(a.m.elemTag && a.m.elemTag.id === 'fire',
+    `a fireball left ${a.m.elemTag ? a.m.elemTag.id : 'no mark'}`);
+  const beforeCross = a.m.hp;
+  cast(a, 1);
+  const crossed = beforeCross - a.m.hp;
+  assert(!a.m.elemTag, 'crossing elements did not spend the mark');
+
+  // Same element again: refreshes, does not detonate. The reward is
+  // specifically for switching, and a Mage holding one button must not be
+  // detonating every second.
+  const b = fight();
+  cast(b, 0);
+  const beforeSame = b.m.hp;
+  cast(b, 0);
+  const same = beforeSame - b.m.hp;
+  assert(b.m.elemTag && b.m.elemTag.id === 'fire', 'repeating an element cleared the mark');
+  assert(crossed > same * 1.6,
+    `crossing dealt ${Math.round(crossed)} and repeating dealt ${Math.round(same)}: `
+    + 'the combo is not worth switching for');
+});
+
 check('a buff grants everything its tooltip promises', async () => {
   const { Game } = await import('../src/game/game.js');
   const { castSkill } = await import('../src/game/skills.js');

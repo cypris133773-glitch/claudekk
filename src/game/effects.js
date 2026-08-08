@@ -33,6 +33,10 @@ export class Projectile {
     this.executeThreshold = opts.executeThreshold || 0;
     this.executeMult = opts.executeMult || 1;
     this.onHit = opts.onHit || null;
+    // The element the shot carries, so a fireball that lands marks what it
+    // hits and a frostbolt landing on it detonates. Set from the cast rather
+    // than from the projectile's colour: the cast already knows.
+    this.element = opts.element || null;
     this.spin = rand(6, -6);
     this.dead = false;
     this.hitList = new Set();
@@ -84,6 +88,7 @@ export class Projectile {
       }
       const dealt = game.dealDamage(this.owner, hit, dmg, {
         knockback: 3, kx: this.vx, kz: this.vz, source: this.owner,
+        element: this.element,
       });
       if (this.dot) hit.applyDot(this.dot.dps, this.dot.duration, this.dot.type || 'poison', this.owner);
       if (this.burn) hit.applyDot(this.burn, 4, 'burn', this.owner);
@@ -93,7 +98,8 @@ export class Projectile {
     }
     if (this.radius > 0) {
       game.explode(this.x, this.y, this.z, this.radius, this.damage, {
-        team: this.team, source: this.owner, color: this.color, burn: this.burn, exclude: hit,
+        team: this.team, source: this.owner, color: this.color, burn: this.burn,
+        exclude: hit, element: this.element,
       });
     } else {
       game.burst(this.x, this.y, this.z, 6, this.color);

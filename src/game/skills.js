@@ -4,6 +4,7 @@
 import { forwardVec, clamp, rand } from '../core/math.js';
 import { Fiend, Totem } from './pets.js';
 import { TEAM } from './entity.js';
+import { elementOf } from './elements.js';
 
 /**
  * Rank multipliers. Every rank adds to what a skill does and takes a little
@@ -129,6 +130,10 @@ export function castSkill(game, player, index) {
   const aim = player.aimLock
     || game.nearestEnemy(player.x, player.eyeY, player.z, 26);
   const p = power(player, skill, rank, aim);
+  // What element this cast carries, derived from what the skill already does
+  // rather than authored on a hundred and seventeen skills. Threaded alongside
+  // `skillId`, which every damage call in here already carries.
+  const element = elementOf(skill, p);
   const dir = forwardVec(player.yaw, player.pitch);
   const ex = player.x, ey = player.eyeY, ez = player.z;
 
@@ -153,7 +158,7 @@ export function castSkill(game, player, index) {
         x: ex, y: ey - 0.2, z: ez, dir,
         speed: p.speed, damage: p.damage, radius: p.radius, size: p.size,
         color: p.color, gravity: p.gravity || 0, dot, burn: p.burn,
-        lifesteal: p.lifesteal, skillId: skill.id,
+        lifesteal: p.lifesteal, skillId: skill.id, element,
         // Trueshot and the like. Only a shot with no blast radius pierces: one
         // that explodes has already hit everything behind the first target, so
         // letting it carry on would pay the talent out twice.
@@ -180,7 +185,7 @@ export function castSkill(game, player, index) {
             const dx = m.x - player.x, dz = m.z - player.z;
             const d = Math.hypot(dx, dz) || 1;
             game.dealDamage(player, m, p.damage, {
-              knockback: p.knockback || 0, kx: dx / d, kz: dz / d, skillId: skill.id,
+              knockback: p.knockback || 0, kx: dx / d, kz: dz / d, skillId: skill.id, element,
             });
             if (p.freeze) m.freeze = Math.max(m.freeze, p.freeze);
             if (p.root) m.root = Math.max(m.root, p.root);
@@ -230,7 +235,7 @@ export function castSkill(game, player, index) {
       game.telegraph(tx, ty, tz, radius, p.delay, () => {
         game.explode(tx, ty + 0.4, tz, radius, p.damage, {
           team: TEAM.PLAYER, source: player, color: p.color, burn: p.burn,
-          stun: p.stun, detonate: p.detonate, skillId: skill.id,
+          stun: p.stun, detonate: p.detonate, skillId: skill.id, element,
           forceCrit: !!(player.mods.cataclysm && skill.id === 'shadowfury'),
         });
       }, p.color);
@@ -251,7 +256,7 @@ export function castSkill(game, player, index) {
           player.y = game.world.groundAt(bx, bz, t.y + 3);
           player.yaw = Math.atan2(-(t.x - player.x), -(t.z - player.z));
           game.burst(player.x, player.centerY, player.z, 14, player.cls.color);
-          game.dealDamage(player, t, p.damage, { knockback: 2, skillId: skill.id, forceCrit: true });
+          game.dealDamage(player, t, p.damage, { knockback: 2, skillId: skill.id, element, forceCrit: true });
           player.invuln = Math.max(player.invuln, p.invuln || 0);
           game.sfx('blink');
           break;
@@ -359,7 +364,7 @@ export function castSkill(game, player, index) {
       const hits = game.enemiesInCone(player, p.range, p.angle);
       let total = 0;
       for (const m of hits) {
-        total += game.dealDamage(player, m, p.damage, { skillId: skill.id });
+        total += game.dealDamage(player, m, p.damage, { skillId: skill.id, element });
         game.beam(ex, ey - 0.3, ez, m.x, m.centerY, m.z, p.color);
       }
       if (p.lifesteal && total > 0) game.healEntity(player, player, total * p.lifesteal);
@@ -378,7 +383,7 @@ export function castSkill(game, player, index) {
         for (let j = 0; j < p.jumps && current; j++) {
           hit.add(current);
           game.beam(fromX, fromY, fromZ, current.x, current.centerY, current.z, p.color);
-          total += game.dealDamage(player, current, dmg, { skillId: skill.id });
+          total += game.dealDamage(player, current, dmg, { skillId: skill.id, element });
           fromX = current.x; fromY = current.centerY; fromZ = current.z;
           dmg *= p.falloff;
           current = game.nearestEnemy(fromX, fromY, fromZ, p.jumpRange, hit);
@@ -408,7 +413,7 @@ export function castSkill(game, player, index) {
         }
         const dx = m.x - player.x, dz = m.z - player.z;
         const d = Math.hypot(dx, dz) || 1;
-        game.dealDamage(player, m, dmg, { knockback: 4, kx: dx / d, kz: dz / d, skillId: skill.id });
+        game.dealDamage(player, m, dmg, { knockback: 4, kx: dx / d, kz: dz / d, skillId: skill.id, element });
         if (p.dot && !m.dead) m.applyDot(p.dot.dps, p.dot.duration, 'bleed', player);
         if (p.chain) {
           let from = m;
@@ -418,7 +423,7 @@ export function castSkill(game, player, index) {
             if (!next) break;
             hitSet.add(next);
             game.beam(from.x, from.centerY, from.z, next.x, next.centerY, next.z, p.color);
-            game.dealDamage(player, next, p.chainDamage, { skillId: skill.id });
+            game.dealDamage(player, next, p.chainDamage, { skillId: skill.id, element });
             from = next;
           }
         }

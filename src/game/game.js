@@ -18,6 +18,7 @@ import { MECHANICS, coreSlotFor, bossGold } from '../data/raids.js';
 import { forwardVec, clamp, rand, dist2 } from '../core/math.js';
 import { T } from '../render/atlas.js';
 import { CLASS_BY_ID } from '../data/classes.js';
+import { ELEMENTS, elementOf, tagOrDetonate, tagOn } from './elements.js';
 import { Ghost, DuelScore, duelSpawns, roundOutcome, classSkin, ROUND_TIME } from './pvp.js';
 
 /** Players per side, by match mode. */
@@ -1228,8 +1229,48 @@ export class Game {
       }
     }
 
+    // Elemental marks. After the damage, because a detonation is scaled off
+    // the hit that caused it, and only for real hits — a rot ticking every
+    // half second would tag the target sixteen times a cast and detonate on
+    // whichever tick happened to follow a different skill.
+    if (isPlayer && !opts.isDot && opts.element) {
+      // The stored damage has to be read before the mark is spent —
+      // `tagOrDetonate` clears it, and `detonate` reading it afterwards would
+      // scale every detonation off zero and floor at one point of damage.
+      const stored = target.elemTag ? target.elemTag.damage : 0;
+      const popped = tagOrDetonate(this, source, target, opts.element, dealt);
+      if (popped && !target.dead) this.detonate(source, target, popped, stored);
+    }
+
     if (target.dead) this.onEnemyKilled(target, source, opts);
     return dealt;
+  }
+
+  /**
+   * A mark going off.
+   *
+   * Routed through the same `explode` every other blast uses rather than
+   * resolving its own damage, so it inherits crit, lifesteal, set bonuses,
+   * floaters and the sound without any of them being written twice — and so a
+   * detonation is visibly the same *kind* of event as a Meteor rather than a
+   * number appearing.
+   */
+  detonate(source, target, elementId, stored) {
+    const e = ELEMENTS[elementId];
+    if (!e) return;
+    const dmg = Math.max(1, (stored || 0) * e.blast);
+    this.explode(target.x, target.centerY, target.z, e.radius, dmg, {
+      team: TEAM.PLAYER, source, color: e.color, knockback: 2,
+      freeze: e.freeze, stun: e.stun,
+      // A detonation must not tag what it catches, or two marked enemies
+      // beside each other would set each other off forever.
+      element: null,
+    });
+    if (source === this.player) {
+      this.notify(e.verb, 0.9);
+      this.hitstop = Math.max(this.hitstop, 0.05);
+    }
+    this.audio.play('explode');
   }
 
   /** Enemy -> player damage, with dodge, armor and thorns. */
@@ -1499,10 +1540,11 @@ export class Game {
         }
         this.dealDamage(opts.source, m, damage * falloff, {
           knockback: opts.knockback || 0, kx: dx / dd, kz: dz / dd,
-          forceCrit: opts.forceCrit, skillId: opts.skillId,
+          forceCrit: opts.forceCrit, skillId: opts.skillId, element: opts.element,
         });
         if (opts.burn) m.applyDot(opts.burn, 4, 'burn', opts.source);
         if (opts.stun) m.stun = Math.max(m.stun, opts.stun);
+        if (opts.freeze) m.freeze = Math.max(m.freeze, opts.freeze);
       }
     } else {
       for (const a of this.allies()) {
@@ -2056,6 +2098,7 @@ export class Game {
     for (const p of this.pets) p.draw(this.r);
     this.drawFighters();
     this.drawAuras();
+    this.drawElementTags();
     // Sky fills the gaps left by the opaque pass, before anything blended.
     this.r.drawSky();
     for (const p of this.projectiles) p.draw(this.r);
@@ -2085,6 +2128,35 @@ export class Game {
    * reads from the corner of the eye, which is where a threat in a crowd is
    * actually noticed.
    */
+  /**
+   * The mark an enemy is carrying, drawn where you will see it.
+   *
+   * A combo system nobody can see is a combo system nobody plays. Three motes
+   * orbiting the head in the element's colour, close enough to the health bar
+   * that the eye already goes there, and gone the instant the mark is spent.
+   */
+  drawElementTags() {
+    const now = this.time;
+    for (const m of this.mobs) {
+      if (m.dead) continue;
+      const t = tagOn(m, now);
+      if (!t) continue;
+      const e = ELEMENTS[t.id];
+      const spin = now * 3.2;
+      const rad = (m.width || 0.6) * 0.9;
+      const fade = Math.min(1, (t.until - now) * 1.5);
+      for (let i = 0; i < 3; i++) {
+        const a = spin + (i / 3) * Math.PI * 2;
+        this.r.drawBox(
+          m.x + Math.cos(a) * rad,
+          m.y + m.height + 0.18 + Math.sin(spin * 1.7 + i) * 0.07,
+          m.z + Math.sin(a) * rad,
+          0.13, 0.13, 0.13,
+          { tile: T.BLANK, color: hexToRgb(e.color), emissive: 1, alpha: 0.9 * fade });
+      }
+    }
+  }
+
   drawAuras() {
     if (!this.r.fancy) return;
     for (const m of this.mobs) {
