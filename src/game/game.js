@@ -19,6 +19,9 @@ import { forwardVec, clamp, rand, dist2 } from '../core/math.js';
 import { T } from '../render/atlas.js';
 import { CLASS_BY_ID } from '../data/classes.js';
 import { ELEMENTS, elementOf, tagOrDetonate, tagOn } from './elements.js';
+import {
+  ROOM_SHAPES, parFor, gradeFor, keyRoomIndex, clearGold, dungeonCoreSlot,
+} from '../data/dungeons.js';
 
 const INTERMISSION = 4.0;
 
@@ -117,6 +120,18 @@ export class Game {
     this.raidCleared = false;
     this.raidPotion = 0;
     this.coreDrop = null;
+    // Dungeon state. `dungeon` being null is what every dungeon branch tests,
+    // so it is null rather than an empty object.
+    this.dungeon = null;
+    this.dungeonPacks = [];
+    this.dungeonTime = 0;
+    this.dungeonPar = 0;
+    this.dungeonKey = false;
+    this.dungeonKeyPack = -1;
+    this.dungeonDoorOpen = false;
+    this.dungeonBoss = null;
+    this.dungeonCleared = false;
+    this.dungeonGrade = null;
   }
 
   /** True while the named wave affix is in force. */
@@ -181,7 +196,7 @@ export class Game {
     this.worldSeed = opts.worldSeed !== undefined
       ? opts.worldSeed : 1 + ((Math.random() * 9000) | 0);
     this.world = createArena(this.theme, this.worldSeed, this.layout,
-      { raid: opts.raid || null });
+      { raid: opts.raid || null, dungeon: opts.dungeon || null });
     this.r.setWorld(this.world);
     // The renderer owns the palette now: sky gradient, sun colour and the
     // hemispheric bounce all come from one themed set.
@@ -274,6 +289,205 @@ export class Game {
     return true;
   }
 
+  // -------------------------------------------------------------------------
+  // Dungeons
+  // -------------------------------------------------------------------------
+
+  /**
+   * Open a dungeon: place every pack asleep, start the clock, seal the door.
+   *
+   * Nothing is spawned during the run except the boss. That is the mode: the
+   * enemies are already there, and the run is you deciding what order to take
+   * them in. So all of the placement happens here, once, and `updateDungeon`
+   * only ever watches what the player has done to it.
+   */
+  startDungeon(who, dungeon) {
+    this.startRun(who, { layout: 0, theme: dungeon.theme, dungeon });
+    this.mode = 'dungeon';
+    this.dungeon = dungeon;
+    this.director.state = 'dungeon';
+    // No wave director and no affixes, for the same reason a raid has none:
+    // the mode is already asking a question, and a second rule on top is a
+    // rule nobody has room left to read.
+    this.affixes = [];
+    this.wave = dungeon.tier + 1;
+    this.dungeonTime = 0;
+    this.dungeonPar = parFor(dungeon);
+    this.dungeonKey = false;
+    this.dungeonDoorOpen = false;
+    this.dungeonBoss = null;
+    this.dungeonCleared = false;
+    this.dungeonGrade = null;
+    this.dungeonPacks = [];
+
+    const w = this.world;
+    const rooms = w.dungeonRooms || [];
+    const bounds = w.dungeonBounds || [];
+    for (let r = 0; r < rooms.length; r++) {
+      const shape = ROOM_SHAPES[dungeon.rooms[r]];
+      if (!shape) continue;
+      for (const spec of shape.packs) {
+        const pack = {
+          id: this.dungeonPacks.length,
+          room: r,
+          members: [],
+          cleared: false,
+          hasKey: false,
+        };
+        // Clamped into the room the world actually built, with a margin for
+        // the body. A pack offset that reaches past a dividing wall would
+        // otherwise put enemies *inside* it, where they are unkillable and
+        // the pack reads as pre-cleared — which is how the key once dropped
+        // before anybody had walked into the room holding it.
+        const b = bounds[r] || { x0: -1e9, x1: 1e9, z0: -1e9, z1: 1e9 };
+        const M = 2;
+        const px = clamp(rooms[r].x + spec.at[0], b.x0 + M, b.x1 - M);
+        const pz = clamp(rooms[r].z + spec.at[1], b.z0 + M, b.z1 - M);
+        spec.mix.forEach((typeId, i) => {
+          // Spread the members of a pack over a couple of blocks so a pack
+          // reads as a group standing together rather than one fat enemy.
+          const a = (i / spec.mix.length) * Math.PI * 2;
+          const x = clamp(px + Math.cos(a) * 1.4, b.x0 + 1, b.x1 - 1);
+          const z = clamp(pz + Math.sin(a) * 1.4, b.z0 + 1, b.z1 - 1);
+          const m = this.spawnMob(typeId, x, this.world.groundAt(x, z, 24) + 0.1, z,
+            spec.elite && i === 0);
+          m.pack = pack.id;
+          m.asleep = true;
+          m.anchorX = x;
+          m.anchorZ = z;
+          pack.members.push(m);
+        });
+        this.dungeonPacks.push(pack);
+      }
+    }
+
+    // One pack in the last room is carrying the key, and which one is rolled
+    // per run. Knowing it in advance would let a player clear one pack and
+    // walk past the rest, which is the trash mattering only on paper.
+    const keyRoom = keyRoomIndex(dungeon);
+    const candidates = this.dungeonPacks.filter((p) => p.room === keyRoom);
+    if (candidates.length) {
+      const pick = candidates[(Math.random() * candidates.length) | 0];
+      pick.hasKey = true;
+      this.dungeonKeyPack = pick.id;
+    }
+
+    this.notify(dungeon.name.toUpperCase(), 3.0);
+    this.notify(dungeon.blurb, 3.4);
+    this.notify('Nothing here comes to you. Pull what you choose.', 3.6);
+    this.audio.setMusicIntensity(0.5);
+    return true;
+  }
+
+  /** Wake every member of a pack at once. A pull is a group, not an enemy. */
+  wakePack(id) {
+    const pack = this.dungeonPacks[id];
+    if (!pack || pack.woken) return;
+    pack.woken = true;
+    let any = false;
+    for (const m of pack.members) {
+      if (m.dead) continue;
+      m.asleep = false;
+      any = true;
+    }
+    if (any) {
+      this.audio.play('wave');
+      this.audio.setMusicIntensity(0.9);
+    }
+  }
+
+  /**
+   * Dungeon upkeep: the clock, the key, the door and the boss.
+   *
+   * Deliberately the only place any of those change. A pack noticing it is
+   * dead, a key dropping and a door opening are three steps of one sequence,
+   * and splitting them across a kill handler and an update loop is how a
+   * dungeon ends up with a door that opens before the key drops.
+   */
+  updateDungeon(dt) {
+    if (!this.dungeon) return;
+    if (!this.dungeonCleared) this.dungeonTime += dt;
+
+    for (const pack of this.dungeonPacks) {
+      if (pack.cleared) continue;
+      if (pack.members.some((m) => !m.dead)) continue;
+      pack.cleared = true;
+      if (pack.hasKey && !this.dungeonKey) {
+        this.dungeonKey = true;
+        this.notify('THE KEY', 3.0);
+        this.notify('The far door will open now.', 3.0);
+        this.audio.play('rankup');
+      }
+    }
+
+    if (this.dungeonKey && !this.dungeonDoorOpen) {
+      this.dungeonDoorOpen = true;
+      this.openDungeonDoor();
+    }
+
+    // The boss is spawned when the door opens rather than at the start, so it
+    // is not standing in an empty room burning its cooldowns at a wall.
+    if (this.dungeonDoorOpen && !this.dungeonBoss && !this.dungeonCleared) {
+      const at = this.world.dungeonBoss;
+      const def = this.dungeon.boss;
+      const y = this.world.groundAt(at.x + 0.5, at.z + 0.5, 24) + 0.2;
+      const boss = this.spawnMob(def.type, at.x + 0.5, y, at.z + 0.5);
+      boss.maxHp *= def.power;
+      boss.hp = boss.maxHp;
+      boss.damageAmount *= def.power;
+      boss.dungeonName = def.name;
+      this.dungeonBoss = boss;
+      this.notify(def.name.toUpperCase(), 3.2);
+      this.audio.setMusicIntensity(1);
+    }
+
+    if (this.dungeonBoss && this.dungeonBoss.dead && !this.dungeonCleared) {
+      this.finishDungeon();
+    }
+  }
+
+  /** Cut the doorway out of the sealing wall. */
+  openDungeonDoor() {
+    const d = this.world.dungeonDoor;
+    if (!d) return;
+    for (let x = d.x0; x <= d.x1; x++) {
+      for (let y = d.y0; y <= d.y1; y++) {
+        for (let z = d.z0; z <= d.z1; z++) this.world.set(x, y, z, 0);
+      }
+    }
+    this.world.buildMesh();
+    this.r.setWorld(this.world);
+    this.notify('The door grinds open.', 2.6);
+    this.audio.play('bossdown');
+    this.shockwave(d.x0 + 1, d.y0 + 1, d.z0, 4, '#ffd24a');
+  }
+
+  /** The boss is down. Grade the run and pay it. */
+  finishDungeon() {
+    this.dungeonCleared = true;
+    const grade = gradeFor(this.dungeonTime, this.dungeonPar);
+    this.dungeonGrade = grade;
+    const gold = Math.round(clearGold(this.dungeon) * grade.mult);
+    this.soulsEarned += gold;
+    if (this.tally) this.tally.dungeonClears = (this.tally.dungeonClears || 0) + 1;
+    // A Core, sometimes. The raid ladder is the reliable route to a tier's
+    // permission; a dungeon is the one that stops a player who is stuck on a
+    // single raid boss from having nowhere else to go.
+    this.dungeonCore = Math.random() < 0.5
+      ? { tier: this.dungeon.tier, slot: dungeonCoreSlot(this.dungeon) }
+      : null;
+    this.notify(`${grade.name} — ${grade.blurb}`, 4);
+    this.audio.play('rankup');
+    this.audio.setMusicIntensity(0.2);
+  }
+
+  /** Packs that have been fully killed, for the HUD. */
+  get dungeonProgress() {
+    let done = 0;
+    for (const p of this.dungeonPacks) if (p.cleared) done++;
+    return { done, total: this.dungeonPacks.length };
+  }
+
   /**
    * Raid upkeep, run once a frame instead of the wave director.
    *
@@ -348,6 +562,18 @@ export class Game {
     this.raidBossIndex++;
     this.raidCleared = false;
     this.coreDrop = null;
+    // Dungeon state. `dungeon` being null is what every dungeon branch tests,
+    // so it is null rather than an empty object.
+    this.dungeon = null;
+    this.dungeonPacks = [];
+    this.dungeonTime = 0;
+    this.dungeonPar = 0;
+    this.dungeonKey = false;
+    this.dungeonKeyPack = -1;
+    this.dungeonDoorOpen = false;
+    this.dungeonBoss = null;
+    this.dungeonCleared = false;
+    this.dungeonGrade = null;
     this.lastBoss = next;
     this.restoreForNextBoss();
     const pt = this.world.pickSpawn(this.player.x, this.player.z, 18);
@@ -366,6 +592,18 @@ export class Game {
     this.running = true;
     this.raidCleared = false;
     this.coreDrop = null;
+    // Dungeon state. `dungeon` being null is what every dungeon branch tests,
+    // so it is null rather than an empty object.
+    this.dungeon = null;
+    this.dungeonPacks = [];
+    this.dungeonTime = 0;
+    this.dungeonPar = 0;
+    this.dungeonKey = false;
+    this.dungeonKeyPack = -1;
+    this.dungeonDoorOpen = false;
+    this.dungeonBoss = null;
+    this.dungeonCleared = false;
+    this.dungeonGrade = null;
     // Everything the last attempt left on the floor. A retry that begins
     // inside the previous attempt's bombs is not the same fight.
     this.mobs.length = 0;
@@ -1572,7 +1810,8 @@ export class Game {
     this.beams = this.beams.filter((b) => b.life > 0);
     this.notifications = this.notifications.filter((n) => n.life > 0);
 
-    this.updateWaves(dt);
+    if (this.mode === 'dungeon') this.updateDungeon(dt);
+    else this.updateWaves(dt);
   }
 
   /**

@@ -157,8 +157,13 @@ export class World {
     // arenas — only the palette and the interior differ, which is the whole
     // reason a raid room is affordable at all.
     const raid = opts.raid || null;
+    // A dungeon borrows the raid palettes rather than the arena themes: the
+    // rooms are indoors and lit from their own fittings, and an open-sky theme
+    // reads as an arena with walls dropped into it.
+    const dungeon = opts.dungeon || null;
     const P = raid ? RAID_PALETTES[raid.tier % RAID_PALETTES.length]
-      : themes[theme % themes.length];
+      : dungeon ? RAID_PALETTES[(dungeon.theme + 1) % RAID_PALETTES.length]
+        : themes[theme % themes.length];
 
     const FLOOR_Y = 4;
     const R = 26;               // arena radius (square-ish with cut corners)
@@ -210,6 +215,9 @@ export class World {
     if (raid) {
       this.layout = 0;
       this.layoutRaid(ctx, raid);
+    } else if (dungeon) {
+      this.layout = 0;
+      this.layoutDungeon(ctx, dungeon);
     } else {
       this.layout = layout % builders.length;
       builders[this.layout](ctx);
@@ -251,7 +259,9 @@ export class World {
     // thing the room does, and it only works from a fixed mark.
     this.playerSpawn = raid
       ? { x: cx + 0.5, y: FLOOR_Y + 3, z: cz + 20.5, yaw: 0 }
-      : { x: cx + 0.5, y: FLOOR_Y + 3, z: cz + 0.5 };
+      : dungeon
+        ? { x: cx + 0.5, y: FLOOR_Y + 3, z: cz + 22.5, yaw: 0 }
+        : { x: cx + 0.5, y: FLOOR_Y + 3, z: cz + 0.5 };
     // The middle is raised or molten in some layouts; drop the spawn onto
     // whatever is actually there so the player never starts inside geometry.
     this.playerSpawn.y = this.groundAt(this.playerSpawn.x, this.playerSpawn.z, SY - 1) + 1;
@@ -266,6 +276,134 @@ export class World {
   // differently: Fortress is close-quarters with cover, Crucible forces you
   // across chokepoints, Spires is open and favours ranged fights.
   // -------------------------------------------------------------------------
+
+  /**
+   * A dungeon: four chambers on one floor, walls between them, one locked door.
+   *
+   * THE SHAPE, AND WHY IT IS THIS SHAPE
+   *
+   * Laid out south to north, because the player spawns at the south end and
+   * walks up it. Everything about the geometry exists to make pulling a
+   * decision rather than an accident:
+   *
+   *   ENTRY      z +16..+26. Empty on purpose. Somewhere to retreat to that
+   *              has nothing in it, so a pull that goes wrong has an answer.
+   *   ROOMS 0/1  z +1..+14, split west and east by a spine wall. Two doorways
+   *              from the entry, one to each, so the route choice is made by
+   *              walking rather than by a menu.
+   *   ROOM 2     z -12..-1, full width. The vault: the key is in here.
+   *   BOSS       z -26..-14, behind the one door that starts closed.
+   *
+   * The dividing walls are full height. A dungeon where you can see and shoot
+   * the next room from the last one is a dungeon with no rooms in it — the
+   * walls are what make a pull local, and a local pull is the only kind you
+   * can plan.
+   *
+   * Doorways are three wide. Two is a corridor you get stuck in when four
+   * things chase you; five stops being a door and starts being a gap.
+   */
+  layoutDungeon({ P, FLOOR_Y, cx, cz, R, seed }, dungeon) {
+    const WALL_H = 9;
+    const wallBand = (x0, z0, x1, z1) => {
+      for (let x = x0; x <= x1; x++) {
+        for (let z = z0; z <= z1; z++) this.fill(x, FLOOR_Y, z, x, FLOOR_Y + WALL_H - 1, z, P.wall);
+      }
+    };
+    const doorway = (x0, z0, x1, z1) => {
+      for (let x = x0; x <= x1; x++) {
+        for (let z = z0; z <= z1; z++) this.fill(x, FLOOR_Y, z, x, FLOOR_Y + WALL_H, z, AIR);
+      }
+    };
+
+    // The bands, south to north, as explicit interiors with the walls between
+    // them. Written as bounds rather than as centres and radii because the
+    // mode places enemies inside them, and "centre plus an offset somebody
+    // wrote in a data file" is exactly how a pack ends up standing in a wall.
+    const ENTRY_Z0 = cz + 20, ENTRY_Z1 = cz + 26;
+    const SIDE_Z0 = cz + 1, SIDE_Z1 = cz + 18;
+    const VAULT_Z0 = cz - 14, VAULT_Z1 = cz - 1;
+    const BOSS_Z1 = cz - 16;
+    const SIDE_X = 20;                     // how far a side room reaches out
+
+    this.dungeonBounds = [
+      { x0: cx - SIDE_X, x1: cx - 2, z0: SIDE_Z0, z1: SIDE_Z1 },
+      { x0: cx + 2, x1: cx + SIDE_X, z0: SIDE_Z0, z1: SIDE_Z1 },
+      { x0: cx - SIDE_X, x1: cx + SIDE_X, z0: VAULT_Z0, z1: VAULT_Z1 },
+    ];
+    const mid = (b) => ({ x: Math.round((b.x0 + b.x1) / 2), z: Math.round((b.z0 + b.z1) / 2) });
+    this.dungeonRooms = this.dungeonBounds.map(mid);
+    this.dungeonBoss = { x: cx, z: BOSS_Z1 - 6 };
+    this.dungeonEntry = { x: cx, z: cz + 23 };
+
+    // --- Dividers ---------------------------------------------------------
+    // Entry from the two side rooms, with a doorway into each.
+    wallBand(cx - R, ENTRY_Z0 - 1, cx + R, ENTRY_Z0 - 1);
+    doorway(cx - 11, ENTRY_Z0 - 1, cx - 9, ENTRY_Z0 - 1);
+    doorway(cx + 9, ENTRY_Z0 - 1, cx + 11, ENTRY_Z0 - 1);
+
+    // The spine between rooms 0 and 1. No gap: taking both at once should be
+    // something you chose by walking round, not something the room does to you.
+    wallBand(cx - 1, SIDE_Z0, cx + 1, SIDE_Z1);
+
+    // Rooms 0/1 from the vault, one doorway from each so either route arrives.
+    wallBand(cx - R, SIDE_Z0 - 1, cx + R, SIDE_Z0 - 1);
+    doorway(cx - 11, SIDE_Z0 - 1, cx - 9, SIDE_Z0 - 1);
+    doorway(cx + 9, SIDE_Z0 - 1, cx + 11, SIDE_Z0 - 1);
+
+    // --- The locked door --------------------------------------------------
+    //
+    // Solid until the key drops. Recorded as a box rather than a block id so
+    // opening it is a fill of air over a known region — the alternative is
+    // hunting the world for whatever was placed here, a search that can fail
+    // silently.
+    wallBand(cx - R, BOSS_Z1 + 1, cx + R, BOSS_Z1 + 1);
+    const door = {
+      x0: cx - 1, z0: BOSS_Z1 + 1, x1: cx + 1, z1: BOSS_Z1 + 1,
+      y0: FLOOR_Y, y1: FLOOR_Y + WALL_H,
+    };
+    this.dungeonDoor = door;
+    for (let x = door.x0; x <= door.x1; x++) {
+      this.fill(x, FLOOR_Y, door.z0, x, FLOOR_Y + 3, door.z0, B.RUNE);
+      this.set(x, FLOOR_Y + 4, door.z0, B.GLOW);
+    }
+
+    // --- Furniture --------------------------------------------------------
+    //
+    // Pillars only, and only in the rooms that want them. Cover is what makes
+    // a pull direction matter — something to break line of sight behind is the
+    // difference between pulling one pack and pulling two. Kept off the room
+    // centre, which is where the mode measures from.
+    const pillar = (x, z, h) => this.fill(x, FLOOR_Y, z, x, FLOOR_Y + h - 1, z, P.accent);
+    const shapes = dungeon.rooms;
+    for (let i = 0; i < this.dungeonRooms.length; i++) {
+      const r = this.dungeonRooms[i];
+      if (shapes[i] === 'gallery') {
+        for (let k = -1; k <= 1; k += 2) {
+          for (let j = -1; j <= 1; j++) pillar(r.x + k * 6, r.z + j * 6, 5);
+        }
+      } else if (shapes[i] === 'warren') {
+        for (const [dx, dz] of [[-4, 0], [4, 0], [0, -6], [0, 6]]) pillar(r.x + dx, r.z + dz, 4);
+      } else if (shapes[i] === 'vault') {
+        for (const [dx, dz] of [[-9, -4], [9, -4], [-9, 4], [9, 4]]) pillar(r.x + dx, r.z + dz, 4);
+      }
+      // A light per room, hung high enough to walk under, so a chamber reads
+      // as a place rather than a dark patch between two doorways.
+      this.set(r.x, FLOOR_Y + 6, r.z, B.GLOW);
+    }
+
+    // The boss chamber stays clear. Every arena boss mechanic assumes a
+    // straight line out to eleven blocks, and a pillar in the way turns "run
+    // out of the circle" into "run into a pillar".
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + 0.78;
+      this.set(Math.round(this.dungeonBoss.x + Math.cos(a) * 9), FLOOR_Y + 5,
+        Math.round(this.dungeonBoss.z + Math.sin(a) * 9), B.GLOW);
+    }
+
+    // Mobs are placed by the mode, from the room shapes, so the wandering
+    // spawn ring an arena uses would only add enemies nobody asked for.
+    this.spawnPoints.length = 0;
+  }
 
   /**
    * The raid room. One skeleton, seven materials.

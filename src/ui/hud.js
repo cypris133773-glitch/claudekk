@@ -7,6 +7,7 @@ import { drawSkillIcon } from './icons.js';
 import { levelProgress } from '../data/levels.js';
 import { POTIONS } from '../data/potions.js';
 import { humanoidBoxes } from '../game/entity.js';
+import { gradeFor } from '../data/dungeons.js';
 
 const FONT = "700 %spx 'Segoe UI', system-ui, -apple-system, sans-serif";
 
@@ -453,10 +454,51 @@ export class Hud {
     rects.push({ name: 'ult', cx, cy, r: Math.max(MIN_TOUCH / 2, r) });
   }
 
+  /**
+   * The dungeon bar: a clock, the letter it is currently worth, and the key.
+   *
+   * The grade is shown *live* and recomputed every frame rather than only at
+   * the end, because a clock you cannot see is not pressure — it is a surprise
+   * at the results screen. Watching B turn into C while you fight is the whole
+   * mechanism, and it is also what makes the decision to skip a pull or take
+   * two at once feel like it costs something.
+   */
+  drawDungeonBar() {
+    const g = this.game;
+    const c = this.ctx;
+    const secs = Math.floor(g.dungeonTime);
+    const grade = gradeFor(g.dungeonTime, g.dungeonPar);
+    const prog = g.dungeonProgress;
+    const cx = this.w / 2;
+    const y = 10 + this.safe.t;
+
+    c.textAlign = 'center';
+    c.textBaseline = 'top';
+    c.shadowColor = 'rgba(0,0,0,0.8)';
+    c.shadowBlur = 6;
+
+    this.font(this.touchMode ? 22 : 26);
+    c.fillStyle = grade.color;
+    const clock = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+    c.fillText(`${clock}   ${grade.name}`, cx, y);
+
+    this.font(12);
+    c.fillStyle = 'rgba(255,255,255,0.7)';
+    const parts = [`${prog.done}/${prog.total} packs`];
+    if (g.dungeonKey) parts.push('KEY');
+    else parts.push('no key');
+    if (g.dungeonBoss && !g.dungeonBoss.dead) parts.push(g.dungeon.boss.name);
+    c.fillText(parts.join('  ·  '), cx, y + (this.touchMode ? 26 : 30));
+    c.shadowBlur = 0;
+  }
+
   drawWaveInfo() {
     const c = this.ctx;
     const g = this.game;
     const d = g.director;
+    // A dungeon has no waves and no director state worth printing. It gets the
+    // clock and the grade in the same slot instead.
+    if (g.mode === 'dungeon') return this.drawDungeonBar();
     const s = this.safe;
     c.textBaseline = 'top';
     c.shadowColor = 'rgba(0,0,0,0.7)';

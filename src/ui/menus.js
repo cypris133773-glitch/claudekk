@@ -30,6 +30,9 @@ import { skillIconElement, iconElement, schoolFor, SCHOOLS } from './icons.js';
 import { QUEST_COUNT } from '../data/quests.js';
 import { talentLines, talentNextGain, setBonusLine } from '../data/talentinfo.js';
 import { POTIONS, POTION_STACK } from '../data/potions.js';
+import {
+  DUNGEONS, ROOM_SHAPES, GRADES, dungeonAccess, parFor, clearGold,
+} from '../data/dungeons.js';
 
 /**
  * Where a donation goes. One address, written once, so the screen and any
@@ -186,6 +189,8 @@ export class Menus {
       potions: () => this.buildPotionShop(),
       raids: () => this.buildRaids(),
       raid: () => this.buildRaid(),
+      dungeons: () => this.buildDungeons(),
+      dungeonclear: () => this.buildDungeonClear(),
       raidkill: () => this.buildRaidGate('kill'),
       raidwipe: () => this.buildRaidGate('wipe'),
       sheet: () => this.buildSheet(),
@@ -379,6 +384,10 @@ export class Menus {
       // that this is a door that only ever says no.
       { label: 'BOSS FIGHTS', hint: this.raidHint(this.charId()),
         hide: level < 6, go: () => this.show('raids') },
+      // Hidden until the first one is reachable, for the same reason the raid
+      // list is: a door that only ever says no is worse than no door.
+      { label: 'DUNGEONS', hint: this.dungeonHint(),
+        hide: level < DUNGEONS[0].level, go: () => this.show('dungeons') },
       { label: 'GET STRONGER',
         hint: spendable ? `${spendable} points to spend` : 'Spend your gold and your points',
         go: () => this.show('sheet') },
@@ -1457,6 +1466,124 @@ export class Menus {
     }
     const down = bossesDown(st, raid);
     return down ? `${down} of 6 · ${raid.name}` : `${raid.name} is open`;
+  }
+
+  /** One line for the title screen: the deepest dungeon you can walk into. */
+  dungeonHint() {
+    const level = this.profile.level(this.charId());
+    const open = DUNGEONS.filter((d) => dungeonAccess(d, { level }).ok);
+    if (!open.length) return `Opens at level ${DUNGEONS[0].level}`;
+    return `${open[open.length - 1].name} · three rooms, a key, a clock`;
+  }
+
+  /**
+   * The dungeon list.
+   *
+   * Leads with what the mode *is*, because it is the only one in the game that
+   * does not spawn anything at you and a player walking in expecting waves
+   * will stand in the first room waiting for it to start.
+   */
+  buildDungeons() {
+    const wrap = el('div', 'screen');
+    wrap.appendChild(this.backBar('title'));
+    wrap.appendChild(this.charPicker());
+
+    const charId = this.charId();
+    const cls = this.profile.classOf(charId);
+    const level = this.profile.level(charId);
+    const p = this.panel('Dungeons', `${cls.name} · nothing in here comes to you`);
+
+    p.appendChild(el('p', 'note',
+      'Every pack is already standing in its room, asleep. You choose which to '
+      + 'wake and from where — pull one at a time, or take two at once if you '
+      + 'think you can. Drag a pack too far and it walks home and heals.'));
+
+    const list = el('div', 'raid-list');
+    p.appendChild(this.paged('dungeons', DUNGEONS, byHeight(2, 3, 5), list, (d) => {
+      const access = dungeonAccess(d, { level });
+      const row = el('button', 'forge-card raid-row' + (access.ok ? ' next' : ''));
+      row.style.setProperty('--quality', tierColor(d.tier));
+
+      const icon = el('div', 'forge-icon');
+      icon.appendChild(iconElement('🗝', 34, { ready: access.ok }));
+      row.appendChild(icon);
+
+      const body = el('div', 'forge-body');
+      body.innerHTML = `
+        <div class="forge-name">${d.name}
+          <span class="quality-tag">T${d.tier}</span></div>`;
+      body.appendChild(el('div', 'forge-desc', d.blurb));
+      // The route, named. It is the choice the mode is built around, so it
+      // belongs on the card rather than being discovered by walking in.
+      body.appendChild(el('div', 'forge-desc dim',
+        d.rooms.map((r) => ROOM_SHAPES[r].name).join(' · ')));
+      body.appendChild(el('div', 'forge-desc dim',
+        `Par ${Math.round(parFor(d) / 60)} min · ${clearGold(d).toLocaleString()} gold at C, `
+        + `more for a better grade`));
+      if (!access.ok) body.appendChild(el('div', 'forge-desc bad', access.reason));
+      row.appendChild(body);
+
+      row.disabled = !access.ok;
+      this.click(row, () => this.ctx.startDungeon(charId, d));
+      return row;
+    }));
+
+    wrap.appendChild(p);
+    return wrap;
+  }
+
+  /**
+   * The end screen. One letter, and the arithmetic behind it.
+   *
+   * A grade with no numbers under it is a grade nobody trusts, and the whole
+   * point of a graded clock is that you can see how to beat it next time — so
+   * the time, the par and the next grade up are all on the screen rather than
+   * left to be worked out.
+   */
+  buildDungeonClear() {
+    const g = this.ctx.game;
+    const wrap = el('div', 'screen overlay');
+    const d = g.dungeon;
+    const grade = g.dungeonGrade || GRADES[GRADES.length - 1];
+    const p = this.panel(d ? d.name : 'Dungeon', grade.blurb);
+
+    const badge = el('div', 'grade-badge', grade.name);
+    badge.style.color = grade.color;
+    badge.style.borderColor = grade.color;
+    p.appendChild(badge);
+
+    const secs = Math.round(g.dungeonTime);
+    const clock = (n) => `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`;
+    const rows = el('div', 'result-rows');
+    const line = (k, v) => {
+      const r = el('div', 'result-row');
+      r.appendChild(el('span', null, k));
+      r.appendChild(el('b', null, v));
+      rows.appendChild(r);
+    };
+    line('Time', clock(secs));
+    line('Par', clock(Math.round(g.dungeonPar)));
+    line('Gold', `${Math.round(g.soulsEarned).toLocaleString()}  (x${grade.mult.toFixed(2)})`);
+    if (g.dungeonCore) line('Core', `T${g.dungeonCore.tier} ${g.dungeonCore.slot}`);
+    p.appendChild(rows);
+
+    // What the next letter up would have taken. Only when there is one.
+    const better = GRADES[GRADES.indexOf(grade) - 1];
+    if (better && d) {
+      p.appendChild(el('p', 'note',
+        `${better.name} wants it inside ${clock(Math.floor(better.frac * g.dungeonPar))}.`));
+    }
+
+    const menu = el('div', 'main-menu');
+    menu.appendChild(this.click(el('button', 'menu-btn primary',
+      '<span class="menu-label">RUN IT AGAIN</span>'),
+      () => this.ctx.startDungeon(this.charId(), d)));
+    menu.appendChild(this.click(el('button', 'menu-btn',
+      '<span class="menu-label">LEAVE</span>'), () => this.ctx.quitRun()));
+    p.appendChild(menu);
+
+    wrap.appendChild(p);
+    return wrap;
   }
 
   buildRaids() {

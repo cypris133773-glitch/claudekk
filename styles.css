@@ -2822,3 +2822,20 @@ body.show-popout-btn #popout-btn { display: block; }
   color: rgba(255, 255, 255, 0.6);
 }
 .donate-addr.copied .donate-hint { color: #7dffb0; }
+
+/* --- Dungeon clear --------------------------------------------------------
+   One letter, large, in the grade's own colour. It is the whole result and
+   should read from across the room. */
+.grade-badge {
+  display: block;
+  margin: 10px auto 14px;
+  width: 92px;
+  height: 92px;
+  line-height: 92px;
+  text-align: center;
+  font-size: 54px;
+  font-weight: 800;
+  border: 3px solid currentColor;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+}

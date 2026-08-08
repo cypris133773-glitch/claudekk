@@ -117,6 +117,7 @@ const menus = new Menus(uiRoot, {
   },
   startRun: (charId) => startRun(charId),
   startRaid: (charId, raid) => startRaid(charId, raid),
+  startDungeon: (charId, dungeon) => startDungeon(charId, dungeon),
   continueRaid: () => continueRaid(),
   leaveRaid: (to) => leaveRaid(to),
   resumeRun: () => resumeRun(),
@@ -304,6 +305,36 @@ async function startRaid(charId, raid) {
   requestLock();
 }
 
+/**
+ * Open a dungeon. The same shape as a raid: build it, then walk in.
+ *
+ * Callable from the clear screen as well as the list, which is why it takes
+ * the dungeon rather than reading one off the menu — "run it again" must not
+ * depend on the list screen still being the one behind you.
+ */
+async function startDungeon(charId, dungeon) {
+  audio.ensure();
+  if (profile.settings.fullscreenOnPlay && fullscreenUsable) enterFullscreen();
+  document.getElementById('rotate-hint').classList.add('hidden');
+  menus.show(null);
+  showLoading('Unsealing the doors…', 15);
+  await nextPaint();
+  try {
+    game.startDungeon(charId, dungeon);
+    applyAimAssist();
+  } catch (err) {
+    hideLoading();
+    fatal('The dungeon failed to build.', String(err && err.message ? err.message : err));
+    console.error(err);
+    return;
+  }
+  showLoading('Entering…', 100);
+  await nextPaint();
+  hideLoading();
+  input.setEnabled(true);
+  requestLock();
+}
+
 /** Yes, from the window between fights: the next boss, everything restored. */
 function continueRaid() {
   if (game.raidCleared ? !game.continueRaid() : !game.retryRaid()) { leaveRaid(); return; }
@@ -457,6 +488,14 @@ function frame(now) {
       input.setEnabled(false);
       document.exitPointerLock?.();
       menus.show(won ? 'raidkill' : 'raidwipe');
+    } else if (game.mode === 'dungeon' && game.dungeonCleared
+      && menus.screen !== 'dungeonclear') {
+      // A cleared dungeon is graded, not banked: the gold was added when the
+      // boss died, so this only decides which screen comes next.
+      game.paused = true;
+      input.setEnabled(false);
+      document.exitPointerLock?.();
+      menus.show('dungeonclear');
     } else if (game.over) {
       showResults();
     } else if (game.pendingUpgrades && menus.screen !== 'upgrade') {

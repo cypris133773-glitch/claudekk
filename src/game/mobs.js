@@ -245,6 +245,26 @@ export class Mob extends Entity {
     // stalled-wave bug this game has already fixed twice.
     this.retreat = 0;
     this.retreatUsed = false;
+    // --- Dungeon packs ----------------------------------------------------
+    //
+    // Null in the arena, where enemies are spawned at you and are awake by
+    // definition. In a dungeon every enemy is already standing in the room
+    // when you walk in, and these three fields are the whole difference:
+    //
+    //   pack        who it wakes up with. Pulling one member pulls the group,
+    //               which is what makes *where you stand* the decision.
+    //   asleep      it does nothing at all until woken. Not idling — idling
+    //               would drift, and a pack that has drifted is a pack you
+    //               cannot plan around.
+    //   anchorX/Z   where it was placed, and where it returns to. Without a
+    //               leash the whole dungeon can be dragged into one corner and
+    //               killed as a single pull, which is not a route, it is a
+    //               conga line.
+    this.pack = null;
+    this.asleep = false;
+    this.anchorX = 0;
+    this.anchorZ = 0;
+    this.leashing = false;
     this.flankTimer = Math.random();
     // Mechanic state, for any boss that has one. Raid bosses overwrite all of
     // this in createRaidBoss; an arena boss declares its pair on its type and
@@ -346,6 +366,8 @@ export class Mob extends Entity {
 
     if (this.disabled) { this.vx *= 0.2; this.vz *= 0.2; return; }
 
+    if (this.pack !== null && this.updatePack(dt, game, player)) return;
+
     const target = game.pickEnemyTarget(this) || player;
     const dx = target.x - this.x, dz = target.z - this.z;
     const dist = Math.hypot(dx, dz);
@@ -396,6 +418,85 @@ export class Mob extends Entity {
     this.walkPhase += Math.hypot(this.vx, this.vz) * dt * 2.4;
     this.autoJump(world, nx, nz);
     this.checkStuck(dt, game, dist);
+  }
+
+  /**
+   * Sleeping, waking and going home. Returns true if it handled this frame.
+   *
+   * THE PULL
+   *
+   * A sleeping mob wakes when the player comes inside AGGRO and can actually
+   * be seen — line of sight, not just distance, because a pack on the far side
+   * of a pillar being pulled through it is the single most infuriating thing a
+   * dungeon can do to you. Waking one wakes its whole pack, so a pull is a
+   * group and the decision is which group and from where.
+   *
+   * Being hit also wakes it, whatever the distance. A ranged opener is a
+   * legitimate way to start a fight and should not be a way to fight one enemy
+   * out of four.
+   *
+   * THE LEASH
+   *
+   * Drag a pack more than LEASH from where it was standing and it gives up,
+   * walks home, heals and goes back to sleep. That is not a punishment, it is
+   * what stops the entire dungeon being pulled into the entry hall and killed
+   * as one enormous pack — which is otherwise strictly the best play, and
+   * deletes the mode.
+   */
+  updatePack(dt, game, player) {
+    const AGGRO = 11;
+    const LEASH = 26;
+    const LEASH_GIVE_UP = 8;
+
+    if (this.asleep) {
+      this.vx *= 0.2; this.vz *= 0.2;
+      const d = this.distanceXZ(player);
+      if (d < AGGRO
+        && game.world.lineOfSight(this.x, this.eyeY, this.z, player.x, player.centerY, player.z)) {
+        game.wakePack(this.pack);
+      }
+      return true;
+    }
+
+    const home = Math.hypot(this.x - this.anchorX, this.z - this.anchorZ);
+    if (!this.leashing && home > LEASH) {
+      this.leashing = true;
+      // Reset on the way out rather than on arrival: a pack that has given up
+      // should stop being a threat immediately, not after it has walked back
+      // through you.
+      this.hp = this.maxHp;
+      this.dots.length = 0;
+      this.invuln = Math.max(this.invuln, 0.4);
+      this.leashTimer = LEASH_GIVE_UP;
+    }
+    if (this.leashing) {
+      const dx = this.anchorX - this.x, dz = this.anchorZ - this.z;
+      const d = Math.hypot(dx, dz) || 1;
+      this.leashTimer -= dt;
+      // Home, or out of patience.
+      //
+      // The timer is not a nicety. A leashing mob is invulnerable and heals
+      // every frame, so one that cannot find its way back — round a pillar, on
+      // the wrong side of a doorway — is an immortal enemy wandering the
+      // dungeon forever, and the run can never be finished. Measured: one
+      // leech in the vault did exactly that, for three full sweeps of the
+      // room. Walking home is best-effort; arriving is guaranteed.
+      if (d < 1.5 || this.leashTimer <= 0) {
+        this.leashing = false;
+        this.asleep = true;
+        this.hp = this.maxHp;
+        this.x = this.anchorX;
+        this.z = this.anchorZ;
+        this.y = game.world.groundAt(this.x, this.z, this.y + 8) + 0.1;
+        this.vx = 0; this.vy = 0; this.vz = 0;
+        return true;
+      }
+      this.hp = this.maxHp;
+      this.moveToward(dx / d, dz / d, this.speed * 1.5);
+      this.walkPhase += Math.hypot(this.vx, this.vz) * dt * 2.4;
+      return true;
+    }
+    return false;
   }
 
   /**
