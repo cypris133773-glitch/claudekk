@@ -19,11 +19,19 @@ import { elementOf } from './elements.js';
  * and the Forge were counted at all, which is why deep runs stopped being
  * fights.
  *
- * +12% is the settlement. It is linear, so ten ranks is +120% rather than
- * anything runaway, and the early curve is held up by the wave-before-a-boss
+ * +12% was the settlement, and it was too low once the other half of the
+ * equation was measured. A wave's total health reaches twenty-four times wave
+ * 1 by wave 14; a player over the same span gains fourteen ranks split across
+ * four skills, which at twelve percent each is about forty percent more
+ * damage. Enemies were not hitting harder — they were failing to die, and one
+ * wave was taking two minutes.
+ *
+ * +17% is where it sits now, alongside a flatter enemy health curve in
+ * waves.js. It is still linear, so ten ranks is +170% rather than anything
+ * runaway, and the early curve is still held up by the wave-before-a-boss
  * bonus rank in game.js rather than by making each rank enormous.
  */
-export function rankDamageMult(rank) { return 1 + 0.12 * (rank || 0); }
+export function rankDamageMult(rank) { return 1 + 0.17 * (rank || 0); }
 export function rankCooldownMult(rank) { return Math.max(0.45, 1 - 0.04 * (rank || 0)); }
 
 /** Scale a skill's numbers by the player's current modifiers and its rank. */

@@ -40,9 +40,18 @@ export const XP_PER_KILL = 2;
 export const XP_ELITE_MULT = 4;
 export const XP_BOSS_MULT = 20;
 
-/** XP for surviving a wave. This is where most of a run's XP comes from. */
+/**
+ * XP for surviving a wave, and the reason to keep going.
+ *
+ * Superlinear on purpose. Linear meant wave 30 paid five times what wave 1 did
+ * while being twenty times the fight, so the efficient way to level was to
+ * farm shallow waves and restart — which is the opposite of what an endless
+ * mode is for. The exponent is gentle: wave 30 is worth about eight times wave
+ * 1 rather than five, which rewards depth without making a deep run the only
+ * run worth doing.
+ */
 export function xpForWave(wave) {
-  return 50 + 6 * wave;
+  return Math.round(50 + 7 * wave + Math.pow(wave, 1.35) * 1.1);
 }
 
 export const MAX_LEVEL = 60;

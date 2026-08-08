@@ -637,8 +637,10 @@ export class Menus {
     box.appendChild(head);
 
     if (d.matchmaking === false) {
-      box.appendChild(el('p', 'note',
-        'Public games are switched off in this build. Codes still work.'));
+      box.appendChild(el('p', 'note' + (d.broken ? ' bad' : ''), d.broken
+        ? 'The matchmaking service is not answering on this deployment. '
+          + 'Codes still work.'
+        : 'Public games are switched off in this build. Codes still work.'));
       return box;
     }
     if (d.matchmaking === null) {

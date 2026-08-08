@@ -100,6 +100,11 @@ export class Lobby {
     this.listing = false;
     this.roomsAt = Date.now();
     this.matchmaking = !r.off;
+    // Told apart on purpose: a missing store is three clicks in a dashboard,
+    // and a server that is not running the function at all is a deployment
+    // problem. Reporting both as "switched off" sends whoever has the second
+    // one to the wrong page.
+    this.broken = !!r.broken;
     this.rooms = r.rooms;
     this.changed();
   }

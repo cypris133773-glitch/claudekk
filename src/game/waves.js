@@ -9,6 +9,26 @@ export const BOSS_EVERY = 5;
  * Health climbs faster than damage: later waves should mean longer, more
  * dangerous fights rather than instant deaths.
  */
+/**
+ * How much tougher a wave is than wave 1.
+ *
+ * Retuned after a report that wave 14 was a wall, and the measurement was
+ * unambiguous. A wave's *total health* is its budget times its per-mob health
+ * multiplier — two curves multiplied together — and at wave 14 that came to
+ * twenty-four times wave 1. Over the same span the player's damage grows by
+ * about forty percent: one skill rank a wave, split across four skills, at
+ * twelve percent each.
+ *
+ * So the wall was not that enemies hit harder. Seconds-to-die sat flat at six
+ * from wave 5 onward. It was that they stopped dying: a hundred and twenty
+ * seconds to clear one wave at 14, against thirty-eight at 12.
+ *
+ * Both sides moved. The health pool now reaches about thirteen times wave 1 at
+ * wave 14 rather than twenty-four, and a rank is worth seventeen percent
+ * rather than twelve. Enemies still pull ahead — this is an endless mode and
+ * it has to end — but at a rate where a run finishes because you died rather
+ * than because you got bored.
+ */
 export function waveScaling(wave, diff = null) {
   // Clamped at zero: a fractional power of a negative base is NaN, and wave 0
   // is reachable — anything spawned during the opening intermission, or by a
@@ -17,16 +37,18 @@ export function waveScaling(wave, diff = null) {
   const w = Math.max(0, wave - 1);
   const d = diff || { hp: 1, damage: 1, souls: 1 };
   return {
-    hp: (1 + w * 0.16 + Math.pow(w, 1.42) * 0.012) * d.hp,
+    hp: (1 + w * 0.11 + Math.pow(w, 1.30) * 0.007) * d.hp,
     damage: (1 + w * 0.075 + Math.pow(w, 1.30) * 0.008) * d.damage,
     speed: Math.min(1.55, 1 + w * 0.012),
-    souls: (1 + w * 0.09) * d.souls,
+    // Reward grows faster than it used to, and faster than linearly. A deep
+    // wave is worth going for rather than merely worth surviving.
+    souls: (1 + w * 0.10 + Math.pow(w, 1.35) * 0.010) * d.souls,
   };
 }
 
 /** How many "cost points" of enemies this wave is worth. */
 export function waveBudget(wave) {
-  return Math.round(4 + wave * 1.9 + Math.pow(wave, 1.35) * 0.30);
+  return Math.round(4 + wave * 1.6 + Math.pow(wave, 1.25) * 0.16);
 }
 
 /**
@@ -106,7 +128,8 @@ export function spawnInterval(wave) {
 
 /** Souls awarded for clearing a wave outright. */
 export function waveClearBonus(wave) {
-  return Math.round(12 + wave * 4.5 + (isBossWave(wave) ? 60 : 0));
+  return Math.round(12 + wave * 5 + Math.pow(wave, 1.35) * 1.4
+    + (isBossWave(wave) ? 60 + wave * 6 : 0));
 }
 
 export class WaveDirector {

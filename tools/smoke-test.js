@@ -2621,6 +2621,57 @@ check('a pack surrounds instead of queuing up', async () => {
     + `(${bestSectors} of 8 sectors at its widest)`);
 });
 
+check('a wave stays killable, and pays more the deeper it is', async () => {
+  const { waveScaling, waveBudget, waveClearBonus } = await import('../src/game/waves.js');
+  const { rankDamageMult } = await import('../src/game/skills.js');
+  const { xpForWave } = await import('../src/data/levels.js');
+
+  // Reported from play: wave 14 was a wall. Measured, the enemies were not
+  // hitting harder — seconds-to-die sat flat at six from wave 5 on — they had
+  // stopped *dying*. A wave's total health is its budget times its per-mob
+  // health multiplier, two curves multiplied together, and that reached
+  // twenty-four times wave 1 by wave 14 while the player's damage grew about
+  // forty percent over the same span.
+  //
+  // So this compares the two curves rather than either alone, which is the
+  // thing that was wrong and the thing neither number shows on its own.
+  const pool = (w) => waveBudget(w) * waveScaling(w).hp;
+  const base = pool(1);
+  // One rank a wave, split across four skills.
+  const playerDamage = (w) => rankDamageMult(w / 4);
+  const gap = (w) => (pool(w) / base) / playerDamage(w);
+
+  // Two numbers, and they are a design decision rather than a safety margin.
+  //
+  // The gap is where the wall is. Before the retune it hit 17 at wave 14,
+  // which is what "enemies too strong at wave 14" measured as: a wave taking
+  // two minutes to kill. It is 8.5 there now, and 22 at wave 30 — which is to
+  // say the wall did not go away, it moved out by roughly a factor of two.
+  // That is the intended shape for an endless mode: it still ends, later.
+  assert(gap(14) < 10,
+    `wave 14 has a gap of ${gap(14).toFixed(1)} — that is a wall, not a fight`);
+  assert(gap(30) < 25,
+    `wave 30 has a gap of ${gap(30).toFixed(1)} — the run ends too abruptly`);
+
+  // Monotonic, because an endless mode has to end. A gap that stops growing is
+  // a run with no finish in it.
+  let prev = 0;
+  for (const w of [5, 10, 14, 20, 30, 40]) {
+    assert(gap(w) > prev, `wave ${w} is no harder than the wave before it`);
+    prev = gap(w);
+  }
+
+  // Rewards grow faster than linearly, so going deeper is worth doing rather
+  // than merely survivable. Linear meant the efficient way to level was to
+  // farm shallow waves and restart, which is the opposite of the point.
+  for (const [f, name] of [[xpForWave, 'XP'], [waveClearBonus, 'gold']]) {
+    const at1 = f(1), at10 = f(10), at30 = f(30);
+    assert(at30 / at1 > (at10 / at1) * 2.2,
+      `${name} at wave 30 is ${(at30 / at1).toFixed(1)}x wave 1 against `
+      + `${(at10 / at1).toFixed(1)}x at wave 10: depth is not paying`);
+  }
+});
+
 check('a Hexer casts, and a stun stops it', async () => {
   const { Game } = await import('../src/game/game.js');
   const { makeHarness } = await import('./harness.js');

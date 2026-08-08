@@ -32,12 +32,20 @@ async function call(action, opts = {}) {
     headers: opts.body ? { 'content-type': 'application/json' } : undefined,
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
-  // A non-JSON body means something between here and the function answered —
-  // a proxy, an error page, a static host with no functions at all. Treated as
-  // "public games are off" rather than thrown, because that is what it means
-  // to the player.
+  // A non-JSON body is a different failure from a missing store, and the two
+  // need different answers.
+  //
+  // If the host is serving `api/rooms.js` as a *file* rather than running it —
+  // which is what a static deployment with no function build does, and what
+  // `cleanUrls` makes look like a working URL — the body is JavaScript source.
+  // "Public games are off, connect a store" would send someone to the wrong
+  // dashboard page for an hour.
   let data = null;
-  try { data = await res.json(); } catch { return { configured: false }; }
+  try {
+    data = await res.json();
+  } catch {
+    return { configured: false, broken: true };
+  }
   return data || { configured: false };
 }
 
@@ -58,7 +66,10 @@ export async function matchmakingAvailable() {
 export async function listRooms() {
   try {
     const r = await call('list');
-    if (r.configured === false) { known = false; return { off: true, rooms: [] }; }
+    if (r.configured === false) {
+      known = false;
+      return { off: true, broken: !!r.broken, rooms: [] };
+    }
     return { off: false, rooms: r.rooms || [] };
   } catch {
     return { off: false, rooms: [], error: true };
