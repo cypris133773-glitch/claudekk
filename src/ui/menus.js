@@ -642,6 +642,23 @@ export class Menus {
    * you have to think about. Three lines each — who, what size, how long ago —
    * and a button.
    */
+  /**
+   * The one thing the no-setup matchmaking backend cannot do.
+   *
+   * With no key-value store connected, the server keeps open games in the
+   * memory of whichever instance answered — so public games work, but two
+   * players routed to different instances will not see each other, and a cold
+   * start empties the list. Said plainly, because the failure looks exactly
+   * like "nobody is playing" and somebody would otherwise conclude the feature
+   * is broken rather than that they were unlucky.
+   */
+  roomsMemoryNote() {
+    return el('p', 'note',
+      'This deployment has no shared store, so open games are only remembered '
+      + 'for a short while and you may not always see each other. Refresh, or '
+      + 'use a code if you are trying to reach one specific person.');
+  }
+
   duelRooms(d) {
     const box = el('div', 'rooms');
     const head = el('div', 'rooms-head');
@@ -666,6 +683,7 @@ export class Menus {
     if (!d.rooms.length) {
       box.appendChild(el('p', 'note',
         'Nobody is hosting right now. Host one and someone will find it.'));
+      if (!d.roomsShared) box.appendChild(this.roomsMemoryNote());
       return box;
     }
 
@@ -2390,13 +2408,22 @@ export class Menus {
 
   buildPause() {
     const wrap = el('div', 'screen overlay');
-    const p = this.panel('Paused', `Wave ${this.ctx.game.wave} · ${Math.round(this.ctx.game.soulsEarned)} gold this run`);
+    // A duel has no wave and pays no gold, so the arena's subtitle and the
+    // arena's exit button both said something untrue in it. Now that duels are
+    // endless this is also the only place the score is written down in words,
+    // and the only door out — so it has to be about the fight you are in.
+    const duel = this.ctx.game.duelScore;
+    const p = duel
+      ? this.panel('Paused', `Round ${duel.round} · you ${duel.standings} them`)
+      : this.panel('Paused', `Wave ${this.ctx.game.wave} · ${Math.round(this.ctx.game.soulsEarned)} gold this run`);
     const menu = el('div', 'main-menu');
     menu.appendChild(this.click(el('button', 'menu-btn primary', '<span class="menu-label">RESUME</span>'),
       () => this.ctx.resumeRun()));
     menu.appendChild(this.click(el('button', 'menu-btn', '<span class="menu-label">SETTINGS</span>'),
       () => this.show('settings')));
-    menu.appendChild(this.click(el('button', 'menu-btn', '<span class="menu-label">ABANDON RUN</span><span class="menu-hint">Bank your gold and return to the menu</span>'),
+    menu.appendChild(this.click(el('button', 'menu-btn', duel
+      ? '<span class="menu-label">LEAVE THE FIGHT</span><span class="menu-hint">The duel is endless — stop whenever you want</span>'
+      : '<span class="menu-label">ABANDON RUN</span><span class="menu-hint">Bank your gold and return to the menu</span>'),
       () => this.ctx.quitRun()));
     p.appendChild(menu);
 

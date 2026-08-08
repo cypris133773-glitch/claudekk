@@ -3933,6 +3933,93 @@ check('an archer cannot back away for ever', async () => {
   }
 });
 
+check('public games work with nothing configured', async () => {
+  // The bug this exists for was reported four times and was not in the game.
+  //
+  // The lobby read "Public games are switched off in this build", which sounds
+  // like a missing feature and was in fact a missing key-value store on the
+  // deployment. The function refused to do anything at all without one, so a
+  // player with no Upstash account — which is every player — could never see
+  // an open game. It now keeps rooms in memory when no store is connected,
+  // which is less reliable and infinitely more useful than off.
+  //
+  // This drives the real handler with no environment set, which is exactly the
+  // configuration that was broken.
+  const mod = await import('../api/rooms.js');
+  const handler = mod.default;
+
+  const call = async (method, query, body) => {
+    let status = 0, payload = null;
+    const res = {
+      setHeader() {},
+      status(s) { status = s; return res; },
+      end(text) { payload = JSON.parse(text); },
+    };
+    await handler({ method, query, body }, res);
+    return { status, body: payload };
+  };
+
+  const empty = await call('GET', { action: 'list' });
+  assert(empty.body.configured === true,
+    'a deployment with no key-value store still reports public games as off');
+  assert(Array.isArray(empty.body.rooms), 'the room list is not a list');
+  assert(empty.body.durable === false,
+    'the memory backend claims to be durable — the lobby needs to know it is not');
+
+  const hosted = await call('POST', { action: 'host' },
+    { name: 'Tester', mode: '1v1', build: 'b1', offer: 'OFFER-BLOB' });
+  assert(hosted.body.id, `hosting failed: ${JSON.stringify(hosted.body)}`);
+  const id = hosted.body.id;
+
+  const listed = await call('GET', { action: 'list' });
+  assert(listed.body.rooms.some((r) => r.id === id), 'the hosted game is not in the list');
+  assert(!listed.body.rooms.some((r) => r.offer),
+    'the listing carries the offer blob — that is kilobytes nobody browsing needs');
+
+  const claimed = await call('POST', { action: 'join', id }, {});
+  assert(claimed.body.offer === 'OFFER-BLOB', 'joining did not hand back the offer');
+
+  const after = await call('GET', { action: 'list' });
+  assert(!after.body.rooms.some((r) => r.id === id),
+    'a claimed game is still listed — two people would race for one seat');
+
+  const waiting = await call('GET', { action: 'answer', id });
+  assert(waiting.body.waiting === true, 'the host was told an answer had arrived early');
+
+  assert((await call('POST', { action: 'join', id }, { answer: 'ANSWER-BLOB' })).body.ok,
+    'posting the answer back failed');
+  const got = await call('GET', { action: 'answer', id });
+  assert(got.body.answer === 'ANSWER-BLOB', 'the host never got the answer');
+
+  // Consumed exactly once: the handshake happens once and a replayable blob is
+  // a second player walking into a match that already started.
+  assert((await call('GET', { action: 'answer', id })).body.waiting === true,
+    'the answer can be collected twice');
+});
+
+check('a duel does not end on its own', async () => {
+  const { matchConfig, ROUNDS_TO_WIN } = await import('../src/net/duel.js');
+  const { DuelScore } = await import('../src/game/pvp.js');
+
+  // Asked for directly: the fight should be endless, and you leave when you
+  // die if you want to rather than when a counter says the match is over.
+  assert(!Number.isFinite(ROUNDS_TO_WIN), 'duels are still first-to-N by default');
+  assert(!Number.isFinite(matchConfig({ build: 'b', seed: 1 }).roundsToWin),
+    'the default match config still ends after a fixed number of rounds');
+
+  const s = new DuelScore(matchConfig({ build: 'b', seed: 1 }).roundsToWin);
+  for (let i = 0; i < 200; i++) {
+    assert(!s.award(i % 3 === 0 ? 1 : 0), `the match declared a winner at round ${s.round}`);
+  }
+  assert(!s.over && s.round === 201, 'the score stopped counting');
+  assert(s.standings.includes('—'), 'the standings line lost its score');
+
+  // A fixed-length match is still one config away, and zero must not be read
+  // as "unset" by a `||` somewhere in the chain.
+  assert(matchConfig({ build: 'b', seed: 1, roundsToWin: 3 }).roundsToWin === 3,
+    'a caller can no longer ask for a fixed-length match');
+});
+
 // --- Report ----------------------------------------------------------------
 
 await Promise.all(pending);

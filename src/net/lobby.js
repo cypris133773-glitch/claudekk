@@ -79,6 +79,11 @@ export class Lobby {
     this.listing = false;
     this.publicId = null;
     this.matchmaking = null;
+    // Whether the server is keeping rooms somewhere shared. False means it is
+    // holding them in one instance's memory because no key-value store is
+    // connected: public games work, but two players who land on different
+    // instances will not see each other. Worth saying out loud in the lobby.
+    this.roomsShared = true;
     this.pollTimer = null;
   }
 
@@ -105,6 +110,7 @@ export class Lobby {
     // problem. Reporting both as "switched off" sends whoever has the second
     // one to the wrong page.
     this.broken = !!r.broken;
+    if (r.shared !== undefined) this.roomsShared = !!r.shared;
     this.rooms = r.rooms;
     this.changed();
   }

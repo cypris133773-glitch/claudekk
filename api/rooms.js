@@ -60,7 +60,7 @@ const MAX_BLOB = 8000;
 
 const KV_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
 const KV_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
-const configured = !!(KV_URL && KV_TOKEN);
+const durable = !!(KV_URL && KV_TOKEN);
 
 /**
  * One Upstash REST command.
@@ -69,7 +69,7 @@ const configured = !!(KV_URL && KV_TOKEN);
  * opens a TCP connection pays for it on every cold start and this does at most
  * two round trips per request anyway.
  */
-async function kv(...args) {
+async function upstash(...args) {
   const res = await fetch(`${KV_URL}/${args.map(encodeURIComponent).join('/')}`, {
     headers: { Authorization: `Bearer ${KV_TOKEN}` },
   });
@@ -77,6 +77,75 @@ async function kv(...args) {
   const body = await res.json();
   return body.result;
 }
+
+/**
+ * The no-setup backend: the six Redis verbs this file uses, over a Map that
+ * lives as long as the instance does.
+ *
+ * Expiry is checked lazily on read rather than swept on a timer. A serverless
+ * function is frozen between requests, so a timer would not fire reliably and
+ * a sweep would be work nobody asked for; a room nobody reads costs a Map
+ * entry until the instance is recycled, which is a price worth not paying
+ * attention to.
+ */
+const mem = new Map();
+function memGet(key) {
+  const e = mem.get(key);
+  if (!e) return null;
+  if (e.exp && e.exp < Date.now()) { mem.delete(key); return null; }
+  return e.val;
+}
+async function memory(cmd, key, ...rest) {
+  switch (cmd) {
+    case 'get': return memGet(key);
+    case 'set': {
+      // set key value EX seconds
+      const secs = rest[2] === 'EX' ? Number(rest[3]) : 0;
+      mem.set(key, { val: rest[0], exp: secs ? Date.now() + secs * 1000 : 0 });
+      return 'OK';
+    }
+    case 'del': mem.delete(key); return 1;
+    case 'sadd': {
+      const set = memGet(key) instanceof Set ? memGet(key) : new Set();
+      set.add(rest[0]);
+      const prev = mem.get(key);
+      mem.set(key, { val: set, exp: prev ? prev.exp : 0 });
+      return 1;
+    }
+    case 'srem': {
+      const set = memGet(key);
+      if (set instanceof Set) set.delete(rest[0]);
+      return 1;
+    }
+    case 'smembers': {
+      const set = memGet(key);
+      return set instanceof Set ? [...set] : [];
+    }
+    case 'scard': {
+      const set = memGet(key);
+      return set instanceof Set ? set.size : 0;
+    }
+    case 'expire': {
+      const e = mem.get(key);
+      if (e) e.exp = Date.now() + Number(rest[0]) * 1000;
+      return 1;
+    }
+    default: throw new Error(`unsupported: ${cmd}`);
+  }
+}
+
+const kv = (...args) => (durable ? upstash(...args) : memory(...args));
+
+/**
+ * What the client is told about where its rooms are being kept.
+ *
+ * `configured` stays true either way — public games are on — but `durable`
+ * lets the lobby explain the one way the memory backend can disappoint you,
+ * which is two players landing on different instances and not seeing each
+ * other. Silently degrading and letting somebody conclude the feature is
+ * broken is worse than a sentence.
+ */
+const backend = () => ({ configured: true, durable });
 
 const json = (res, status, body) => {
   res.setHeader('content-type', 'application/json; charset=utf-8');
@@ -97,16 +166,6 @@ function newId() {
 const str = (v, max) => (typeof v === 'string' ? v.slice(0, max) : '');
 
 export default async function handler(req, res) {
-  if (!configured) {
-    // Not an error. A build with no store is a build where public games are
-    // switched off, and the client is built to say so and offer the codes.
-    return json(res, 200, {
-      configured: false,
-      why: 'No key-value store is connected, so public games are off. '
-        + 'Invite codes still work.',
-    });
-  }
-
   try {
     const action = String((req.query && req.query.action) || 'list');
 
@@ -126,7 +185,7 @@ export default async function handler(req, res) {
         out.push({ id, name: room.name, mode: room.mode, build: room.build, at: room.at });
       }
       out.sort((a, b) => b.at - a.at);
-      return json(res, 200, { configured: true, rooms: out });
+      return json(res, 200, { ...backend(), rooms: out });
     }
 
     // --- host: publish an offer --------------------------------------------
@@ -150,7 +209,7 @@ export default async function handler(req, res) {
       // but a stale index that nobody ever reads would live forever, so it
       // gets a long ceiling.
       await kv('expire', 'ca:rooms', '3600');
-      return json(res, 200, { configured: true, id });
+      return json(res, 200, { ...backend(), id });
     }
 
     // --- join: take the offer and leave an answer --------------------------
@@ -164,22 +223,22 @@ export default async function handler(req, res) {
         // First half of the handshake: hand back the offer and take the room
         // off the list, so two people cannot both try to join the same seat.
         await kv('srem', 'ca:rooms', id);
-        return json(res, 200, { configured: true, offer: room.offer, mode: room.mode, build: room.build });
+        return json(res, 200, { ...backend(), offer: room.offer, mode: room.mode, build: room.build });
       }
       await kv('set', `ca:answer:${id}`, answer, 'EX', String(ROOM_TTL));
-      return json(res, 200, { configured: true, ok: true });
+      return json(res, 200, { ...backend(), ok: true });
     }
 
     // --- host: poll for the answer -----------------------------------------
     if (req.method === 'GET' && action === 'answer') {
       const id = str((req.query && req.query.id) || '', 8);
       const answer = await kv('get', `ca:answer:${id}`);
-      if (!answer) return json(res, 200, { configured: true, waiting: true });
+      if (!answer) return json(res, 200, { ...backend(), waiting: true });
       // Consumed. The handshake happens once and the blob is useless after.
       await kv('del', `ca:answer:${id}`);
       await kv('del', `ca:room:${id}`);
       await kv('srem', 'ca:rooms', id);
-      return json(res, 200, { configured: true, answer });
+      return json(res, 200, { ...backend(), answer });
     }
 
     // --- host: withdraw ----------------------------------------------------
@@ -187,12 +246,12 @@ export default async function handler(req, res) {
       const id = str((req.query && req.query.id) || '', 8);
       await kv('del', `ca:room:${id}`);
       await kv('srem', 'ca:rooms', id);
-      return json(res, 200, { configured: true, ok: true });
+      return json(res, 200, { ...backend(), ok: true });
     }
 
     return json(res, 400, { error: 'unknown action' });
   } catch (err) {
     // The store being down must not look like the game being broken.
-    return json(res, 503, { configured: true, error: 'matchmaking is unavailable right now' });
+    return json(res, 503, { ...backend(), error: 'matchmaking is unavailable right now' });
   }
 }

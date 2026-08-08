@@ -41,8 +41,19 @@ export const DUEL_MODES = [
 
 export const MODE_BY_ID = Object.fromEntries(DUEL_MODES.map((m) => [m.id, m]));
 
-/** First to this many rounds takes the match. */
-export const ROUNDS_TO_WIN = 3;
+/**
+ * How many rounds win a match — and by default, none of them.
+ *
+ * A duel used to be first to three and then over, which meant the mode ended
+ * at the exact moment two people had finished working out how they wanted to
+ * fight each other. Endless instead: rounds keep coming, the score keeps
+ * counting, and either player leaves when they want to rather than when a
+ * counter says so. Death ends a round, not the session.
+ *
+ * Still a number rather than a flag, so a fixed-length match is a config away
+ * if one is ever wanted.
+ */
+export const ROUNDS_TO_WIN = Infinity;
 
 /**
  * Everything both sides agree on before a match starts.
@@ -59,7 +70,9 @@ export function matchConfig(opts) {
     seed: opts.seed,
     layout: opts.layout,
     theme: opts.theme,
-    roundsToWin: opts.roundsToWin || ROUNDS_TO_WIN,
+    // `??`, not `||`: Infinity is truthy but 0 is not, and a caller asking
+    // for a fixed-length match must not be silently overridden.
+    roundsToWin: opts.roundsToWin ?? ROUNDS_TO_WIN,
   };
 }
 

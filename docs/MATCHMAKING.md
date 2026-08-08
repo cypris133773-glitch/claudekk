@@ -15,28 +15,41 @@ player records. The moment two browsers are connected the room is deleted and
 the server has nothing to do with the game they play — every packet of the
 match goes straight between the two players.
 
-It is one Vercel serverless function. It is stateless by necessity: functions
-do not share memory and there is no guarantee two requests hit the same
-instance, so the rooms live in a key-value store rather than in a variable.
+It is one Vercel serverless function, with two places it can keep those
+rooms.
 
-## Turning it on
+## It works with nothing configured
 
-**It is off until a key-value store is connected, and that is deliberate.**
-With no store, every endpoint answers `configured: false`, the lobby says
-"Public games are switched off in this build", and the invite codes keep
-working exactly as they always have. Nothing breaks; a feature is simply
-absent.
+**Public games are on by default and need no setup.** With no key-value store
+connected, the function keeps rooms in a Map inside the running instance.
 
-To switch it on, from the Vercel dashboard for this project:
+This used to be a refusal. Every endpoint answered `configured: false` and the
+lobby read *"Public games are switched off in this build"* — a sentence that
+blames the build for a deployment setting, and one that was reported as a bug
+four separate times. A player who wants to see whether anyone is playing does
+not have an Upstash account and should not need one.
+
+The memory backend is honest about its limit, and the lobby says so on screen:
+Vercel may run more than one instance, and two players routed to different
+ones will not see each other's rooms. A cold start empties the list. For a
+handful of concurrent players in one region it works.
+
+## Making it reliable
+
+Connecting a store is still the recommendation — it is what makes the lobby
+work across instances and regions, and it survives a cold start. From the
+Vercel dashboard for this project:
 
 1. **Storage → Create Database → Upstash for Redis** (the free tier is
    enough — this stores a couple of kilobytes for ninety seconds at a time).
 2. **Connect it to this project.** Vercel sets `KV_REST_API_URL` and
    `KV_REST_API_TOKEN` automatically; the function reads either those or the
    `UPSTASH_REDIS_REST_*` pair.
-3. **Redeploy.** The lobby will start listing games.
+3. **Redeploy.** The response's `durable` flag flips to `true` and the lobby
+   drops its "no shared store" note.
 
-No code change is needed at any point.
+No code change is needed at any point, and nothing about the game changes
+apart from how well strangers find each other.
 
 ## What it deliberately does not do
 

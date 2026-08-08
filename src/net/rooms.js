@@ -51,11 +51,24 @@ async function call(action, opts = {}) {
 
 /** Whether this deployment has matchmaking at all. Cached after the first ask. */
 let known = null;
+
+/**
+ * Whether rooms are being kept somewhere shared.
+ *
+ * False means the server is holding them in one instance's memory because no
+ * key-value store is connected — public games work, but two players who land
+ * on different instances will not see each other. The lobby says so, because a
+ * player staring at an empty list deserves to know which kind of empty it is.
+ */
+let sharedStore = true;
+export const roomsAreShared = () => sharedStore;
+
 export async function matchmakingAvailable() {
   if (known !== null) return known;
   try {
     const r = await call('list');
     known = r.configured !== false;
+    if (r.durable !== undefined) sharedStore = !!r.durable;
   } catch {
     known = false;
   }
@@ -66,11 +79,12 @@ export async function matchmakingAvailable() {
 export async function listRooms() {
   try {
     const r = await call('list');
+    if (r.durable !== undefined) sharedStore = !!r.durable;
     if (r.configured === false) {
       known = false;
       return { off: true, broken: !!r.broken, rooms: [] };
     }
-    return { off: false, rooms: r.rooms || [] };
+    return { off: false, shared: sharedStore, rooms: r.rooms || [] };
   } catch {
     return { off: false, rooms: [], error: true };
   }

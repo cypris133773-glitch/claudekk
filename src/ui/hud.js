@@ -406,9 +406,13 @@ export class Hud {
 
     this.font(12);
     c.fillStyle = 'rgba(255,255,255,0.7)';
+    // The break is when somebody has just died, which is exactly when they
+    // want to know whether they are committed to another one. Endless rounds
+    // only feel like freedom if the door is signposted.
     const line = s.breakTimer > 0
-      ? `NEXT ROUND IN ${Math.ceil(s.breakTimer)}`
-      : `ROUND ${s.round}  ·  FIRST TO ${s.roundsToWin}  ·  ${clock(s.timer)}`;
+      ? `NEXT ROUND IN ${Math.ceil(s.breakTimer)}  ·  PAUSE TO LEAVE`
+      : `ROUND ${s.round}  ·  ${Number.isFinite(s.roundsToWin)
+        ? `FIRST TO ${s.roundsToWin}` : 'ENDLESS'}  ·  ${clock(s.timer)}`;
     c.fillText(line, cx, y + (this.touchMode ? 30 : 34));
     c.shadowBlur = 0;
   }

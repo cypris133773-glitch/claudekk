@@ -352,7 +352,7 @@ export class Game {
     const marks = duelSpawns(this.world, size);
     this.duelSpawnMarks = marks;
     this.duelSize = size;
-    this.duelScore = new DuelScore(cfg.roundsToWin || 3);
+    this.duelScore = new DuelScore(cfg.roundsToWin ?? Infinity);
 
     // Seats, in roster order, so both sides number them the same way.
     this.fighters = [];
@@ -374,7 +374,10 @@ export class Game {
       }
     }
     this.placeFighters();
-    this.notify(cfg.mode.toUpperCase() + '  ·  FIRST TO ' + this.duelScore.roundsToWin, 3);
+    this.notify(cfg.mode.toUpperCase()
+      + (Number.isFinite(this.duelScore.roundsToWin)
+        ? '  ·  FIRST TO ' + this.duelScore.roundsToWin
+        : '  ·  ENDLESS'), 3);
     this.audio.setMusicIntensity(0.9);
     return true;
   }
