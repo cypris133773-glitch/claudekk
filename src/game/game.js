@@ -916,6 +916,39 @@ export class Game {
   sfx(name) { this.audio.play(name); this.netEvent({ k: 'a', n: name }); }
 
   /**
+   * The moment an ultimate goes off.
+   *
+   * Deliberately louder than anything else in the game. This is the one button
+   * that has to be *earned* — a full charge is twenty-odd seconds of a fight
+   * you were in — and if pressing it feels like pressing a fourth cooldown
+   * then the whole system is a fifth skill with an unusual timer on it.
+   *
+   * Time stops for a fifth of a second, the screen flashes the class's colour,
+   * a ring goes out from under your feet, and the name of the thing you just
+   * did is on screen. None of it does damage; all of it is the point.
+   */
+  onUltimate(player) {
+    const color = player.cls.accent || player.cls.color;
+    this.hitstop = Math.max(this.hitstop, 0.20);
+    this.screenShake = Math.max(this.screenShake, 0.7);
+    this.impactFlash(color, 1.0);
+    this.shockwave(player.x, player.y + 0.1, player.z, 5, color);
+    this.shockwaves.push(new Shockwave(player.x, player.y + 0.1, player.z, 9.5, color, 0.8));
+    this.burst(player.x, player.centerY, player.z, 46, color);
+    // A column of light where the player is standing, which is what tells
+    // everyone else in a duel that somebody just spent theirs.
+    for (let i = 0; i < 26; i++) {
+      this.particles.push(new Particle(
+        player.x + rand(1.1, -1.1), player.y + i * 0.28, player.z + rand(1.1, -1.1),
+        rand(1.2, -1.2), 5 + Math.random() * 5, rand(1.2, -1.2),
+        color, 0.7 + Math.random() * 0.5, 0.3, -3));
+    }
+    this.audio.play('levelup');
+    this.audio.play('explode');
+    if (player === this.player) this.notify(player.ult.name.toUpperCase(), 2.4);
+  }
+
+  /**
    * A heartbeat under a quarter health. Audio is the only channel that reaches
    * a player whose eyes are on the crowd, and the red vignette alone is easy
    * to miss in a busy fight.
@@ -1139,11 +1172,15 @@ export class Game {
       dmg *= 2;
     }
 
-    const dealt = target.damage(dmg, { ...opts, source });
+    const dealt = target.damage(dmg, { ...opts, source, crit });
     if (dealt <= 0) return 0;
 
     if (isPlayer) {
       source.damageDealt += dealt;
+      // The ultimate fills from the fight itself. Dots feed it too — a
+      // Warlock's damage is mostly rot, and an ultimate a Warlock could never
+      // charge would be an ultimate a Warlock does not have.
+      if (source.addUltCharge) source.addUltCharge(dealt, 0);
       if (source.lifesteal) source.heal(dealt * source.lifesteal);
       // Deep Wounds: crits leave a bleed scaled off the hit that landed.
       if (crit && source.mods.bleedPct && !opts.isDot && !target.dead) {
@@ -1212,6 +1249,7 @@ export class Game {
     }
     const dealt = target.damage(amount, opts);
     if (isPlayer && dealt > 0) {
+      if (target.addUltCharge) target.addUltCharge(0, dealt);
       const r = target.resourceDef;
       if (r.onTakeGain) target.gainResource(r.onTakeGain);
       // Thorns reflect a share of the damage that actually landed.
@@ -1359,6 +1397,7 @@ export class Game {
     this.burst(mob.x, mob.centerY, mob.z, mob.def.boss ? 40 : 12,
       mob.elite ? '#ffd24a' : '#c0392b');
     this.spawnGibs(mob);
+    this.deathFlourish(mob);
     this.audio.play(mob.def.boss ? 'bossdown' : 'gib');
     if (mob.def.boss) {
       this.screenShake = 0.6;
@@ -2069,32 +2108,112 @@ export class Game {
    * whatever killed it. Capped hard: a deep wave kills a dozen things a
    * second, and unbounded debris is the fastest way to stall a phone.
    */
+  /**
+   * How something died, from what was on it when it died.
+   *
+   * Every enemy in the game used to come apart the same way: six body-coloured
+   * chunks thrown outward. Freezing something solid and then shattering it,
+   * and burning something to ash, are the same event with the same six cubes,
+   * which throws away the one moment where the player's *choice of damage* is
+   * most visible.
+   *
+   * Read off state the entity already carries rather than plumbed through
+   * forty damage call sites. A thing that is frozen at the moment it dies was
+   * killed frozen; a thing carrying a burn was burning. That is not a
+   * technicality — it is exactly what the player saw.
+   */
+  deathStyle(mob) {
+    if (mob.freeze > 0) return 'shatter';
+    if (mob.dots && mob.dots.some((d) => d.type === 'burn')) return 'ash';
+    if (mob.dots && mob.dots.some((d) => d.type === 'bleed')) return 'rend';
+    if (mob.lastHitCrit) return 'burst';
+    return 'normal';
+  }
+
   spawnGibs(mob) {
     if (!this.r.fancy) return;
     const MAX = 90;
     if (this.gibs.length > MAX) return;
     const skin = mob.def.skin;
-    const parts = mob.def.boss ? 14 : mob.elite ? 9 : 6;
+    const style = this.deathStyle(mob);
+    // A shatter is *more* pieces and smaller ones — that is what shattering
+    // looks like — and ash is fewer, because ash does not have chunks in it.
+    const base = mob.def.boss ? 14 : mob.elite ? 9 : 6;
+    const parts = style === 'shatter' ? Math.round(base * 1.8)
+      : style === 'ash' ? Math.round(base * 0.7)
+        : style === 'burst' ? Math.round(base * 1.4) : base;
     const unit = mob.height / 1.8;
     const kx = mob.lastHitKX || 0, kz = mob.lastHitKZ || 0;
+    // Ash drifts, ice flies, a burst is thrown along the blow that landed.
+    const spread = style === 'ash' ? 0.9 : style === 'shatter' ? 5.2 : style === 'burst' ? 6.5 : 3.4;
+    const lift = style === 'ash' ? 1.2 : style === 'burst' ? 7 : 5;
+    const ICE = [0.62, 0.86, 1.0];
+    const ASH = [0.20, 0.19, 0.18];
     for (let i = 0; i < parts; i++) {
       const colors = [skin.head, skin.body, skin.arm, skin.leg];
-      const color = colors[i % colors.length];
+      let color = colors[i % colors.length];
+      let tile = i % 2 ? T.CLOTH : T.SKIN;
+      let size = (0.16 + Math.random() * 0.12) * unit;
+      let life = 1.8 + Math.random() * 1.4;
+      if (style === 'shatter') {
+        // Mostly ice, some of the body still in it — a shattered husk is not a
+        // pile of ice, it is a husk that has become one.
+        if (i % 3) { color = ICE; tile = T.ICE; }
+        size *= 0.7;
+        life *= 0.75;
+      } else if (style === 'ash') {
+        color = i % 4 ? ASH : [0.45, 0.20, 0.08];
+        tile = T.BLANK;
+        size *= 0.8;
+        life *= 1.5;
+      }
       this.gibs.push(new Gib(
         mob.x + rand(0.3, -0.3),
         mob.y + 0.4 + Math.random() * mob.height * 0.8,
         mob.z + rand(0.3, -0.3),
-        rand(3.4, -3.4) + kx * 2.4,
-        3 + Math.random() * 5,
-        rand(3.4, -3.4) + kz * 2.4,
-        color,
-        (0.16 + Math.random() * 0.12) * unit,
-        1.8 + Math.random() * 1.4,
-        i % 2 ? T.CLOTH : T.SKIN,
+        rand(spread, -spread) + kx * (style === 'burst' ? 4.5 : 2.4),
+        (style === 'ash' ? 0.4 : 3) + Math.random() * lift,
+        rand(spread, -spread) + kz * (style === 'burst' ? 4.5 : 2.4),
+        color, size, life, tile,
       ));
+    }
+    // Ash falls like ash: barely any gravity, and it does not bounce.
+    if (style === 'ash') {
+      for (let i = this.gibs.length - parts; i < this.gibs.length; i++) {
+        const g = this.gibs[i];
+        if (g) { g.drift = true; g.vy = 0.6 + Math.random() * 1.2; }
+      }
     }
     // Oldest first, so the newest kill always gets its debris.
     while (this.gibs.length > MAX) this.gibs.shift();
+  }
+
+  /** The one-off flourish a death gets on top of its debris. */
+  deathFlourish(mob) {
+    const style = this.deathStyle(mob);
+    if (style === 'shatter') {
+      this.burst(mob.x, mob.centerY, mob.z, 18, '#9fe6ff');
+      this.shockwave(mob.x, mob.y + 0.1, mob.z, 1.6, '#9fe6ff');
+      this.audio.play('shatter');
+    } else if (style === 'ash') {
+      // Rising, not bursting. Smoke goes up.
+      for (let i = 0; i < 12; i++) {
+        this.particles.push(new Particle(
+          mob.x + rand(0.5, -0.5), mob.y + 0.3 + Math.random() * mob.height,
+          mob.z + rand(0.5, -0.5),
+          rand(0.7, -0.7), 1.4 + Math.random() * 1.6, rand(0.7, -0.7),
+          i % 3 ? '#3a3532' : '#ff8a3c', 1.1 + Math.random() * 0.7,
+          0.16 + Math.random() * 0.14, -2.5));
+      }
+      this.audio.play('fuse');
+    } else if (style === 'rend') {
+      this.burstDirected(mob.x, mob.centerY, mob.z,
+        mob.lastHitKX || 0, mob.lastHitKZ || 0, 14, '#c0392b');
+    } else if (style === 'burst') {
+      this.burstDirected(mob.x, mob.centerY, mob.z,
+        mob.lastHitKX || 0, mob.lastHitKZ || 0, 16, '#ffd24a');
+      this.hitstop = Math.max(this.hitstop, 0.05);
+    }
   }
 
   /**

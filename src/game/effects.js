@@ -163,6 +163,8 @@ export class Gib {
     this.spinY = (Math.random() - 0.5) * 14;
     this.spinP = (Math.random() - 0.5) * 14;
     this.resting = false;
+    // Ash: barely any gravity, no bounce, fades rather than settles.
+    this.drift = false;
     this.dead = false;
   }
 
@@ -171,7 +173,10 @@ export class Gib {
     if (this.life <= 0) { this.dead = true; return; }
     if (this.resting) return;
 
-    this.vy -= 26 * dt;
+    // Ash does not fall like a bone does. Near-zero gravity and a slow rise,
+    // so a burned enemy leaves something drifting upward rather than a pile of
+    // chunks on the floor with a different colour on them.
+    this.vy -= (this.drift ? 1.4 : 26) * dt;
     const world = game.world;
     const half = this.size * 0.5;
 
@@ -242,6 +247,8 @@ export class Potion {
     this.maxLife = lifetime;
     this.spin = Math.random() * Math.PI * 2;
     this.resting = false;
+    // Ash: barely any gravity, no bounce, fades rather than settles.
+    this.drift = false;
     this.dead = false;
   }
 

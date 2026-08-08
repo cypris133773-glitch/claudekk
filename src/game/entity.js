@@ -65,6 +65,10 @@ export class Entity {
     // blow was travelling, rather than in an arbitrary direction.
     this.lastHitKX = opts.kx || 0;
     this.lastHitKZ = opts.kz || 0;
+    // Whether the blow that landed was a critical, so a killing crit can come
+    // apart harder than an ordinary one. A dot tick is never the crit that
+    // sold the kill, so it does not get to claim one.
+    this.lastHitCrit = !opts.isDot && !!opts.crit;
     this.lastHitFraction = this.maxHp > 0 ? dmg / this.maxHp : 0;
     if (opts.knockback && this.knockResist < 1) {
       const k = opts.knockback * (1 - this.knockResist);

@@ -2590,6 +2590,129 @@ check('a pack surrounds instead of queuing up', async () => {
     + `(${bestSectors} of 8 sectors at its widest)`);
 });
 
+check('a buff grants everything its tooltip promises', async () => {
+  const { Game } = await import('../src/game/game.js');
+  const { castSkill } = await import('../src/game/skills.js');
+  const { makeHarness } = await import('./harness.js');
+
+  // The bug this exists for, and it shipped: the `buff` cast path copied a
+  // hand-picked list of fields onto the buff, and the list left out
+  // `damageBonus` and `attackSpeedBonus` — the two things recomputeStats
+  // actually reads for offence. Twelve of the game's twenty-four buff skills
+  // promised a damage or haste number in their tooltip and delivered nothing
+  // at all. Battle Cry, Avatar, Berserker Rage, Void Form, Shadow Dance,
+  // Metamorphosis, Avenging Wrath.
+  //
+  // Nothing threw. The buff appeared on the bar, the icon lit, the timer ran
+  // down. It was invisible unless you measured the damage.
+  //
+  // So this does not check the two keys that were missing — it checks that
+  // every field a buff declares arrives, which is the version that catches
+  // the next one too.
+  const FIELDS = ['duration', 'damageTaken', 'damageBonus', 'attackSpeedBonus',
+    'dodge', 'moveSpeed', 'healPerSecond', 'rooted'];
+  let checked = 0;
+  for (const cls of CLASSES) {
+    const h = makeHarness({ level: 60 });
+    const game = new Game(h.renderer, h.audio, h.profile);
+    game.startRun(cls, { layout: 0 });
+    const p = game.player;
+    for (const skill of cls.skills) {
+      if (skill.kind !== 'buff') continue;
+      p.skills[0] = skill;
+      p.cooldowns[0] = 0;
+      p.resource = p.resourceMax;
+      p.buffs.length = 0;
+      assert(castSkill(game, p, 0), `${cls.id}'s ${skill.name} refused to cast`);
+      const buff = p.buffs.find((b) => b.id === skill.id);
+      assert(buff, `${cls.id}'s ${skill.name} applied no buff`);
+      for (const f of FIELDS) {
+        if (skill.power[f] === undefined) continue;
+        assert(buff[f] !== undefined,
+          `${cls.id}'s ${skill.name} declares ${f} and the buff does not carry it`);
+      }
+      checked++;
+    }
+  }
+  assert(checked >= 20, `only ${checked} buff skills were exercised`);
+
+  // And the two that were actually broken, measured rather than inspected: a
+  // buff that carries the field but is ignored downstream would pass the loop
+  // above and still do nothing.
+  const h = makeHarness({ level: 60 });
+  const game = new Game(h.renderer, h.audio, h.profile);
+  const warrior = CLASSES[0];
+  game.startRun(warrior, { layout: 0 });
+  const p = game.player;
+  p.skills[0] = warrior.skills.find((s) => s.id === 'battlecry');
+  p.cooldowns[0] = 0;
+  p.resource = p.resourceMax;
+  const dmgBefore = p.stats.meleeMult, hasteBefore = p.attackSpeed;
+  castSkill(game, p, 0);
+  assert(p.stats.meleeMult > dmgBefore * 1.3,
+    `Battle Cry moved melee damage from ${dmgBefore.toFixed(2)} to ${p.stats.meleeMult.toFixed(2)}`);
+  assert(p.attackSpeed > hasteBefore * 1.2,
+    `Battle Cry moved attack speed from ${hasteBefore.toFixed(2)} to ${p.attackSpeed.toFixed(2)}`);
+});
+
+check('how something died is visible in how it comes apart', async () => {
+  const { Game } = await import('../src/game/game.js');
+  const { makeHarness } = await import('./harness.js');
+  const h = makeHarness({ level: 40 });
+  const game = new Game(h.renderer, h.audio, h.profile);
+  // Debris is behind the fancy-graphics switch, and the harness renderer is
+  // not fancy by default — without this the whole check measures nothing and
+  // passes.
+  game.r.fancy = true;
+  game.startRun(CLASSES[0], { layout: 0 });
+  const p = game.player;
+
+  // Every enemy used to come apart the same way, which threw away the one
+  // moment where the player's choice of damage is most visible. These read
+  // off state the entity already carries at the moment it dies, so a mob that
+  // was frozen when it died was killed frozen — no plumbing through forty
+  // damage call sites, and no way for the two to disagree.
+  const die = (prep, opts) => {
+    game.mobs.length = 0;
+    game.gibs.length = 0;
+    game.particles.length = 0;
+    const m = game.spawnMob('husk', p.x + 3, p.y, p.z + 3);
+    if (prep) prep(m);
+    const style = (() => {
+      game.dealDamage(p, m, 999999, { silent: true, kx: 1, kz: 0, ...opts });
+      return game.deathStyle(m);
+    })();
+    return { style, gibs: game.gibs.length, drift: game.gibs.filter((g) => g.drift).length };
+  };
+
+  const frozen = die((m) => { m.freeze = 2; });
+  assert(frozen.style === 'shatter', `a frozen kill was a ${frozen.style}`);
+  const burned = die((m) => { m.applyDot(5, 4, 'burn', p); });
+  assert(burned.style === 'ash', `a burning kill was a ${burned.style}`);
+  // Ash has to actually drift, or it is a pile of dark chunks on the floor.
+  assert(burned.drift === burned.gibs && burned.gibs > 0,
+    `${burned.gibs - burned.drift} of ${burned.gibs} ash pieces fall like bone`);
+  const bled = die((m) => { m.applyDot(5, 4, 'bleed', p); });
+  assert(bled.style === 'rend', `a bleeding kill was a ${bled.style}`);
+  const crit = die(null, { forceCrit: true });
+  assert(crit.style === 'burst', `a critical kill was a ${crit.style}`);
+  const plain = die(null);
+  assert(plain.style === 'normal', `an ordinary kill was a ${plain.style}`);
+
+  // A shatter is more pieces than an ordinary death and ash is fewer. If they
+  // ever come out the same the styles have collapsed back into one look with
+  // different colours on it.
+  assert(frozen.gibs > plain.gibs && burned.gibs < plain.gibs,
+    `shatter ${frozen.gibs}, plain ${plain.gibs}, ash ${burned.gibs}: not distinct`);
+
+  // A dot tick must never claim the critical. The blow that sold the kill is
+  // the one that gets the flourish.
+  game.mobs.length = 0;
+  const m = game.spawnMob('husk', p.x + 3, p.y, p.z + 3);
+  game.dealDamage(p, m, 1, { silent: true, isDot: true, forceCrit: true });
+  assert(!m.lastHitCrit, 'a damage-over-time tick claimed a critical hit');
+});
+
 check('a boss keeps casting for the whole fight', async () => {
   const { Game } = await import('../src/game/game.js');
   const { makeHarness } = await import('./harness.js');

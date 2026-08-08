@@ -8,6 +8,10 @@ import { castSkill, skillCooldown } from './skills.js';
 import { LOADOUT_SIZE } from '../data/classes.js';
 import { weaponAppearance } from '../data/armor.js';
 import { POTIONS } from '../data/potions.js';
+import { ultimateFor, CHARGE_PER_DAMAGE_DEALT, CHARGE_PER_DAMAGE_TAKEN, MIN_CHARGE_SECONDS } from '../data/ultimates.js';
+
+/** The slot id of the ultimate. A string, so it can never index the loadout. */
+export const ULT = 'ult';
 
 /** Sum every modifier source into one flat bag of numbers. */
 export function buildMods(cls, talentRanks, permanent) {
@@ -99,6 +103,15 @@ export class Player extends Entity {
     this.cheatDeathRunUsed = false;
     this.dispersionTimer = 0;
     this.coldBloodCounter = 0;
+    // The ultimate, and how full it is. Not a fifth entry in `skills` — see
+    // the slot accessors below for why.
+    this.ult = ultimateFor(cls.id);
+    this.ultCharge = 0;
+    this.ultRank = 0;
+    this.ultsUsed = 0;
+    // Seconds since the meter was last emptied, which is what stops one very
+    // large hit from filling the whole thing at once.
+    this.ultTime = 0;
     this.recomputeStats();
     this.hp = this.maxHp;
     this.resource = this.resourceDef.startFull ? this.resourceMax : 0;
@@ -204,8 +217,48 @@ export class Player extends Entity {
     return (this.mods.skills && this.mods.skills[id]) || NO_SKILL_MODS;
   }
 
+  // -------------------------------------------------------------------------
+  // Slots
+  // -------------------------------------------------------------------------
+  //
+  // A slot is one of the four loadout indices or the string 'ult'. Three tiny
+  // accessors rather than a branch at every call site, and specifically *not*
+  // a fifth entry in `this.skills`: a dozen loops in the game, the HUD and the
+  // menus iterate that array expecting exactly the loadout, and an ultimate
+  // hiding at the end of it would have shown up as a fifth button, a fifth
+  // rank-up card and a fifth keybind before anyone noticed.
+
+  /** The skill in a slot. */
+  skillAt(i) { return i === ULT ? this.ult : this.skills[i]; }
+
+  /** Seconds until a slot can be used again. */
+  cooldownAt(i) { return i === ULT ? 0 : (this.cooldowns[i] || 0); }
+
+  setCooldown(i, v) { if (i !== ULT) this.cooldowns[i] = v; }
+
   /** Rank of the skill in slot `i`, 0 for un-upgraded. */
-  rankOf(i) { return this.skillRanks[i] || 0; }
+  rankOf(i) { return (i === ULT ? this.ultRank : this.skillRanks[i]) || 0; }
+
+  /** Whether the ultimate is charged and the player is able to use it. */
+  get ultReady() { return !!this.ult && this.ultCharge >= 1 && !this.disabled && !this.dead; }
+
+  /**
+   * Feed the charge meter.
+   *
+   * Dealt and taken, both. Dealt alone would mean the strongest build gets its
+   * ultimate most often, which is backwards — it is most wanted by whoever is
+   * losing. Taken alone would pay for standing in fire. Both are expressed as
+   * a share of your own maximum health so one table is fair to a Paladin and a
+   * Hunter, and taken is weighted far higher per point because you take far
+   * less of it than you deal.
+   */
+  addUltCharge(dealt, taken) {
+    if (!this.ult || this.ultCharge >= 1) return;
+    const hp = this.maxHp || 1;
+    this.ultCharge = Math.min(1, this.ultCharge
+      + (dealt / hp) * CHARGE_PER_DAMAGE_DEALT
+      + (taken / hp) * CHARGE_PER_DAMAGE_TAKEN);
+  }
 
   rankUp(i) {
     if (i < 0 || i >= this.skills.length) return 0;
@@ -391,6 +444,29 @@ export class Player extends Entity {
     // Attacks
     this.attackTimer = Math.max(0, (this.attackTimer || 0) - dt);
     if (input.attack && this.attackTimer <= 0 && !this.disabled) this.basicAttack(game);
+
+    // The charge floor. Nothing may fill the meter faster than
+    // MIN_CHARGE_SECONDS of real fighting, however large the hits were — one
+    // enormous critical into a packed wave should be a great moment, not a
+    // free ultimate.
+    if (this.ult) {
+      this.ultTime += dt;
+      this.ultCharge = Math.min(this.ultCharge, this.ultTime / MIN_CHARGE_SECONDS);
+    }
+
+    // The ultimate. Checked before the four, so a frame where both are asked
+    // for spends the charge rather than the cooldown — the charge is the rarer
+    // thing and the player pressed the bigger button on purpose.
+    if (input.ultimate) {
+      input.ultimate = false;
+      if (this.ultReady && castSkill(game, this, ULT)) {
+        this.ultCharge = 0;
+        this.ultTime = 0;
+        this.ultsUsed++;
+        if (game.onUltimate) game.onUltimate(this);
+        if (game.tally) game.tally.skillsCast++;
+      }
+    }
 
     // Skills
     for (let i = 0; i < this.skills.length; i++) {

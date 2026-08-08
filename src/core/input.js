@@ -31,6 +31,9 @@ export class Input {
       // skills because a potion is not on a cooldown and never fails for
       // resource — the only thing that stops it is having none left.
       potions: [false, false, false],
+      // The ultimate. One flag rather than a fifth entry in `skills`, because
+      // every loop that reads `skills` reads exactly the four-slot loadout.
+      ultimate: false,
       pause: false,
     };
     this.keys = new Set();
@@ -99,6 +102,11 @@ export class Input {
       if (k === 'Digit5') this.state.potions[0] = true;
       if (k === 'Digit6') this.state.potions[1] = true;
       if (k === 'Digit7') this.state.potions[2] = true;
+      // The ultimate gets its own key well away from the rotation. 1-4 and
+      // QERF are the four skills and 5-7 is the belt, so the whole left hand is
+      // already spoken for; X is under the thumb and cannot be hit by accident
+      // while reaching for a cooldown.
+      if (k === 'KeyX') this.state.ultimate = true;
       if (k === 'Escape') this.state.pause = true;
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(k)) e.preventDefault();
     });
@@ -480,6 +488,7 @@ export class Input {
     for (let i = 0; i < s.potions.length; i++) {
       if (this.buttonHits.has('potion' + i)) s.potions[i] = true;
     }
+    if (this.buttonHits.has('ult')) s.ultimate = true;
     if (this.buttonHits.has('pause')) s.pause = true;
     this.buttonHits.clear();
     return s;

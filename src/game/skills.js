@@ -104,10 +104,19 @@ export function skillCost(player, skill) {
 }
 
 /** Returns true if the skill was cast. */
+/**
+ * Cast the skill in slot `index`.
+ *
+ * `index` may also be the string 'ult', which reads the class's ultimate
+ * instead of the four-skill loadout. Routed through the same function rather
+ * than given its own: an ultimate is a skill with a different way of becoming
+ * available, and a second copy of this switch would be a second place for
+ * every skill kind to be subtly wrong.
+ */
 export function castSkill(game, player, index) {
-  const skill = player.skills[index];
+  const skill = player.skillAt(index);
   if (!skill) return false;
-  if (player.cooldowns[index] > 0) return false;
+  if (player.cooldownAt(index) > 0) return false;
   const cost = skillCost(player, skill);
   if (player.resource < cost) { game.notify('Not enough ' + player.cls.resource.name); return false; }
   if (player.disabled) return false;
@@ -276,11 +285,27 @@ export function castSkill(game, player, index) {
     }
 
     case 'buff': {
+      // Every field a buff can carry, not a hand-picked list of them.
+      //
+      // The list used to omit `damageBonus` and `attackSpeedBonus`, which are
+      // the two things `recomputeStats` actually reads for offence — so Battle
+      // Cry, Avatar, Berserker Rage, Void Form, Shadow Dance, Metamorphosis,
+      // Avenging Wrath and every other "+35% damage for ten seconds" button in
+      // the game granted exactly nothing. Twenty-four skills across nine
+      // classes, each one still printing its number in the tooltip, each one
+      // doing nothing but tick down a timer.
+      //
+      // Nothing threw and nothing looked wrong: the buff appeared on the bar,
+      // the icon lit up, the duration ran out. It was only visible if you
+      // measured the damage, which is why it survived this long.
       player.addBuff(skill.id, {
         duration: p.duration,
         damageTaken: p.damageTaken,
+        damageBonus: p.damageBonus,
+        attackSpeedBonus: p.attackSpeedBonus,
         dodge: p.dodge,
         moveSpeed: p.moveSpeed,
+        healPerSecond: p.healPerSecond,
         rooted: p.rooted,
         icon: skill.icon,
         name: skill.name,
@@ -407,7 +432,7 @@ export function castSkill(game, player, index) {
   }
 
   player.resource -= cost;
-  player.cooldowns[index] = skillCooldown(player, skill, rank);
+  player.setCooldown(index, skillCooldown(player, skill, rank));
   player.lastCast = skill.id;
 
   // Every class's opening skill mends a little. Four of the nine have no heal
@@ -431,12 +456,12 @@ export function castSkill(game, player, index) {
     game.delay(0.4, () => {
       if (player.dead) return;
       player.echoing = true;
-      const keep = player.cooldowns[index];
+      const keep = player.cooldownAt(index);
       const res = player.resource;
       player.echoDamage = 0.5;
       castSkill(game, player, index);
       player.echoDamage = 0;
-      player.cooldowns[index] = keep;
+      player.setCooldown(index, keep);
       player.resource = res;
       player.echoing = false;
     });

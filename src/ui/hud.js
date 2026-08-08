@@ -456,6 +456,87 @@ export class Hud {
     }
   }
 
+  /**
+   * The ultimate: a fifth button on the end of the row, and a meter that fills.
+   *
+   * It sits *outside* the four rather than among them, and it is a different
+   * shape — a hexagon rather than the framed square every skill uses — because
+   * it is not a fifth cooldown. Everything about it should read as "this one
+   * is different" from across a room, on a phone, mid-fight.
+   *
+   * The meter is the whole feature. A charge that fills invisibly is a button
+   * that surprises you, and an ultimate you did not know you had is an
+   * ultimate you never press.
+   */
+  drawUltimate(p, baseX, baseY, size, gap, rects) {
+    if (!p.ult) return;
+    const c = this.ctx;
+    const charge = Math.max(0, Math.min(1, p.ultCharge || 0));
+    const ready = charge >= 1;
+    const s = Math.round(size * 1.12);
+    const x = baseX + 4 * (size + gap) + gap * 1.6;
+    const y = baseY - (s - size) / 2;
+    const cx = x + s / 2, cy = y + s / 2;
+    const r = s * 0.5;
+    const color = p.cls.accent || p.cls.color;
+
+    // The hexagon, drawn twice: a dark plate and the charge filling it from
+    // the bottom, so "how full" is read as a level rather than as a number.
+    const hex = (rad) => {
+      c.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = -Math.PI / 2 + (i / 6) * Math.PI * 2;
+        const px = cx + Math.cos(a) * rad, py = cy + Math.sin(a) * rad;
+        if (i === 0) c.moveTo(px, py); else c.lineTo(px, py);
+      }
+      c.closePath();
+    };
+
+    // A ready ultimate pulses. Nothing else on this HUD moves on its own, so
+    // it is the only thing the eye will catch while it is busy elsewhere.
+    const pulse = ready ? 0.5 + 0.5 * Math.sin((this.game.time || 0) * 6) : 0;
+
+    c.save();
+    hex(r);
+    c.fillStyle = 'rgba(8,10,16,0.85)';
+    c.fill();
+    c.clip();
+    // The fill, from the bottom up.
+    const top = cy + r - charge * r * 2;
+    c.fillStyle = ready ? this.rgba(color, 0.85) : this.rgba(color, 0.42);
+    c.fillRect(cx - r, top, r * 2, r * 2);
+    c.restore();
+
+    hex(r);
+    c.lineWidth = ready ? 2.5 + pulse * 1.5 : 1.5;
+    c.strokeStyle = ready ? color : 'rgba(255,255,255,0.28)';
+    c.stroke();
+
+    // The class's own glyph for its ultimate.
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    this.font(Math.round(s * 0.46));
+    c.globalAlpha = ready ? 1 : 0.55;
+    c.fillStyle = ready ? '#0b0d14' : '#ffffff';
+    c.fillText(p.ult.icon, cx, cy + 1);
+    c.globalAlpha = 1;
+
+    // Below full, the percentage. At full, the word — the number stops being
+    // the question the moment the answer is yes.
+    this.font(Math.max(9, Math.round(s * 0.22)));
+    c.fillStyle = ready ? color : 'rgba(255,255,255,0.6)';
+    c.shadowColor = 'rgba(0,0,0,0.85)';
+    c.shadowBlur = 4;
+    c.fillText(ready ? 'READY' : `${Math.round(charge * 100)}%`, cx, y - 7);
+    if (!this.touchMode) {
+      c.fillStyle = 'rgba(255,255,255,0.55)';
+      c.fillText('X', cx, y + s + 7);
+    }
+    c.shadowBlur = 0;
+
+    rects.push({ name: 'ult', cx, cy, r: Math.max(MIN_TOUCH / 2, r) });
+  }
+
   drawWaveInfo() {
     const c = this.ctx;
     const g = this.game;
@@ -1096,7 +1177,13 @@ export class Hud {
     const size = touch
       ? Math.round(clamp(Math.min(this.w * 0.115, (avail - (n - 1) * gap) / n), 30, 50))
       : 52;
-    const totalW = n * size + (n - 1) * gap;
+    // The ultimate is part of the row for centring purposes even though it is
+    // drawn apart from it. Centring the four and then hanging a fifth off the
+    // right pushed the whole cluster off-centre and, on a 320px phone, put the
+    // ultimate underneath the jump button — where a tap would resolve to
+    // whichever hit circle came first in the list.
+    const ultW = p.ult ? gap * 1.6 + size * 1.12 : 0;
+    const totalW = n * size + (n - 1) * gap + ultW;
     const baseX = this.w / 2 - totalW / 2;
     const baseY = this.h - size - (touch ? 14 + s.b : 18);
 
@@ -1161,6 +1248,8 @@ export class Hud {
         r: Math.max(MIN_TOUCH / 2, Math.min(size * 0.62, (size + gap) / 2)),
       });
     }
+
+    this.drawUltimate(p, baseX, baseY, size, gap, rects);
 
     if (touch) {
       // Jump is the only action button left in the thumb corner.
