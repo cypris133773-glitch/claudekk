@@ -71,7 +71,7 @@ export class Projectile {
       this.y += this.vy * sdt;
       this.z += this.vz * sdt;
       if (game.world.isSolid(this.x, this.y, this.z)) { this.impact(game, null); return; }
-      const hit = game.findHit(this.x, this.y, this.z, this.size + 0.35, this.team, this.hitList, this.owner);
+      const hit = game.findHit(this.x, this.y, this.z, this.size + 0.35, this.team, this.hitList);
       if (hit) { this.impact(game, hit); return; }
     }
     this.life -= dt;

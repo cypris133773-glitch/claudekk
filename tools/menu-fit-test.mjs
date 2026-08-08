@@ -81,11 +81,6 @@ const SCREENS = [
   'forge', 'armoury', 'potions', 'raids', 'raid',
   'stats', 'settings', 'howto', 'diag',
   'pause', 'upgrade', 'results', 'raidkill', 'raidwipe',
-  // The lobby is three different screens behind one name, and the one that
-  // fits easily is not the one that matters. Each is primed into its real
-  // state before it is measured: an 850-character invite code in a textarea
-  // and a six-seat 3v3 roster is the widest this screen ever gets, and it is
-  // the state a host actually stares at.
   // A locked talent, which is now the tallest the detail panel gets: it shows
   // what the talent does, the per-rank numbers, and the unlock cost. It used
   // to show only the cost, so this case did not exist to measure.
@@ -101,9 +96,6 @@ const SCREENS = [
     // reports what is in the DOM.
     wants: ['LOCKED_DESC', 'Per rank', 'more point'],
   },
-  { name: 'duel', prime: 'start', label: 'duel:start' },
-  { name: 'duel', prime: 'host', label: 'duel:host' },
-  { name: 'duel', prime: 'join', label: 'duel:join' },
 ];
 
 /**
@@ -161,13 +153,13 @@ function primeRun() {
 }
 
 /**
- * Put the lobby into one of its three real states.
+ * Put a screen into the state whose layout is actually in question.
  *
- * `host` makes an actual WebRTC offer rather than a placeholder string,
- * because the length of that string is the entire layout question — a made-up
- * short code would fit anywhere and prove nothing.
+ * A screen at rest is not the screen that overflows: the talent tree only
+ * grows its third paragraph on a node you cannot afford yet, which is the one
+ * that has to fit.
  */
-async function primeDuel(which) {
+async function primeScreen(which) {
   const B = window.CRAFTARENA;
   const charId = B.profile.characters[0].id;
   if (which === 'lockedTalent') {
@@ -176,19 +168,8 @@ async function primeDuel(which) {
     const branch = cls.talents[0];
     B.menus.talentBranch = 0;
     B.menus.talentNode = branch.nodes[branch.nodes.length - 1].id;
-    return;
   }
-  B.lobby.leave();
   B.menus.selectedChar = charId;
-  if (which === 'start') { B.lobby.mode = '3v3'; return; }
-  if (which === 'host') { await B.lobby.host('3v3', charId); return; }
-  // The joiner's second step, with its own reply code on screen — the first
-  // step is an empty textarea and fits by construction.
-  B.lobby.startJoin(charId);
-  const other = new (B.lobby.match.constructor)({ host: true, build: 'x', mode: '3v3' });
-  const inv = await other.invite();
-  await B.lobby.submitOffer(inv.code);
-  other.close();
 }
 
 const VIEWPORTS = [
@@ -313,7 +294,7 @@ async function run() {
     for (const entry of SCREENS) {
       const name = typeof entry === 'string' ? entry : entry.name;
       const label = typeof entry === 'string' ? entry : entry.label;
-      if (typeof entry !== 'string') await frame.evaluate(primeDuel, entry.prime);
+      if (typeof entry !== 'string') await frame.evaluate(primeScreen, entry.prime);
       const r = await frame.evaluate(probeScreen, name);
       // Content the screen must actually carry, not just have room for.
       const wants = (typeof entry !== 'string' && entry.wants) || [];

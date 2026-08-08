@@ -77,10 +77,8 @@ export class Player extends Entity {
     this.cls = cls;
     this.mods = mods;
     // "Is this a player character" as a fact about the entity rather than as
-    // `source === game.player`. In a duel the host simulates up to six of
-    // these and only one of them is the local one — crit, lifesteal and the
-    // on-hit riders belong to all of them, while the screen shake and the hit
-    // marker belong to exactly one.
+    // `source === game.player`. Read by the mitigation a dot tick applies,
+    // which has no reference to the game and so cannot ask the second way.
     this.isPlayerKind = true;
     this.skills = (skills && skills.length ? skills : cls.skills).slice(0, LOADOUT_SIZE);
     this.buffs = [];
