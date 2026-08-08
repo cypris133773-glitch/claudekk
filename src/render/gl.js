@@ -97,6 +97,7 @@ uniform vec3 uGlowColor;
 uniform vec3 uSunDir;
 uniform vec3 uCamPos;
 uniform vec2 uSpecRim;   // specular strength, rim strength
+uniform float uEmissiveBoost;
 
 // Dynamic lights: a fireball in flight, a blast going off, an ultimate.
 //
@@ -194,6 +195,16 @@ void main() {
   // at the eye, not more of the surface's own colour.
   rgb += uSunColor * s * uSpecRim.x * (1.0 - vEmissive);
   rgb += uSkyColor * f * uSpecRim.y * (1.0 - vEmissive);
+
+  // Push emissive past white, on purpose.
+  //
+  // A surface that is "fully emissive" used to render at exactly 1.0, which is
+  // the top of the displayable range — so lava, a rune block and an ultimate
+  // going off were all precisely as bright as a sheet of white paper, and the
+  // bright pass had almost nothing to find. Now they render above 1.0, land
+  // well inside the bloom threshold, and the tonemap rolls them back down
+  // gracefully instead of clipping. This is what makes a glow a glow.
+  rgb *= 1.0 + vEmissive * uEmissiveBoost + vGlow * vGlow * uEmissiveBoost * 0.35;
 
   rgb = mix(rgb, vec3(1.0, 0.55, 0.55), vFlash);
   float fog = clamp((vDepth - uFogNear) / max(uFogFar - uFogNear, 0.001), 0.0, 1.0);
@@ -481,7 +492,8 @@ export function createProgram(gl) {
   // varied per box, which is exactly what an instance attribute is for.
   for (const name of ['uProj', 'uView', 'uAtlas', 'uFogColor', 'uFogNear',
     'uFogFar', 'uCutoff', 'uSunColor', 'uSkyColor', 'uGroundColor', 'uGlowColor',
-    'uLightPos', 'uLightColor', 'uLightCount', 'uSunDir', 'uCamPos', 'uSpecRim']) {
+    'uLightPos', 'uLightColor', 'uLightCount', 'uSunDir', 'uCamPos', 'uSpecRim',
+    'uEmissiveBoost']) {
     u[name] = gl.getUniformLocation(prog, name);
   }
   return { prog, u };

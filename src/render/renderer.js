@@ -163,6 +163,7 @@ export class Renderer {
     this.sunDir = SUN_DIR;
     this.specular = 0.22;
     this.rim = 0.16;
+    this.emissiveBoost = 1.6;
     this.bloomAmount = 0.85;
     this.bloomThreshold = 0.62;
     this.exposure = 1.04;
@@ -562,6 +563,9 @@ export class Renderer {
     gl.uniform3f(this.u.uCamPos, camera.x, camera.y, camera.z);
     gl.uniform2f(this.u.uSpecRim,
       this.fancy ? this.specular : 0, this.fancy ? this.rim : 0);
+    // Only worth anything when there is a bloom to feed. Without the chain the
+    // extra brightness has nowhere to go and simply clips to white.
+    gl.uniform1f(this.u.uEmissiveBoost, this.postActive ? this.emissiveBoost : 0);
     this.uploadLights();
     // Anything left queued from an aborted frame is dropped rather than drawn
     // against this frame's camera.

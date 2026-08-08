@@ -174,6 +174,24 @@ if (process.env.SHOT_ARENA !== undefined) {
     B.game.player.pitch = -0.05;
   }, Number(process.env.SHOT_ARENA));
   await page.waitForTimeout(1100);
+  // SHOT_CAST fires the whole kit and photographs the frame mid-effect, which
+  // is the state the effects work is actually about and the one no resting
+  // screenshot ever shows.
+  if (process.env.SHOT_CAST) {
+    await frame.evaluate(() => {
+      const B = window.CRAFTARENA;
+      const p = B.game.player;
+      p.resource = p.resourceMax;
+      for (let i = 0; i < p.skills.length; i++) p.cooldowns[i] = 0;
+      const input = {
+        moveX: 0, moveY: 0, lookX: 0, lookY: 0, attack: true, sprint: false,
+        pause: false, skills: [true, true, true, true], potions: [false, false, false],
+        ultimate: true,
+      };
+      for (let f = 0; f < 22; f++) B.game.update(1 / 60, input);
+    });
+    await page.waitForTimeout(120);
+  }
   const file = path.join(OUT, `arena-${process.env.SHOT_ARENA}-${width}x${height}.png`);
   await page.screenshot({ path: file });
   console.log(file);
