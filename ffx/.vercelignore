@@ -1,0 +1,6 @@
+# The deployed site is index.html plus the modules it loads. Everything below is
+# development-only: shipping it would put the test harness on a public URL for
+# no benefit.
+tools/
+node_modules/
+*.log
