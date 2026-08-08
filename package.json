@@ -12,7 +12,9 @@
     "build": "node tools/bundle.js",
     "build:fragment": "node tools/bundle.js --fragment",
     "test:menus": "node tools/menu-fit-test.mjs",
-    "test:play": "node tools/playability-test.mjs"
+    "test:play": "node tools/playability-test.mjs",
+    "test:net": "node tools/net-test.mjs",
+    "test:duel": "node tools/duel-test.mjs"
   },
   "engines": {
     "node": ">=18"

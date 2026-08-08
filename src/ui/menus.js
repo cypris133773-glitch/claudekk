@@ -6,7 +6,7 @@
 // are paged, dense ones are tabbed, and fitScreen() is the safety net that
 // scales a screen down rather than letting it run off the bottom.
 
-import { CLASSES, LOADOUT_SIZE, unlockOrder, unlockLevelOf, defaultLoadout } from '../data/classes.js';
+import { CLASSES, CLASS_BY_ID, LOADOUT_SIZE, unlockOrder, unlockLevelOf, defaultLoadout } from '../data/classes.js';
 import {
   PERMANENT, upgradeCost, talentPointsForBestWave, masteryProgress,
   permanentMods, masteryMods, masteryRank,
@@ -29,6 +29,7 @@ import { skillIconElement, iconElement, schoolFor, SCHOOLS } from './icons.js';
 import { QUEST_COUNT } from '../data/quests.js';
 import { talentLines, talentNextGain } from '../data/talentinfo.js';
 import { POTIONS, POTION_STACK } from '../data/potions.js';
+import { DUEL_MODES } from '../net/duel.js';
 
 // Presentation only, so it lives here and not in raids.js — the same reason
 // TALENT_GLYPHS does. One glyph per raid; the field colour comes from the
@@ -151,6 +152,7 @@ export class Menus {
       raidkill: () => this.buildRaidGate('kill'),
       raidwipe: () => this.buildRaidGate('wipe'),
       sheet: () => this.buildSheet(),
+      duel: () => this.buildDuel(),
       options: () => this.buildOptions(),
       settings: () => this.buildSettings(),
       stats: () => this.buildStats(),
@@ -340,6 +342,12 @@ export class Menus {
       // that this is a door that only ever says no.
       { label: 'BOSS FIGHTS', hint: this.raidHint(this.charId()),
         hide: level < 6, go: () => this.show('raids') },
+      // Hidden until level 6, alongside BOSS FIGHTS. A duel between two level-1
+      // characters with two skills each is not a fight, it is a race to press
+      // the one button that does damage, and a mode whose first impression is
+      // that is a mode nobody comes back to.
+      { label: 'FIGHT A FRIEND', hint: 'Send a code · 1v1, 2v2 or 3v3',
+        hide: level < 6, go: () => this.show('duel') },
       { label: 'GET STRONGER',
         hint: spendable ? `${spendable} points to spend` : 'Spend your gold and your points',
         go: () => this.show('sheet') },
@@ -501,6 +509,239 @@ export class Menus {
   // -------------------------------------------------------------------------
   // OPTIONS — everything that is not about a character
   // -------------------------------------------------------------------------
+
+  // -------------------------------------------------------------------------
+  // FIGHT A FRIEND — the hosted match lobby
+  // -------------------------------------------------------------------------
+
+  /**
+   * Getting two browsers to talk to each other, explained as a thing you do
+   * rather than as a thing that happens.
+   *
+   * There is no server, so there is no lobby list, no matchmaking and no
+   * account — the two players swap a code the way they would swap a phone
+   * number. That is unusual enough in 2026 that the screen has to teach it, so
+   * it is written as numbered steps and the button you press next is the only
+   * bright one on the screen.
+   *
+   * The honest cost is stated on the screen rather than discovered: some
+   * networks refuse a direct connection between two of their users, and when
+   * that happens there is nothing either player can do about it. Saying so
+   * before they try is worth more than a spinner that eventually gives up.
+   */
+  buildDuel() {
+    const wrap = el('div', 'screen');
+    const d = this.ctx.duel;
+    wrap.appendChild(this.backBar('title'));
+
+    if (!d || !d.supported) {
+      const p = this.panel('Fight a friend', 'Not available in this browser');
+      p.appendChild(el('p', 'note',
+        'This browser cannot make a direct connection to another player. '
+        + 'Chrome, Edge, Firefox and Safari all can — try one of those.'));
+      wrap.appendChild(p);
+      return wrap;
+    }
+
+    // Menus redraw themselves; the controller only has to say when.
+    d.onChange = () => { if (this.screen === 'duel') this.refresh(); };
+
+    if (!d.match) return this.duelStart(wrap, d);
+    return d.role === 'host' ? this.duelHost(wrap, d) : this.duelJoin(wrap, d);
+  }
+
+  /** Step zero: which character, which size, and host or join. */
+  duelStart(wrap, d) {
+    const p = this.panel('Fight a friend', 'No server, no account — just a code');
+    wrap.appendChild(this.charPicker());
+
+    const modes = el('div', 'class-picker');
+    for (const m of DUEL_MODES) {
+      const b = el('button', 'pill' + (d.mode === m.id ? ' active' : ''));
+      b.appendChild(el('span', null, m.id));
+      b.appendChild(el('span', 'pill-lv', m.name));
+      this.click(b, () => { d.mode = m.id; this.refresh(); });
+      modes.appendChild(b);
+    }
+    p.appendChild(modes);
+
+    const menu = el('div', 'main-menu');
+    const hostBtn = el('button', 'menu-btn primary');
+    hostBtn.appendChild(el('span', 'menu-label', 'HOST A MATCH'));
+    hostBtn.appendChild(el('span', 'menu-hint',
+      'You make the codes and send them to your friends'));
+    this.click(hostBtn, () => d.host(d.mode, this.charId()));
+    menu.appendChild(hostBtn);
+
+    const joinBtn = el('button', 'menu-btn');
+    joinBtn.appendChild(el('span', 'menu-label', 'JOIN A MATCH'));
+    joinBtn.appendChild(el('span', 'menu-hint', 'Paste the code a friend sent you'));
+    this.click(joinBtn, () => d.startJoin(this.charId()));
+    menu.appendChild(joinBtn);
+    p.appendChild(menu);
+
+    p.appendChild(el('p', 'note',
+      'Your two browsers talk to each other directly. Nothing about the match '
+      + 'is stored anywhere, and a duel pays no gold — it is for the fight.'
+      + '<br><br>About one pair in six cannot connect this way, because some '
+      + 'networks block it. If that happens, try again from a different '
+      + 'network — there is nothing to fix on either end.'));
+    wrap.appendChild(p);
+    return wrap;
+  }
+
+  /** A reusable "here is a long string, take it" block. */
+  codeBox(label, code) {
+    const box = el('div', 'code-box');
+    box.appendChild(el('div', 'code-label', label));
+    const area = el('textarea', 'code-area');
+    area.readOnly = true;
+    area.value = code;
+    area.rows = 2;
+    box.appendChild(area);
+    const copy = el('button', 'wide-btn', 'COPY CODE');
+    this.click(copy, () => {
+      area.select();
+      // The clipboard API needs a secure context and a permission that a
+      // file:// build does not have; selecting the text is the fallback that
+      // works everywhere, and it is what the button leaves behind either way.
+      if (navigator.clipboard) navigator.clipboard.writeText(code).catch(() => {});
+      else { try { document.execCommand('copy'); } catch { /* selected anyway */ } }
+      copy.textContent = 'COPIED';
+      setTimeout(() => { copy.textContent = 'COPY CODE'; }, 1400);
+    });
+    box.appendChild(copy);
+    return box;
+  }
+
+  /** A paste field with one button under it. */
+  pasteBox(label, buttonText, onSubmit) {
+    const box = el('div', 'code-box');
+    box.appendChild(el('div', 'code-label', label));
+    const area = el('textarea', 'code-area');
+    area.rows = 2;
+    area.placeholder = 'Paste the code here';
+    box.appendChild(area);
+    const go = el('button', 'wide-btn primary', buttonText);
+    this.click(go, () => {
+      const v = area.value.trim();
+      if (!v) return;
+      go.disabled = true;
+      onSubmit(v);
+    });
+    box.appendChild(go);
+    return box;
+  }
+
+  duelHost(wrap, d) {
+    const m = d.match;
+    const p = this.panel('Hosting · ' + m.mode,
+      `${m.roster.size} of ${m.seatsWanted} players ready`);
+    // The roster earns its space once somebody else is in it. While the host
+    // is still alone it is one name and five rows of "waiting…" — the subtitle
+    // above already says that in six words, and the rows are what pushed a 3v3
+    // handshake off the bottom of a small phone.
+    if (m.roster.size >= 2) p.appendChild(this.duelRoster(m, d));
+
+    if (d.error) p.appendChild(el('p', 'note bad', d.error));
+
+    // One invite at a time, in order, because a screen with three codes on it
+    // is a screen where the wrong one gets pasted. The pending invite is the
+    // only thing on it until it is answered.
+    //
+    // The two steps sit in a grid that is one column on a tall screen and two
+    // on a short one. Stacked, they are two textareas and four paragraphs —
+    // taller than a landscape phone, and the fit-to-screen fallback would
+    // shrink the whole panel to 70%, which is exactly the size at which an
+    // 850-character code stops being selectable with a thumb.
+    const pending = d.invites.find((i) => !i.accepted);
+    if (pending && !m.full) {
+      const steps = el('div', 'duel-steps');
+      const one = el('div', 'duel-step');
+      one.appendChild(el('p', 'note',
+        '<b>1.</b> Send this code to your friend, any way you like.'));
+      one.appendChild(this.codeBox('Invite code', pending.code));
+      const two = el('div', 'duel-step');
+      two.appendChild(el('p', 'note',
+        '<b>2.</b> They will send one back. Paste it here.'));
+      two.appendChild(this.pasteBox('Their reply', 'CONNECT',
+        (v) => d.acceptAnswer(pending.id, v)));
+      steps.appendChild(one);
+      steps.appendChild(two);
+      p.appendChild(steps);
+    } else if (!m.full) {
+      const more = el('button', 'wide-btn', 'INVITE THE NEXT PLAYER');
+      this.click(more, () => d.addInvite());
+      p.appendChild(more);
+    }
+
+    if (m.full) {
+      const go = el('button', 'wide-btn primary', 'START THE MATCH');
+      this.click(go, () => d.begin());
+      p.appendChild(go);
+    } else if (m.roster.size >= 2) {
+      // A 3v3 that only found four players is still a match worth having, and
+      // waiting for a sixth who is not coming is how a lobby dies.
+      const go = el('button', 'wide-btn', 'START ANYWAY');
+      this.click(go, () => d.begin());
+      p.appendChild(go);
+    }
+
+    const quit = el('button', 'ghost-btn', 'Cancel');
+    this.click(quit, () => { d.leave(); this.refresh(); });
+    p.appendChild(quit);
+    wrap.appendChild(p);
+    return wrap;
+  }
+
+  duelJoin(wrap, d) {
+    const m = d.match;
+    const p = this.panel('Joining', d.status || 'Waiting for the host');
+    if (d.error) p.appendChild(el('p', 'note bad', d.error));
+
+    if (!d.answer) {
+      p.appendChild(el('p', 'note', '<b>1.</b> Paste the code your friend sent you.'));
+      p.appendChild(this.pasteBox('Their invite', 'GENERATE MY REPLY',
+        (v) => d.submitOffer(v)));
+    } else {
+      p.appendChild(el('p', 'note', '<b>2.</b> Send this back to them.'));
+      p.appendChild(this.codeBox('Your reply', d.answer));
+      p.appendChild(el('p', 'note',
+        '<b>3.</b> Once they paste it, you are connected. The match starts when '
+        + 'they say so.'));
+    }
+    if (m && m.roster.size) p.appendChild(this.duelRoster(m, d));
+
+    const quit = el('button', 'ghost-btn', 'Cancel');
+    this.click(quit, () => { d.leave(); this.refresh(); });
+    p.appendChild(quit);
+    wrap.appendChild(p);
+    return wrap;
+  }
+
+  /** Who is in, and on which side. */
+  duelRoster(m, d) {
+    const box = el('div', 'duel-roster');
+    for (let team = 0; team < 2; team++) {
+      const col = el('div', 'duel-team');
+      col.appendChild(el('div', 'duel-team-name', team === 0 ? 'Blue' : 'Red'));
+      const seats = m.seats().filter((s) => s.team === team);
+      for (const s of seats) {
+        const cls = CLASS_BY_ID[s.classId];
+        const row = el('div', 'duel-seat');
+        row.style.setProperty('--accent', cls ? cls.color : '#9aa4b8');
+        row.innerHTML = `<span class="duel-seat-name">${s.name}</span>
+          <span class="duel-seat-cls">${cls ? cls.name : s.classId}</span>`;
+        col.appendChild(row);
+      }
+      const wanted = m.seatsWanted / 2;
+      for (let i = seats.length; i < wanted; i++) {
+        col.appendChild(el('div', 'duel-seat empty', '<span>waiting…</span>'));
+      }
+      box.appendChild(col);
+    }
+    return box;
+  }
 
   buildOptions() {
     const wrap = el('div', 'screen');

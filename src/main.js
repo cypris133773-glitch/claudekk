@@ -14,6 +14,7 @@ import { AFFIXES } from './data/affixes.js';
 import { nextBoss, RAID_BY_ID } from './data/raids.js';
 import { GEAR_SLOT_IDS } from './data/armor.js';
 import { clamp } from './core/math.js';
+import { Lobby } from './net/lobby.js';
 
 // The viewport meta must exist or mobile browsers lay the page out at a
 // 980px virtual width and scale it down: the game renders huge, gets shrunk
@@ -103,10 +104,26 @@ const unlockAudio = () => {
 window.addEventListener('pointerdown', unlockAudio);
 window.addEventListener('keydown', unlockAudio);
 
+/**
+ * Hosted matches. Owns the connection; the lobby screen only reads it.
+ *
+ * Built before Menus because the menu takes it as context, and `onEnter` is
+ * the one line that turns a lobby into a fight: both sides have agreed on a
+ * seed, a layout and a roster, so both sides build the same arena and the
+ * host starts simulating it.
+ */
+const lobby = new Lobby({
+  profile,
+  build: BUILD,
+  onEnter: (cfg, seats, match, isHost) => startDuel(cfg, seats, match, isHost),
+  onFail: (why) => showToast(why, 6000),
+});
+
 const menus = new Menus(uiRoot, {
   profile,
   audio,
   game,
+  duel: lobby,
   build: BUILD,
   // Menus own a full-width fullscreen control; the 44px corner button is easy
   // to miss and cannot be found at all mid-run.
@@ -304,6 +321,57 @@ async function startRaid(charId, raid) {
   requestLock();
 }
 
+/**
+ * Both sides have agreed. Build the arena and start the match.
+ *
+ * The same call on both machines, with the same config — which is the whole
+ * design: there is no "server world" to download, there are two worlds built
+ * from three numbers, and they are identical because the generator is
+ * deterministic and both sides are on the same build (which was checked before
+ * either of them got here).
+ */
+async function startDuel(cfg, seats, match, isHost) {
+  audio.ensure();
+  if (profile.settings.fullscreenOnPlay && fullscreenUsable) enterFullscreen();
+  document.getElementById('rotate-hint').classList.add('hidden');
+  menus.show(null);
+  showLoading('Opening the arena…', 15);
+  await nextPaint();
+  try {
+    game.startDuel(lobby.charId, cfg, seats, match);
+    applyAimAssist();
+    // Snapshots go straight into the game from here on. Routed through the
+    // lobby rather than subscribed here so that leaving the match tears the
+    // wiring down with it.
+    match.onSnapshot = (snap) => { if (game.mode === 'duel') game.applySnapshot(snap); };
+    match.onEnd = (why) => { showToast(why, 6000); quitDuel(); };
+  } catch (err) {
+    hideLoading();
+    fatal('The match failed to start.', String(err && err.message ? err.message : err));
+    console.error(err);
+    return;
+  }
+  showLoading('Entering…', 100);
+  await nextPaint();
+  hideLoading();
+  input.setEnabled(true);
+  requestLock();
+}
+
+/** When a decided match returns to the title. Zero means "not decided". */
+let duelExitAt = 0;
+
+/** Leave a match, from either side, for any reason. */
+function quitDuel() {
+  duelExitAt = 0;
+  game.running = false;
+  game.over = false;
+  lobby.leave();
+  input.setEnabled(false);
+  document.exitPointerLock?.();
+  menus.show('title');
+}
+
 /** Yes, from the window between fights: the next boss, everything restored. */
 function continueRaid() {
   if (game.raidCleared ? !game.continueRaid() : !game.retryRaid()) { leaveRaid(); return; }
@@ -447,6 +515,16 @@ function frame(now) {
     }
     if (steps >= 5) acc = 0;
 
+    // The network runs on the frame, not on the fixed step. A host that sent
+    // a snapshot per simulation step would send five in the frame after a
+    // stall; a joiner that sent input per step would send its stick position
+    // five times with nothing between them. Once a frame is once per thing
+    // that actually happened.
+    if (game.mode === 'duel' && lobby.match) {
+      if (lobby.match.isHost) lobby.match.tick(dt, game);
+      else lobby.match.sendInput(state, game.player.yaw, game.player.pitch);
+    }
+
     // In a raid the run does not end on a kill or on a death — both open the
     // same window, and the window is what decides whether there is another
     // fight. Results only ever comes from "stop here".
@@ -457,6 +535,13 @@ function frame(now) {
       input.setEnabled(false);
       document.exitPointerLock?.();
       menus.show(won ? 'raidkill' : 'raidwipe');
+    } else if (game.over && game.mode === 'duel') {
+      // A match that has been decided stays on screen for a moment — the last
+      // round's result is the thing the two players are talking about — and
+      // then everyone goes back to the title. No results screen: there is
+      // nothing to bank, which is the entire point of the mode.
+      if (!duelExitAt) duelExitAt = performance.now() + 5000;
+      else if (performance.now() > duelExitAt) { duelExitAt = 0; quitDuel(); }
     } else if (game.over) {
       showResults();
     } else if (game.pendingUpgrades && menus.screen !== 'upgrade') {
@@ -513,6 +598,6 @@ document.addEventListener('gesturestart', (e) => e.preventDefault());
 // Exposed for the diagnostics screen and the headless test harnesses; a
 // shipped build is a single file, so there is nothing else to inspect with.
 window.CRAFTARENA = {
-  game, profile, renderer, audio, menus, input, CLASSES, AFFIXES, GEAR_SLOT_IDS,
+  game, profile, renderer, audio, menus, input, lobby, CLASSES, AFFIXES, GEAR_SLOT_IDS,
   RAID_BY_ID, MOB_TYPES,
 };

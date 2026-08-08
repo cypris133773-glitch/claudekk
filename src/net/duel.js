@@ -39,6 +39,8 @@ export const DUEL_MODES = [
   { id: '3v3', size: 3, name: 'Skirmish', blurb: 'Three a side.' },
 ];
 
+export const MODE_BY_ID = Object.fromEntries(DUEL_MODES.map((m) => [m.id, m]));
+
 /** First to this many rounds takes the match. */
 export const ROUNDS_TO_WIN = 3;
 
@@ -57,29 +59,7 @@ export function matchConfig(opts) {
     seed: opts.seed,
     layout: opts.layout,
     theme: opts.theme,
-  };
-}
-
-/**
- * One player in a match, as everyone else sees them.
- *
- * Deliberately small. At six players and twenty snapshots a second this is a
- * few kilobytes a second, and there is no reason to send anything the far side
- * can derive — a name, a class, a colour are sent once at join and never
- * again.
- */
-export function packPlayer(p, id) {
-  return {
-    i: id,
-    x: Math.round(p.x * 100) / 100,
-    y: Math.round(p.y * 100) / 100,
-    z: Math.round(p.z * 100) / 100,
-    a: Math.round(p.yaw * 100) / 100,
-    h: Math.round(p.hp),
-    m: Math.round(p.maxHp),
-    // One byte of state rather than a set of flags: what a remote player needs
-    // to draw is a pose, and a pose is exactly one of these at a time.
-    s: p.dead ? 3 : (p.swing > 0 ? 2 : (Math.hypot(p.vx, p.vz) > 0.6 ? 1 : 0)),
+    roundsToWin: opts.roundsToWin || ROUNDS_TO_WIN,
   };
 }
 
@@ -98,28 +78,58 @@ export function packInput(state, yaw, pitch, seq) {
     my: Math.round(state.moveY * 100) / 100,
     a: Math.round(yaw * 100) / 100,
     p: Math.round(pitch * 100) / 100,
-    // Booleans as a bitfield: five of them fit in one number and the JSON is
+    // Booleans as a bitfield: three of them fit in one number and the JSON is
     // half the size for it.
     b: (state.attack ? 1 : 0) | (state.jump ? 2 : 0) | (state.sprint ? 4 : 0),
-    // Skills are edge-triggered, so they are sent as "which fired this frame"
-    // rather than as held state — a held skill button would cast forever.
-    k: (state.skills || []).reduce((n, on, i) => n | (on ? (1 << i) : 0), 0),
+    // Skills and potions are edge-triggered, so they are sent as "which fired
+    // this frame" rather than as held state — a held skill button would cast
+    // forever.
+    k: bits(state.skills),
+    q: bits(state.potions),
   };
 }
 
-export function unpackInput(msg) {
+function bits(list) {
+  let n = 0;
+  for (let i = 0; i < (list || []).length; i++) if (list[i]) n |= (1 << i);
+  return n;
+}
+
+/**
+ * Turn a packed input back into the object `Player.update` expects.
+ *
+ * Writes into an existing object rather than making a new one, because the
+ * player consumes edge triggers by clearing them in place — `input.skills[i]
+ * = false` after a cast is how the game has always stopped a held button from
+ * casting every frame, and handing it a fresh object each step would break
+ * that in a way that only shows up as "my skill fires four times".
+ */
+export function unpackInto(target, msg) {
+  target.moveX = msg.mx || 0;
+  target.moveY = msg.my || 0;
+  target.lookX = 0;
+  target.lookY = 0;
+  target.attack = !!(msg.b & 1);
+  target.jump = !!(msg.b & 2);
+  target.sprint = !!(msg.b & 4);
+  target.pause = false;
+  // OR rather than assign: a skill pressed in a frame the sim has not run yet
+  // must not be erased by the next packet arriving first. It is cleared by the
+  // cast, which is the only thing that should clear it.
+  for (let i = 0; i < 4; i++) if (msg.k & (1 << i)) target.skills[i] = true;
+  for (let i = 0; i < 3; i++) if (msg.q & (1 << i)) target.potions[i] = true;
+  target.yaw = msg.a || 0;
+  target.pitch = msg.p || 0;
+  return target;
+}
+
+function blankInput() {
   return {
-    moveX: msg.mx || 0,
-    moveY: msg.my || 0,
-    lookX: 0, lookY: 0,
-    attack: !!(msg.b & 1),
-    jump: !!(msg.b & 2),
-    sprint: !!(msg.b & 4),
-    pause: false,
-    skills: [0, 1, 2, 3].map((i) => !!(msg.k & (1 << i))),
+    moveX: 0, moveY: 0, lookX: 0, lookY: 0,
+    attack: false, jump: false, sprint: false, pause: false,
+    skills: [false, false, false, false],
     potions: [false, false, false],
-    yaw: msg.a || 0,
-    pitch: msg.p || 0,
+    yaw: 0, pitch: 0,
   };
 }
 
@@ -140,6 +150,9 @@ export class Match {
     this.onStart = opts.onStart || (() => {});
     this.onEnd = opts.onEnd || (() => {});
     this.onRoster = opts.onRoster || (() => {});
+    this.onSnapshot = opts.onSnapshot || (() => {});
+    /** Who we are, as the far side needs to know us. Set before invite/join. */
+    this.me = opts.me || null;
 
     /** peers, by id. The host has one per joiner; a joiner has exactly one. */
     this.peers = new Map();
@@ -149,20 +162,45 @@ export class Match {
     this.config = null;
     this.started = false;
 
-    // Host: last input received per joiner, applied on the next step. A frame
+    // Host: last input received per seat, applied on the next step. A frame
     // with nothing new reuses the last one rather than treating silence as
     // "released every key", which is what makes a dropped packet a stutter
     // instead of a stop.
     this.inputs = new Map();
-    // Joiner: the two most recent snapshots, to interpolate between.
-    this.snapPrev = null;
-    this.snapLast = null;
-    this.snapAt = 0;
     this.seq = 0;
     this.rtt = 0;
+    this.snapAcc = 0;
+    this.lastSeen = new Map();
+  }
+
+  /** Everyone, in a stable order both sides agree on. */
+  seats() {
+    return [...this.roster.values()];
+  }
+
+  /** How many the chosen mode still wants before it can start. */
+  get seatsWanted() {
+    return (MODE_BY_ID[this.mode] || MODE_BY_ID['1v1']).size * 2;
+  }
+
+  get full() {
+    return this.roster.size >= this.seatsWanted;
   }
 
   // --- hosting -------------------------------------------------------------
+
+  /**
+   * Seat the host itself.
+   *
+   * Called once before the first invite, so that the roster the lobby shows
+   * and the roster the match starts from are the same list — a host that
+   * added itself only at start time would show a 2v2 lobby with three people
+   * in it and then start a match with four.
+   */
+  seatSelf() {
+    this.roster.set('h', { ...this.me, id: 'h', team: 0 });
+    this.onRoster();
+  }
 
   /**
    * Make an invite code for one more player.
@@ -180,7 +218,6 @@ export class Match {
         this.onLog(`${id} connected`);
         // The match's terms, first thing, before anything can disagree.
         p.send({ t: 'hello', id, build: this.build, mode: this.mode, config: this.config });
-        this.onRoster();
       },
       onClose: () => { this.dropPeer(id); },
     });
@@ -196,43 +233,81 @@ export class Match {
   }
 
   hostReceive(msg, peer) {
+    this.lastSeen.set(peer.id, Date.now());
     if (msg.t === 'input') {
-      this.inputs.set(peer.id, msg);
+      unpackInto(this.inputFor(peer.id), msg);
     } else if (msg.t === 'join') {
-      // Name and class, sent once. Everything else about them is derived.
-      this.roster.set(peer.id, { id: peer.id, name: msg.name, classId: msg.classId, team: this.teamFor(peer.id) });
+      // Their character, sent once. Everything else about them is derived.
+      this.roster.set(peer.id, {
+        id: peer.id,
+        name: String(msg.name || 'Player').slice(0, 16),
+        classId: msg.classId,
+        talents: msg.talents || {},
+        perm: msg.perm || {},
+        loadout: msg.loadout || null,
+        weaponTier: msg.weaponTier ?? -1,
+        ranks: Math.min(24, msg.ranks || 0),
+        team: this.nextTeam(),
+      });
       this.onRoster();
-      this.broadcast({ t: 'roster', r: [...this.roster.values()] });
+      this.broadcast({ t: 'roster', r: this.seats() });
     } else if (msg.t === 'pong') {
       peer.rtt = Math.max(0, Date.now() - msg.at);
     }
   }
 
-  /** Alternating sides, so a 2v2 fills evenly as people arrive. */
-  teamFor(id) {
-    return this.roster.size % 2;
+  /**
+   * The emptier side, so a 2v2 fills evenly however people arrive.
+   *
+   * Counting rather than alternating: someone dropping out of a filling lobby
+   * used to leave the alternation off by one, and the next two joiners would
+   * both land on the same side.
+   */
+  nextTeam() {
+    let a = 0, b = 0;
+    for (const s of this.roster.values()) (s.team === 0 ? a++ : b++);
+    return a <= b ? 0 : 1;
+  }
+
+  /** The persistent input object for one seat. */
+  inputFor(id) {
+    let inp = this.inputs.get(id);
+    if (!inp) { inp = blankInput(); this.inputs.set(id, inp); }
+    return inp;
   }
 
   broadcast(msg) {
     for (const p of this.peers.values()) p.send(msg);
   }
 
+  /** Host: lock the lobby and tell everyone to build the same arena. */
+  start(config) {
+    this.config = config;
+    this.started = true;
+    this.broadcast({ t: 'start', config, r: this.seats() });
+  }
+
   /**
-   * Send the world. Called at SNAPSHOT_HZ, not per frame.
+   * Called every frame by the host. Sends a snapshot when one is due.
    *
-   * The ping rides along with it rather than being its own message: it is one
-   * more field on something already being sent sixty times a minute, and a
-   * separate heartbeat would be a second thing to keep alive.
+   * Rate-limited here rather than at the call site so that the one place that
+   * knows what SNAPSHOT_HZ means is the one that enforces it, and so a frame
+   * rate that dips does not quietly halve the tick rate of the match.
    */
-  sendSnapshot(players) {
-    if (!this.isHost) return;
-    this.broadcast({ t: 'snap', at: Date.now(), p: players });
+  tick(dt, game) {
+    if (!this.isHost || !this.started) return false;
+    this.snapAcc += dt;
+    const step = 1 / SNAPSHOT_HZ;
+    if (this.snapAcc < step) return false;
+    this.snapAcc = this.snapAcc % step;
+    this.broadcast({ t: 'snap', at: Date.now(), ...game.collectSnapshot() });
+    return true;
   }
 
   // --- joining -------------------------------------------------------------
 
   async join(code, me) {
-    this.me = me;
+    if (me) this.me = me;
     const peer = new Peer({
       id: 'h',
       onMessage: (m) => this.joinReceive(m),
@@ -240,8 +315,7 @@ export class Match {
       onClose: () => { this.onEnd('The host disconnected.'); },
     });
     this.peers.set('h', peer);
-    const answer = await peer.acceptOffer(code);
-    return answer;
+    return peer.acceptOffer(code);
   }
 
   joinReceive(msg) {
@@ -257,20 +331,19 @@ export class Match {
       this.localId = msg.id;
       this.mode = msg.mode;
       this.config = msg.config;
-      peer.send({ t: 'join', name: this.me.name, classId: this.me.classId });
+      peer.send({ t: 'join', ...this.me });
     } else if (msg.t === 'roster') {
       this.roster = new Map(msg.r.map((r) => [r.id, r]));
       this.onRoster();
     } else if (msg.t === 'start') {
       this.config = msg.config;
+      this.mode = msg.config.mode;
+      this.roster = new Map(msg.r.map((r) => [r.id, r]));
       this.started = true;
-      this.onStart(msg.config);
+      this.onStart(msg.config, this.seats());
     } else if (msg.t === 'snap') {
-      this.snapPrev = this.snapLast;
-      this.snapLast = msg.p;
-      this.snapAt = performance.now();
+      this.onSnapshot(msg);
       peer.send({ t: 'pong', at: msg.at });
-      this.rtt = 0;
     } else if (msg.t === 'end') {
       this.onEnd(msg.why);
     }
@@ -280,35 +353,7 @@ export class Match {
     const peer = this.peers.get('h');
     if (!peer) return;
     peer.send({ t: 'input', ...packInput(state, yaw, pitch, this.seq++) });
-  }
-
-  /**
-   * Where a remote player is right now, interpolated between the last two
-   * snapshots.
-   *
-   * A fifth of a second between updates is very visible if you draw the last
-   * one and wait; interpolating makes it invisible, at the cost of everyone
-   * else being drawn slightly in the past. That is the correct trade — being
-   * wrong about where someone was 50 ms ago is unnoticeable, and juddering is
-   * not.
-   */
-  interpolated(now = performance.now()) {
-    if (!this.snapLast) return [];
-    if (!this.snapPrev) return this.snapLast;
-    const step = 1000 / SNAPSHOT_HZ;
-    const t = Math.min(1, (now - this.snapAt) / step);
-    const prev = new Map(this.snapPrev.map((p) => [p.i, p]));
-    return this.snapLast.map((p) => {
-      const a = prev.get(p.i);
-      if (!a) return p;
-      return {
-        ...p,
-        x: a.x + (p.x - a.x) * t,
-        y: a.y + (p.y - a.y) * t,
-        z: a.z + (p.z - a.z) * t,
-        a: a.a + shortestTurn(a.a, p.a) * t,
-      };
-    });
+    this.rtt = peer.rtt || 0;
   }
 
   dropPeer(id) {
@@ -318,13 +363,14 @@ export class Match {
     this.roster.delete(id);
     this.inputs.delete(id);
     this.onRoster();
-    if (this.isHost) this.broadcast({ t: 'roster', r: [...this.roster.values()] });
+    if (this.isHost) this.broadcast({ t: 'roster', r: this.seats() });
   }
 
   close() {
     for (const p of this.peers.values()) p.close();
     this.peers.clear();
     this.roster.clear();
+    this.inputs.clear();
   }
 }
 

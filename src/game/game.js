@@ -6,7 +6,7 @@ import { Player, buildMods } from './player.js';
 import { Mob, MOB_TYPES, createRaidBoss } from './mobs.js';
 import { Fiend } from './pets.js';
 import { Projectile, Particle, Gib, Telegraph, Shockwave, Zone, Potion, FloatText, hexToRgb } from './effects.js';
-import { TEAM } from './entity.js';
+import { TEAM, drawHumanoid } from './entity.js';
 import { WaveDirector, waveScaling, waveClearBonus, isBossWave } from './waves.js';
 import { permanentMods, masteryMods, masteryRank } from '../data/permanent.js';
 import { difficultyFor } from '../data/difficulty.js';
@@ -17,6 +17,21 @@ import { gearMods, ownedTier, weaponAppearance, gearCost, GEAR_BY_ID } from '../
 import { MECHANICS, coreSlotFor, bossGold } from '../data/raids.js';
 import { forwardVec, clamp, rand, dist2 } from '../core/math.js';
 import { T } from '../render/atlas.js';
+import { CLASS_BY_ID } from '../data/classes.js';
+import { Ghost, DuelScore, duelSpawns, roundOutcome, classSkin, ROUND_TIME } from './pvp.js';
+
+/** Players per side, by match mode. */
+const DUEL_SIZES = { '1v1': 1, '2v2': 2, '3v3': 3 };
+
+/** Two decimals: a tenth of a block, and about half the JSON. */
+const r2 = (n) => Math.round(n * 100) / 100;
+
+/** What a seat with no input yet is doing: standing still. */
+const IDLE_INPUT = {
+  moveX: 0, moveY: 0, lookX: 0, lookY: 0,
+  attack: false, jump: false, sprint: false, pause: false,
+  skills: [false, false, false, false], potions: [false, false, false],
+};
 
 const INTERMISSION = 4.0;
 
@@ -36,6 +51,20 @@ const RAID_LAYOUT = 0;
 // share.
 const RAID_THEME_BASE = 4;
 const raidTheme = (raid) => RAID_THEME_BASE + raid.tier;
+
+/**
+ * Which side of a duel an entity fights for.
+ *
+ * A pet answers with its owner's side, which is the only reason this is a
+ * function rather than a field read: a fiend has no team of its own and must
+ * never be hittable by the person who summoned it.
+ */
+function duelTeamOf(e) {
+  if (!e) return 0;
+  if (e.duelTeam !== undefined) return e.duelTeam;
+  if (e.owner && e.owner.duelTeam !== undefined) return e.owner.duelTeam;
+  return 0;
+}
 
 export class Game {
   constructor(renderer, audio, profile) {
@@ -115,6 +144,17 @@ export class Game {
     this.raidCleared = false;
     this.raidPotion = 0;
     this.coreDrop = null;
+    // Duel state. `fighters` being null is what every targeting helper tests
+    // to decide whether a hostile is a mob or a person, so it is null and not
+    // an empty array — an empty array would mean "a duel with nobody in it",
+    // and the arena would quietly stop being able to find anything to hit.
+    this.fighters = null;
+    this.duel = null;
+    this.duelScore = null;
+    this.ghosts = [];
+    this.netEvents = [];
+    this.netProjectiles = null;
+    this.netZones = [];
   }
 
   /** True while the named wave affix is in force. */
@@ -176,7 +216,13 @@ export class Game {
     this.layout = opts.layout !== undefined
       ? opts.layout % LAYOUT_COUNT
       : (Math.random() * LAYOUT_COUNT) | 0;
-    this.world = createArena(this.theme, 1 + ((Math.random() * 9000) | 0), this.layout,
+    // The block seed is normally rolled here and never mentioned again. A duel
+    // has to pass it across the wire instead: two players generating the same
+    // layout from different seeds get two different rooms, and the symptom is
+    // each of them standing in a wall the other cannot see.
+    this.worldSeed = opts.worldSeed !== undefined
+      ? opts.worldSeed : 1 + ((Math.random() * 9000) | 0);
+    this.world = createArena(this.theme, this.worldSeed, this.layout,
       { raid: opts.raid || null });
     this.r.setWorld(this.world);
     // The renderer owns the palette now: sky gradient, sun colour and the
@@ -268,6 +314,258 @@ export class Game {
     this.notify(MECHANICS[boss.mechanic].blurb, 3.4);
     this.audio.setMusicIntensity(0.85);
     return true;
+  }
+
+  // -------------------------------------------------------------------------
+  // Duels
+  // -------------------------------------------------------------------------
+
+  /**
+   * Start a hosted match.
+   *
+   * `cfg` is the terms both sides agreed on over the wire — seed, layout,
+   * theme, mode — and every one of them has to be honoured exactly, because
+   * the two clients are not exchanging a world, they are each building one and
+   * trusting it to come out the same.
+   *
+   * `roster` is everyone in the match including you, already assigned to
+   * sides. `net` decides which half of the mode runs here: a host builds a
+   * real Player for every seat and simulates all of them; a joiner builds one
+   * real Player for itself and a Ghost for everyone else.
+   */
+  startDuel(who, cfg, roster, net) {
+    this.startRun(who, {
+      seed: cfg.seed, worldSeed: cfg.seed, layout: cfg.layout, theme: cfg.theme,
+      difficulty: 0,
+    });
+    this.mode = 'duel';
+    this.duel = net || null;
+    this.director.state = 'duel';
+    this.affixes = [];
+    this.wave = 0;
+    // A duel pays nothing and costs nothing. Stated as a flag rather than left
+    // implicit so that every place that banks a result has one thing to test,
+    // and so that adding a reward later is a deliberate act rather than an
+    // oversight in a mode the host can edit.
+    this.noRewards = true;
+
+    const size = (DUEL_SIZES[cfg.mode] || 1);
+    const marks = duelSpawns(this.world, size);
+    this.duelSpawnMarks = marks;
+    this.duelSize = size;
+    this.duelScore = new DuelScore(cfg.roundsToWin || 3);
+
+    // Seats, in roster order, so both sides number them the same way.
+    this.fighters = [];
+    this.ghosts = [];
+    for (const seat of roster) {
+      if (seat.id === (net ? net.localId : 'h')) {
+        this.player.duelId = seat.id;
+        this.player.duelTeam = seat.team;
+        this.player.duelName = seat.name;
+        this.fighters.push(this.player);
+      } else if (net && net.isHost) {
+        this.fighters.push(this.buildRemoteFighter(seat));
+      } else {
+        const g = new Ghost(seat);
+        g.duelId = seat.id;
+        g.duelTeam = seat.team;
+        this.ghosts.push(g);
+        this.fighters.push(g);
+      }
+    }
+    this.placeFighters();
+    this.notify(cfg.mode.toUpperCase() + '  ·  FIRST TO ' + this.duelScore.roundsToWin, 3);
+    this.audio.setMusicIntensity(0.9);
+    return true;
+  }
+
+  /**
+   * A player the host simulates on someone else's behalf.
+   *
+   * A real Player, not a puppet. Their skills, cooldowns, resource and gear
+   * all run here under the host's clock, driven by the input their machine
+   * sends — which is the entire reason the mode is affordable. The alternative
+   * is a second simulation model for "other people", and two models for the
+   * same thing is how a fight ends up meaning different things at each end.
+   *
+   * Their gear and talents come from what they told us on join. That is the
+   * trust boundary and it points the other way from the usual one: the host
+   * can cheat against a joiner, and a joiner can cheat about their own
+   * character. Between friends, both are fine; it is why the mode banks
+   * nothing.
+   */
+  buildRemoteFighter(seat) {
+    const classDef = CLASS_BY_ID[seat.classId];
+    if (!classDef) throw new Error('unknown class in roster: ' + seat.classId);
+    const mods = buildMods(classDef, seat.talents || {}, seat.perm || {});
+    const p = new Player(classDef, mods, this.world, seat.loadout);
+    p.duelId = seat.id;
+    p.duelTeam = seat.team;
+    p.duelName = seat.name;
+    p.weapon = weaponAppearance(classDef, seat.weaponTier ?? -1);
+    for (let i = 0; i < (seat.ranks || 0); i++) p.rankUp(i % p.skills.length);
+    return p;
+  }
+
+  /** Put everyone back on their mark, healed, for the start of a round. */
+  placeFighters() {
+    const used = [0, 0];
+    for (const f of this.fighters) {
+      const team = f.duelTeam || 0;
+      const mark = this.duelSpawnMarks[team][used[team]++ % this.duelSize];
+      f.x = mark.x; f.y = mark.y; f.z = mark.z;
+      f.vx = f.vy = f.vz = 0;
+      f.yaw = mark.yaw;
+      f.dead = false;
+      f.counted = false;
+      f.hp = f.maxHp;
+      if (f.buffs) f.buffs.length = 0;
+      if (f.dots) f.dots.length = 0;
+      f.absorb = 0; f.freeze = 0; f.stun = 0; f.root = 0; f.slow = 0;
+      if (f.cooldowns) f.cooldowns.fill(0);
+      if (f.resourceDef) f.resource = f.resourceDef.startFull ? f.resourceMax : 0;
+    }
+    // Nothing in flight survives a round boundary. A fireball that outlives
+    // the round it was cast in would kill someone during the scoreboard.
+    this.projectiles.length = 0;
+    this.zones.length = 0;
+    this.telegraphs.length = 0;
+    this.pets.length = 0;
+  }
+
+  /**
+   * Round clock and scoring. Host only — a joiner is told the result rather
+   * than working it out, because two machines deciding independently who won
+   * a round is two machines that will eventually disagree about the match.
+   */
+  updateDuel(dt) {
+    const s = this.duelScore;
+    if (!s || s.over) return;
+    if (s.breakTimer > 0) {
+      s.breakTimer -= dt;
+      if (s.breakTimer <= 0) {
+        this.placeFighters();
+        s.timer = ROUND_TIME;
+        this.notify('ROUND ' + s.round, 2);
+      }
+      return;
+    }
+    s.timer -= dt;
+    const outcome = s.timer <= 0 ? -2 : roundOutcome(this.fighters);
+    if (outcome === -1) return;
+    const done = s.award(outcome === -2 ? -1 : outcome);
+    this.notify(outcome === -2 ? 'DRAW'
+      : (outcome === this.player.duelTeam ? 'ROUND WON' : 'ROUND LOST'), 2.4);
+    if (done) {
+      this.notify(s.winner === this.player.duelTeam ? 'VICTORY' : 'DEFEAT', 4);
+      this.over = true;
+    }
+  }
+
+  /**
+   * The whole world, as the host sees it, small enough to send twenty times a
+   * second.
+   *
+   * Rounded to two decimals throughout, which is a tenth of a block — below
+   * what anyone can see at these speeds and roughly half the JSON. Everything
+   * a far side can derive is left out: a name, a class and a colour were sent
+   * once at join and never belong in a per-frame message.
+   */
+  collectSnapshot() {
+    const players = this.fighters.map((f) => ({
+      i: f.duelId,
+      x: r2(f.x), y: r2(f.y), z: r2(f.z), a: r2(f.yaw),
+      h: Math.round(f.hp), m: Math.round(f.maxHp),
+      s: f.dead ? 3 : (f.swing > 0.05 ? 2 : (Math.hypot(f.vx, f.vz) > 0.6 ? 1 : 0)),
+      // The receiving player's own HUD is driven from here rather than from a
+      // local guess. Cooldowns and resource are exactly the numbers a player
+      // makes decisions on, and a decision made against a stale cooldown is
+      // the one bug in a networked action game nobody forgives.
+      r: r2(f.resource || 0),
+      c: (f.cooldowns || []).map(r2),
+    }));
+    const projectiles = this.projectiles.map((p) => ({
+      x: r2(p.x), y: r2(p.y), z: r2(p.z), s: r2(p.size), c: p.color,
+    }));
+    const zones = this.zones.map((z) => ({
+      x: r2(z.x), y: r2(z.y), z: r2(z.z), r: r2(z.radius || 3), c: z.color,
+    }));
+    const events = this.netEvents;
+    this.netEvents = [];
+    const s = this.duelScore;
+    return {
+      p: players, j: projectiles, z: zones, e: events,
+      sc: s ? { s: s.score, r: s.round, t: r2(s.timer), b: r2(s.breakTimer), o: s.over, w: s.winner } : null,
+    };
+  }
+
+  /**
+   * Take one snapshot, as a joiner.
+   *
+   * Everyone else is assigned outright. The local player is *corrected*, not
+   * assigned: its position was predicted locally from the same input the host
+   * has, so the two agree within a few centimetres almost always, and snapping
+   * to the host's answer sixty times a second would make your own character
+   * shiver. Past a threshold the prediction is simply wrong — you were
+   * knocked back, or a packet was lost — and then the host wins outright,
+   * because a smooth glide to a position you are not in is worse than a jump
+   * to one you are.
+   */
+  applySnapshot(snap) {
+    if (!this.fighters) return;
+    for (const ps of snap.p || []) {
+      const f = this.fighters.find((x) => x.duelId === ps.i);
+      if (!f) continue;
+      if (f === this.player) {
+        // Kept for the HUD's connection readout and for the harness, which
+        // measures prediction drift against exactly this.
+        this.lastOwnSnap = ps;
+        const off = Math.hypot(f.x - ps.x, f.y - ps.y, f.z - ps.z);
+        if (off > 2.5) { f.x = ps.x; f.y = ps.y; f.z = ps.z; }
+        else if (off > 0.12) {
+          f.x += (ps.x - f.x) * 0.18;
+          f.y += (ps.y - f.y) * 0.18;
+          f.z += (ps.z - f.z) * 0.18;
+        }
+        // Health, resource and cooldowns are never predicted. There is no
+        // local approximation of "did that land" that is worth being wrong
+        // about, so these are simply taken.
+        f.hp = ps.h; f.maxHp = ps.m;
+        f.resource = ps.r;
+        if (ps.c) for (let i = 0; i < f.cooldowns.length; i++) f.cooldowns[i] = ps.c[i] || 0;
+        f.dead = ps.s === 3;
+      } else if (f.applySnap) {
+        f.applySnap(ps);
+      }
+    }
+    // Projectiles and zones are drawn straight from the wire rather than
+    // simulated. A joiner that integrated them would have to also know every
+    // rule about what stops one, and getting that subtly wrong is a fireball
+    // that hangs in a wall.
+    this.netProjectiles = snap.j || [];
+    this.netZones = snap.z || [];
+    for (const e of snap.e || []) this.playNetEvent(e);
+    if (snap.sc && this.duelScore) {
+      const s = this.duelScore;
+      const wasRound = s.round;
+      s.score = snap.sc.s; s.round = snap.sc.r; s.timer = snap.sc.t;
+      s.breakTimer = snap.sc.b; s.over = snap.sc.o; s.winner = snap.sc.w;
+      if (s.round !== wasRound) this.notify('ROUND ' + s.round, 2);
+      if (s.over && !this.over) {
+        this.notify(s.winner === this.player.duelTeam ? 'VICTORY' : 'DEFEAT', 4);
+        this.over = true;
+      }
+    }
+  }
+
+  /** Replay one host visual locally. Pure presentation — nothing here hits. */
+  playNetEvent(e) {
+    if (e.k === 's') this.shockwaves.push(new Shockwave(e.x, e.y, e.z, e.r, e.c));
+    else if (e.k === 'b') this.burst(e.x, e.y, e.z, e.n, e.c);
+    else if (e.k === 'm') this.beam(e.a[0], e.a[1], e.a[2], e.a[3], e.a[4], e.a[5], e.c);
+    else if (e.k === 't') this.telegraphs.push(new Telegraph(e.x, e.y, e.z, e.r, e.d, null, e.c));
+    else if (e.k === 'a') this.audio.play(e.n);
   }
 
   /**
@@ -617,7 +915,7 @@ export class Game {
     if (this.notifications.length > 4) this.notifications.shift();
   }
 
-  sfx(name) { this.audio.play(name); }
+  sfx(name) { this.audio.play(name); this.netEvent({ k: 'a', n: name }); }
 
   /**
    * A heartbeat under a quarter health. Audio is the only channel that reaches
@@ -684,7 +982,34 @@ export class Game {
 
   allies() {
     const list = [this.player, ...this.pets.filter((p) => !p.dead && !p.isTotem)];
+    if (this.fighters) {
+      const team = this.player.duelTeam;
+      for (const f of this.fighters) if (f !== this.player && f.duelTeam === team) list.push(f);
+    }
     return list.filter((e) => e && !e.dead);
+  }
+
+  /**
+   * Everything `who` is allowed to hit.
+   *
+   * Outside a duel this is simply the mobs, and returning the live array
+   * rather than a copy matters: it is read by every skill, every projectile
+   * step and the aim assist, sixty times a second, with thirty enemies in it.
+   *
+   * Inside a duel there are no mobs and the answer is "the other side" — the
+   * opposing players and anything they own. Every targeting helper in the game
+   * goes through here, which is why a fireball, a chain lightning and a
+   * whirlwind all learned to fight people without any of them being touched.
+   */
+  hostiles(who = this.player) {
+    if (!this.fighters) return this.mobs;
+    const team = duelTeamOf(who);
+    const out = [];
+    for (const f of this.fighters) if (!f.dead && f.duelTeam !== team) out.push(f);
+    for (const p of this.pets) {
+      if (!p.dead && !p.isTotem && p.owner && duelTeamOf(p.owner) !== team) out.push(p);
+    }
+    return out;
   }
 
   /** Enemy AI target selection — pets can pull aggro. */
@@ -699,9 +1024,9 @@ export class Game {
     return best;
   }
 
-  nearestEnemy(x, y, z, maxDist, exclude = null) {
+  nearestEnemy(x, y, z, maxDist, exclude = null, who = this.player) {
     let best = null, bestD = maxDist * maxDist;
-    for (const m of this.mobs) {
+    for (const m of this.hostiles(who)) {
       if (m.dead) continue;
       if (exclude && exclude.has(m)) continue;
       const d = dist2(x, y, z, m.x, m.centerY, m.z);
@@ -720,7 +1045,7 @@ export class Game {
   aimTarget(player, maxDist, minDot = 0.55) {
     const dir = forwardVec(player.yaw, player.pitch);
     let best = null, bestScore = -1;
-    for (const m of this.mobs) {
+    for (const m of this.hostiles(player)) {
       if (m.dead) continue;
       const dx = m.x - player.x, dy = m.centerY - player.eyeY, dz = m.z - player.z;
       const d = Math.hypot(dx, dy, dz);
@@ -733,15 +1058,15 @@ export class Game {
     return best;
   }
 
-  enemiesInRadius(x, y, z, radius) {
+  enemiesInRadius(x, y, z, radius, who = this.player) {
     const r2 = radius * radius;
-    return this.mobs.filter((m) => !m.dead && dist2(x, y, z, m.x, m.centerY, m.z) <= r2);
+    return this.hostiles(who).filter((m) => !m.dead && dist2(x, y, z, m.x, m.centerY, m.z) <= r2);
   }
 
   enemiesInCone(source, range, halfAngle) {
     const dir = forwardVec(source.yaw, 0);
     const out = [];
-    for (const m of this.mobs) {
+    for (const m of this.hostiles(source)) {
       if (m.dead) continue;
       const dx = m.x - source.x, dz = m.z - source.z;
       const dy = m.centerY - source.centerY;
@@ -755,10 +1080,15 @@ export class Game {
   }
 
   /** Any hostile entity of the opposite team near a point (projectile hits). */
-  findHit(x, y, z, radius, team, exclude) {
-    const candidates = team === TEAM.PLAYER
-      ? this.mobs
-      : [this.player, ...this.pets.filter((p) => !p.isTotem)];
+  findHit(x, y, z, radius, team, exclude, who = null) {
+    // In a duel "the opposite team" is a duel team, not TEAM.PLAYER/ENEMY —
+    // everyone on the floor is a player. The projectile carries its owner, so
+    // the question is answerable without a second team field on every shot.
+    const candidates = this.fighters
+      ? this.hostiles(who || this.player)
+      : (team === TEAM.PLAYER
+        ? this.mobs
+        : [this.player, ...this.pets.filter((p) => !p.isTotem)]);
     for (const e of candidates) {
       if (!e || e.dead) continue;
       if (exclude && exclude.has(e)) continue;
@@ -777,7 +1107,12 @@ export class Game {
   /** Player/pet -> enemy damage, with crit, lifesteal, thorns and floaters. */
   dealDamage(source, target, amount, opts = {}) {
     if (!target || target.dead) return 0;
-    const isPlayer = source === this.player;
+    // Two different questions that used to be one. Everything a *character*
+    // does — crit, lifesteal, bleed, resource gain — belongs to any player
+    // character, which in a duel is up to six of them on the host. Everything
+    // the *screen* does belongs to the one whose eyes the camera is behind.
+    const isPlayer = !!(source && source.isPlayerKind);
+    const isLocal = source === this.player;
     let dmg = amount;
     // A shield that only covers the front. Not more health — health you cannot
     // reach from one side, which turns a damage check into a positioning one.
@@ -826,8 +1161,11 @@ export class Game {
           source.cooldowns[i] = Math.max(0, source.cooldowns[i] - source.mods.critCdr);
         }
       }
-      this.hitMarker = crit ? 0.32 : 0.18;
       this.timeSinceCombat = 0;
+    }
+
+    if (isLocal) {
+      this.hitMarker = crit ? 0.32 : 0.18;
       if (this.profile.settings.showDamage && !opts.silent) {
         this.floaters.push(new FloatText(
           target.x, target.centerY + 0.4, target.z,
@@ -858,29 +1196,43 @@ export class Game {
   /** Enemy -> player damage, with dodge, armor and thorns. */
   damageEntity(source, target, amount, opts = {}) {
     if (!target || target.dead) return 0;
-    if (target === this.player) {
-      if (Math.random() < this.player.dodge) {
-        this.floaters.push(new FloatText(target.x, target.centerY + 1, target.z, 'DODGE', '#7dffb0'));
-        this.audio.play('dodge');
+    // Same split as dealDamage: dodge and armour are the character's, the
+    // screen shake and the hurt sound are the camera's.
+    const isPlayer = !!target.isPlayerKind;
+    const isLocal = target === this.player;
+    if (isPlayer) {
+      if (Math.random() < target.dodge) {
+        if (isLocal) {
+          this.floaters.push(new FloatText(target.x, target.centerY + 1, target.z, 'DODGE', '#7dffb0'));
+          this.audio.play('dodge');
+        }
         return 0;
       }
-      amount *= 1 - this.player.armor;
+      amount *= 1 - target.armor;
     } else if (target.armorPct) {
       amount *= 1 - target.armorPct;
     }
     const dealt = target.damage(amount, opts);
-    if (target === this.player && dealt > 0) {
+    if (isPlayer && dealt > 0) {
+      const r = target.resourceDef;
+      if (r.onTakeGain) target.gainResource(r.onTakeGain);
+      // Thorns reflect a share of the damage that actually landed.
+      if (target.thorns && source && opts.melee !== false && source.damage) {
+        source.damage(dealt * target.thorns, { source: target });
+        if (source.dead) this.onEnemyKilled(source, target, {});
+      }
+      // Soul Link: split incoming damage with fiends. Only the local player
+      // has pets in a duel — a remote player's fiends are simulated on the
+      // host under their own owner, which is where this already looks.
+      if (target.mods.soulLink) {
+        const pets = this.pets.filter((p) => !p.dead && !p.isTotem && p.owner === target);
+        if (pets.length) pets[0].damage(dealt * target.mods.soulLink, {});
+      }
+    }
+    if (isLocal && dealt > 0) {
       this.timeSinceCombat = 0;
       this.screenShake = Math.max(this.screenShake, Math.min(0.45, dealt / this.player.maxHp * 1.6));
       this.audio.play('hurt');
-      const r = this.player.resourceDef;
-      if (r.onTakeGain) this.player.gainResource(r.onTakeGain);
-      // Thorns reflect a share of the damage that actually landed — a flat
-      // number would be worthless by wave 10 and free wave-1 clears before it.
-      if (this.player.thorns && source && opts.melee !== false && source.damage) {
-        source.damage(dealt * this.player.thorns, { source: this.player });
-        if (source.dead) this.onEnemyKilled(source, this.player, {});
-      }
       // Grievous: every hit deepens a wound that only closes if you break off.
       // Stacks rather than refreshes, so trading twenty small hits is worse
       // than eating one big one — which is exactly the habit it exists to break.
@@ -888,12 +1240,7 @@ export class Game {
         this.grievous = Math.min(8, this.grievous + 1);
         this.grievousTimer = 0;
       }
-      // Soul Link: split incoming damage with fiends.
-      if (this.player.mods.soulLink) {
-        const pets = this.pets.filter((p) => !p.dead && !p.isTotem);
-        if (pets.length) pets[0].damage(dealt * this.player.mods.soulLink, {});
-      }
-      if (this.player.dead) this.endRun();
+      if (this.player.dead && this.mode !== 'duel') this.endRun();
     }
     return dealt;
   }
@@ -906,9 +1253,9 @@ export class Game {
           '+' + Math.round(healed), '#7dff9d'));
       }
       // Atonement: healing yourself also damages nearby enemies.
-      if (source === this.player && this.player.mods.atonement) {
-        for (const m of this.enemiesInRadius(target.x, target.centerY, target.z, 7)) {
-          this.dealDamage(this.player, m, healed * this.player.mods.atonement, { silent: true });
+      if (source && source.isPlayerKind && source.mods.atonement) {
+        for (const m of this.enemiesInRadius(target.x, target.centerY, target.z, 7, source)) {
+          this.dealDamage(source, m, healed * source.mods.atonement, { silent: true });
         }
       }
     }
@@ -937,6 +1284,14 @@ export class Game {
   onEnemyKilled(mob, killer, opts) {
     if (mob.counted) return;
     mob.counted = true;
+    // A player going down in a duel is a round event, not a kill: no combo, no
+    // souls, no XP, no drop. The whole mode pays nothing, and routing it
+    // through the arena's kill path is how it would quietly start to.
+    if (this.mode === 'duel' && mob.duelTeam !== undefined) {
+      this.notify(`${mob.duelName || 'Player'} is down`, 2);
+      this.audio.play('bossdown');
+      return;
+    }
     if (!(mob instanceof Mob)) return;
 
     this.combo++;
@@ -1201,19 +1556,46 @@ export class Game {
   }
 
   /** Leave a lingering hazard on the ground. */
+  // -------------------------------------------------------------------------
+  // Replication
+  // -------------------------------------------------------------------------
+  //
+  // A joiner runs no combat simulation, so nothing it sees happens on its own
+  // machine: the bodies come from the snapshot, and the *moments* — a blast, a
+  // beam, a ring on the floor — come from here. Every effect in the game
+  // already funnels through five methods, which is the only reason this is
+  // twenty lines instead of a second renderer. Hooking the primitives rather
+  // than the callers means a skill written tomorrow replicates for free.
+
+  /** Record one visual for the joiners. Free and silent when not hosting. */
+  netEvent(e) {
+    if (!this.netHosting) return;
+    // Bounded. A joiner that stops acknowledging must not turn into an
+    // unbounded queue on the host — the newest frame is the one that matters.
+    if (this.netEvents.length < 96) this.netEvents.push(e);
+  }
+
+  /** True while this machine is the authority for a duel. */
+  get netHosting() {
+    return this.mode === 'duel' && this.duel && this.duel.isHost;
+  }
+
   spawnZone(x, y, z, opts) {
     this.zones.push(new Zone(x, y, z, opts));
   }
 
   telegraph(x, y, z, radius, delay, onComplete, color) {
     this.telegraphs.push(new Telegraph(x, y, z, radius, delay, onComplete, color));
+    this.netEvent({ k: 't', x, y, z, r: radius, d: delay, c: color });
   }
 
   shockwave(x, y, z, radius, color) {
     this.shockwaves.push(new Shockwave(x, y, z, radius, color));
+    this.netEvent({ k: 's', x, y, z, r: radius, c: color });
   }
 
   burst(x, y, z, count, color) {
+    this.netEvent({ k: 'b', x, y, z, n: count, c: color });
     for (let i = 0; i < count; i++) {
       this.particles.push(new Particle(
         x, y, z,
@@ -1224,6 +1606,7 @@ export class Game {
 
   beam(x0, y0, z0, x1, y1, z1, color) {
     this.beams.push({ x0, y0, z0, x1, y1, z1, color: hexToRgb(color || '#ffffff'), life: 0.16, max: 0.16 });
+    this.netEvent({ k: 'm', a: [x0, y0, z0, x1, y1, z1], c: color });
   }
 
   spawnMob(typeId, x, y, z, elite = false) {
@@ -1373,8 +1756,12 @@ export class Game {
       if (t.t <= 0) { this.timers.splice(i, 1); t.fn(); }
     }
 
-    this.player.update(dt, this, input);
-    if (this.player.dead) { this.onPlayerDeath(); return; }
+    if (this.mode === 'duel') {
+      this.stepDuelFighters(dt, input);
+    } else {
+      this.player.update(dt, this, input);
+      if (this.player.dead) { this.onPlayerDeath(); return; }
+    }
 
     for (const m of this.mobs) if (!m.dead) m.update(dt, this);
     for (const p of this.pets) if (!p.dead) p.update(dt, this);
@@ -1413,7 +1800,41 @@ export class Game {
     this.beams = this.beams.filter((b) => b.life > 0);
     this.notifications = this.notifications.filter((n) => n.life > 0);
 
-    this.updateWaves(dt);
+    if (this.mode === 'duel') this.updateDuel(dt);
+    else this.updateWaves(dt);
+  }
+
+  /**
+   * One simulation step for everyone in a duel.
+   *
+   * On the host this is the whole match: the local player takes the local
+   * input, and every other seat takes the last input its machine sent. "Last
+   * input" rather than "input if one arrived" is deliberate — a dropped packet
+   * should be a stutter, not a frame where that player released every key.
+   *
+   * On a joiner nothing here is authoritative. The local player is stepped so
+   * the controls feel instant and the snapshot corrects it; the other bodies
+   * are ghosts and are moved by the snapshot alone.
+   */
+  stepDuelFighters(dt, input) {
+    const host = !this.duel || this.duel.isHost;
+    if (host) {
+      for (const f of this.fighters) {
+        if (f.dead || f.isGhost) continue;
+        if (f === this.player) { f.update(dt, this, input); continue; }
+        const inp = this.duel ? this.duel.inputFor(f.duelId) : IDLE_INPUT;
+        // Where they are looking comes with the input rather than being
+        // integrated from a delta. A joiner's aim is theirs — it is the one
+        // thing a 60 ms round trip must not smear, and sending the absolute
+        // angle costs the same as sending a change to it.
+        f.yaw = inp.yaw;
+        f.pitch = inp.pitch;
+        f.update(dt, this, inp);
+      }
+    } else {
+      this.player.update(dt, this, input);
+      for (const g of this.ghosts) g.update(dt);
+    }
   }
 
   /**
@@ -1574,10 +1995,12 @@ export class Game {
     }
     for (const m of this.mobs) m.draw(this.r);
     for (const p of this.pets) p.draw(this.r);
+    this.drawFighters();
     this.drawAuras();
     // Sky fills the gaps left by the opaque pass, before anything blended.
     this.r.drawSky();
     for (const p of this.projectiles) p.draw(this.r);
+    this.drawNetEffects();
     for (const t of this.telegraphs) t.draw(this.r);
     for (const z of this.zones) z.draw(this.r);
     for (const q of this.potions) q.draw(this.r);
@@ -1674,6 +2097,65 @@ export class Game {
     }
     // Oldest first, so the newest kill always gets its debris.
     while (this.gibs.length > MAX) this.gibs.shift();
+  }
+
+  /**
+   * The other people in the room.
+   *
+   * Nine classes had never been drawn as bodies — the camera has always been
+   * behind the player's eyes and every other character in the game is a mob.
+   * A duel is five other players, and the whole tactical read of a 3v3 is
+   * knowing at a glance which of the two shapes across the floor is the healer.
+   * So the body carries the class colour, and a rank marker under the feet
+   * carries the side: a ring you cannot mistake for a health bar, on the
+   * ground where a crowded fight still leaves it visible.
+   */
+  drawFighters() {
+    if (!this.fighters) return;
+    const myTeam = this.player.duelTeam;
+    for (const f of this.fighters) {
+      if (f === this.player || f.dead) continue;
+      if (f.isGhost) f.draw(this.r);
+      else drawHumanoid(this.r, f, classSkin(f.cls.id, f.cls.color));
+      // Friend or foe, on the floor. Green under an ally, red under an enemy,
+      // and never anywhere near the colour of a health bar.
+      const foe = f.duelTeam !== myTeam;
+      const color = foe ? [0.95, 0.25, 0.2] : [0.35, 0.9, 0.45];
+      const segs = 12;
+      const rad = 0.55;
+      for (let i = 0; i < segs; i++) {
+        const a = (i / segs) * Math.PI * 2;
+        this.r.drawBox(
+          f.x + Math.cos(a) * rad, f.y + 0.04, f.z + Math.sin(a) * rad,
+          0.16, 0.02, 0.16,
+          { tile: T.BLANK, color, emissive: 0.8, alpha: 0.75 });
+      }
+    }
+  }
+
+  /**
+   * Projectiles and ground zones a joiner was told about but does not own.
+   *
+   * Drawn as plain glowing cubes rather than reconstructed as Projectile
+   * objects: the joiner has no business integrating something whose rules for
+   * stopping live on the other machine, and a shot that hangs in a wall
+   * because the two disagreed is worse than one drawn a frame behind.
+   */
+  drawNetEffects() {
+    if (!this.netProjectiles) return;
+    for (const p of this.netProjectiles) {
+      const s = p.s * 2;
+      this.r.drawBox(p.x, p.y, p.z, s, s, s,
+        { tile: T.BLANK, color: p.c, emissive: 1, alpha: 0.95 });
+    }
+    for (const z of this.netZones) {
+      const segs = Math.min(28, Math.max(10, Math.round(z.r * 5)));
+      for (let i = 0; i < segs; i++) {
+        const a = (i / segs) * Math.PI * 2;
+        this.r.drawBox(z.x + Math.cos(a) * z.r, z.y + 0.06, z.z + Math.sin(a) * z.r,
+          0.3, 0.05, 0.3, { tile: T.BLANK, color: z.c, emissive: 0.7, alpha: 0.6 });
+      }
+    }
   }
 
   drawBeams() {

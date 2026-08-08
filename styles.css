@@ -2487,3 +2487,149 @@ body.show-popout-btn #popout-btn { display: block; }
 @media (max-width: 340px) {
   .talent-tree { --cell: 28px; --tgap: 5px; }
 }
+
+/* ---------------------------------------------------------------------------
+   FIGHT A FRIEND — the hosted-match lobby
+
+   The whole screen is one instruction sheet. Two people who have never done
+   this before have to swap two long strings in the right order, and every
+   piece of styling here exists to make the order obvious: numbered notes read
+   as prose, the code boxes are the only monospace on the screen, and exactly
+   one button per step is bright.
+   --------------------------------------------------------------------------- */
+
+.note {
+  color: var(--dim);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 12px 2px 6px;
+}
+.note b { color: var(--text); }
+.note.bad {
+  color: #ff9a7a;
+  background: rgba(255, 90, 60, 0.09);
+  border: 1px solid rgba(255, 90, 60, 0.3);
+  border-radius: 10px;
+  padding: 9px 11px;
+}
+
+/* A button that owns its row. Used where the next action is the only action —
+   which on this screen is every step. */
+.wide-btn {
+  width: 100%;
+  margin-top: 8px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(46, 53, 73, 0.95), rgba(20, 24, 35, 0.95));
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 3px 0 rgba(0, 0, 0, 0.5);
+  transition: transform 0.07s ease, box-shadow 0.07s ease, border-color 0.15s ease;
+}
+.wide-btn:hover:not(:disabled) { border-color: rgba(110, 200, 255, 0.5); }
+.wide-btn:active:not(:disabled) {
+  transform: translateY(3px);
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.5);
+}
+.wide-btn:disabled { opacity: 0.45; }
+.wide-btn.primary {
+  background: linear-gradient(180deg, #ffe07a, #f0b429);
+  border-color: rgba(255, 224, 122, 0.65);
+  color: #251b02;
+}
+
+.code-box {
+  margin: 8px 0 4px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-2);
+}
+.code-label {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-bottom: 6px;
+}
+/* Monospace and word-break, because this is a wall of base64 that a human has
+   to select and paste. Wrapping mid-token is correct here — the decoder strips
+   whitespace, so a code broken across lines by a chat app still works. */
+.code-area {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.35;
+  word-break: break-all;
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 9px;
+}
+.code-area:focus { outline: none; border-color: rgba(110, 200, 255, 0.6); }
+
+/* Two columns, always — a lobby that reflows to one column stops showing the
+   thing it exists to show, which is who is on which side. */
+.duel-roster {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  margin: 10px 0 4px;
+}
+.duel-team {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 8px;
+  background: var(--panel-2);
+  min-width: 0;
+}
+.duel-team-name {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-bottom: 6px;
+}
+.duel-seat {
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 6px 8px;
+  margin-bottom: 5px;
+  min-width: 0;
+}
+.duel-seat-name {
+  display: block;
+  font-weight: 700;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.duel-seat-cls { display: block; font-size: 11px; color: var(--dim); }
+.duel-seat.empty {
+  border-left-color: rgba(255, 255, 255, 0.12);
+  color: var(--dim);
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* The two handshake steps. One column by default; two on a screen that is
+   wider than it is tall, where stacking them would push the panel past the
+   fold and trigger the shrink-to-fit fallback — and a code you cannot select
+   is a code you cannot send. */
+.duel-steps { display: grid; gap: 4px; }
+@media (max-height: 560px) and (min-width: 600px) {
+  .duel-steps { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+  .duel-steps .note { margin-top: 4px; }
+  .code-area { font-size: 10px; }
+  .duel-roster { margin: 6px 0 2px; }
+  .duel-seat { padding: 4px 7px; margin-bottom: 3px; }
+  .duel-seat-name { font-size: 12px; }
+}

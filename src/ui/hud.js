@@ -14,6 +14,12 @@ const FONT = "700 %spx 'Segoe UI', system-ui, -apple-system, sans-serif";
 // is sized so its *hit* circle clears this even on a 360px-wide phone.
 const MIN_TOUCH = 44;
 
+/** Seconds as m:ss, for the round clock. */
+function clock(seconds) {
+  const t = Math.max(0, Math.ceil(seconds));
+  return `${(t / 60) | 0}:${String(t % 60).padStart(2, '0')}`;
+}
+
 export class Hud {
   constructor(canvas, game, input, profile) {
     this.canvas = canvas;
@@ -111,6 +117,7 @@ export class Hud {
     this.drawFloaters();
     this.drawAimLock(p);
     this.drawEnemyHealth();
+    this.drawFighterPlates();
     this.drawCrosshair();
     this.drawVitals(p);
     this.drawWaveInfo();
@@ -361,10 +368,101 @@ export class Hud {
     }
   }
 
+  /**
+   * The two things a duel is about: the score, and how long is left.
+   *
+   * Centred at the top, which is the one place on this HUD nothing else uses —
+   * the wave banner it replaces is in the left column on touch, and the affix
+   * row it would otherwise collide with does not exist in a duel. Your side is
+   * always drawn on the left of the pair regardless of which team you are, so
+   * "am I winning" is answered by position and never by remembering a colour.
+   */
+  drawDuelBar() {
+    const g = this.game;
+    const s = g.duelScore;
+    if (!s) return;
+    const c = this.ctx;
+    const mine = g.player.duelTeam || 0;
+    const us = s.score[mine], them = s.score[1 - mine];
+    const cx = this.w / 2;
+    const y = 10 + this.safe.t;
+
+    c.textAlign = 'center';
+    c.textBaseline = 'top';
+    c.shadowColor = 'rgba(0,0,0,0.8)';
+    c.shadowBlur = 6;
+
+    this.font(this.touchMode ? 26 : 30);
+    c.fillStyle = '#7dffb0';
+    c.textAlign = 'right';
+    c.fillText(String(us), cx - 16, y);
+    c.fillStyle = '#ff8a6a';
+    c.textAlign = 'left';
+    c.fillText(String(them), cx + 16, y);
+    c.textAlign = 'center';
+    c.fillStyle = 'rgba(255,255,255,0.5)';
+    this.font(this.touchMode ? 18 : 20);
+    c.fillText('–', cx, y + 4);
+
+    this.font(12);
+    c.fillStyle = 'rgba(255,255,255,0.7)';
+    const line = s.breakTimer > 0
+      ? `NEXT ROUND IN ${Math.ceil(s.breakTimer)}`
+      : `ROUND ${s.round}  ·  FIRST TO ${s.roundsToWin}  ·  ${clock(s.timer)}`;
+    c.fillText(line, cx, y + (this.touchMode ? 30 : 34));
+    c.shadowBlur = 0;
+  }
+
+  /**
+   * Names and health over the other players.
+   *
+   * Six voxel bodies in class colours is not enough on its own — in a 3v3 the
+   * question you are asking every second is "which of those is on low health",
+   * and the answer has to be readable while you are also moving. Allies get a
+   * green bar and enemies a red one, matching the ring the game draws under
+   * their feet, so the two cues agree.
+   */
+  drawFighterPlates() {
+    const g = this.game;
+    if (!g.fighters) return;
+    const c = this.ctx;
+    const r = g.r;
+    const me = g.player;
+    for (const f of g.fighters) {
+      if (f === me || f.dead) continue;
+      const dist = Math.hypot(f.x - me.x, f.z - me.z);
+      const s = r.project(f.x, f.y + f.height + 0.4, f.z);
+      if (!s || s.x < -60 || s.x > this.w + 60) continue;
+      const foe = f.duelTeam !== me.duelTeam;
+      const w = clamp(360 / (s.depth + 4), this.touchMode ? 40 : 32, 110);
+      const h = this.touchMode ? 7 : 5;
+      c.fillStyle = 'rgba(0,0,0,0.65)';
+      c.fillRect(s.x - w / 2, s.y, w, h);
+      c.fillStyle = foe ? '#ff5a3c' : '#7dffb0';
+      c.fillRect(s.x - w / 2 + 1, s.y + 1, (w - 2) * clamp(f.hp / f.maxHp, 0, 1), h - 2);
+      if (f.absorb > 0) {
+        c.fillStyle = 'rgba(150,215,255,0.92)';
+        c.fillRect(s.x - w / 2, s.y - 4, w * Math.min(1, f.absorb / f.maxHp), 3);
+      }
+      if (dist < 40) {
+        this.font(this.touchMode ? 12 : 11);
+        c.textAlign = 'center';
+        c.fillStyle = foe ? '#ff9a7a' : '#a8ffcb';
+        c.shadowColor = 'rgba(0,0,0,0.9)';
+        c.shadowBlur = 4;
+        c.fillText(f.duelName || 'Player', s.x, s.y - 9);
+        c.shadowBlur = 0;
+      }
+    }
+  }
+
   drawWaveInfo() {
     const c = this.ctx;
     const g = this.game;
     const d = g.director;
+    // A duel has no waves and no director state worth printing. It gets the
+    // scoreboard in the same slot instead.
+    if (g.mode === 'duel') return this.drawDuelBar();
     const s = this.safe;
     c.textBaseline = 'top';
     c.shadowColor = 'rgba(0,0,0,0.7)';

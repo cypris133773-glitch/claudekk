@@ -81,6 +81,14 @@ const SCREENS = [
   'forge', 'armoury', 'potions', 'raids', 'raid',
   'stats', 'settings', 'howto', 'diag',
   'pause', 'upgrade', 'results', 'raidkill', 'raidwipe',
+  // The lobby is three different screens behind one name, and the one that
+  // fits easily is not the one that matters. Each is primed into its real
+  // state before it is measured: an 850-character invite code in a textarea
+  // and a six-seat 3v3 roster is the widest this screen ever gets, and it is
+  // the state a host actually stares at.
+  { name: 'duel', prime: 'start', label: 'duel:start' },
+  { name: 'duel', prime: 'host', label: 'duel:host' },
+  { name: 'duel', prime: 'join', label: 'duel:join' },
 ];
 
 /**
@@ -135,6 +143,29 @@ function primeRun() {
   B.game.raid = B.RAID_BY_ID.blacktemple;
   B.game.raidBossIndex = 0;
   B.game.lastBoss = B.RAID_BY_ID.blacktemple.bosses[0];
+}
+
+/**
+ * Put the lobby into one of its three real states.
+ *
+ * `host` makes an actual WebRTC offer rather than a placeholder string,
+ * because the length of that string is the entire layout question — a made-up
+ * short code would fit anywhere and prove nothing.
+ */
+async function primeDuel(which) {
+  const B = window.CRAFTARENA;
+  const charId = B.profile.characters[0].id;
+  B.lobby.leave();
+  B.menus.selectedChar = charId;
+  if (which === 'start') { B.lobby.mode = '3v3'; return; }
+  if (which === 'host') { await B.lobby.host('3v3', charId); return; }
+  // The joiner's second step, with its own reply code on screen — the first
+  // step is an empty textarea and fits by construction.
+  B.lobby.startJoin(charId);
+  const other = new (B.lobby.match.constructor)({ host: true, build: 'x', mode: '3v3' });
+  const inv = await other.invite();
+  await B.lobby.submitOffer(inv.code);
+  other.close();
 }
 
 const VIEWPORTS = [
@@ -256,13 +287,16 @@ async function run() {
     await frame.evaluate(primeRun);
 
     console.log(`\n=== ${vp.name}  ${vp.width}x${vp.height} ===`);
-    for (const name of SCREENS) {
+    for (const entry of SCREENS) {
+      const name = typeof entry === 'string' ? entry : entry.name;
+      const label = typeof entry === 'string' ? entry : entry.label;
+      if (typeof entry !== 'string') await frame.evaluate(primeDuel, entry.prime);
       const r = await frame.evaluate(probeScreen, name);
       // One CSS pixel of slack: sub-pixel layout rounding is not a scrollbar.
       const ok = r.overflowY <= 1 && r.overflowX <= 1 && r.offscreen.length === 0
         && r.scale >= MIN_SCALE && r.brokenIcons.length === 0 && r.covered.length === 0;
       if (!ok) failures++;
-      results.push({ vp: vp.name, name, ok });
+      results.push({ vp: vp.name, name: label, ok });
       const fit = r.scale < 1 ? ` (scaled to ${r.scale.toFixed(2)})` : '';
       const detail = ok
         ? `${r.buttons} controls${r.icons ? `, ${r.icons} icons` : ''}, fits${fit}`
@@ -274,7 +308,7 @@ async function run() {
           r.brokenIcons.length ? `icons out of layout: ${r.brokenIcons.slice(0, 3).join(', ')}` : '',
           r.covered.length ? `hidden under the corner button: ${r.covered.join(', ')}` : '',
         ].filter(Boolean).join('; ');
-      console.log(`  [${ok ? 'PASS' : 'FAIL'}] ${name.padEnd(10)} ${detail}`);
+      console.log(`  [${ok ? 'PASS' : 'FAIL'}] ${label.padEnd(11)} ${detail}`);
     }
     await context.close();
   }

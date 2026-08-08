@@ -60,6 +60,12 @@ export class Player extends Entity {
     if (world.playerSpawn.yaw !== undefined) this.yaw = world.playerSpawn.yaw;
     this.cls = cls;
     this.mods = mods;
+    // "Is this a player character" as a fact about the entity rather than as
+    // `source === game.player`. In a duel the host simulates up to six of
+    // these and only one of them is the local one — crit, lifesteal and the
+    // on-hit riders belong to all of them, while the screen shake and the hit
+    // marker belong to exactly one.
+    this.isPlayerKind = true;
     this.skills = (skills && skills.length ? skills : cls.skills).slice(0, LOADOUT_SIZE);
     this.buffs = [];
     this.cooldowns = this.skills.map(() => 0);
