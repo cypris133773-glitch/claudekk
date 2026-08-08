@@ -1998,6 +1998,9 @@ export class Game {
     // Nothing is drawn until it is asked for. The last batch of the frame has
     // no state change after it to force it out, so the frame does it itself.
     this.r.flush();
+    // And then the look: bloom, tonemap, grade. A no-op on a device without
+    // the targets for it, which is why it is unconditional here.
+    this.r.present();
   }
 
   /**

@@ -3,10 +3,11 @@
 
 import {
   createContext, createProgram, createSkyProgram, createMesh, createInstanceBuffer,
+  createPostPrograms, createTarget, deleteTarget,
   INSTANCE_FLOATS, MAX_LIGHTS,
 } from './gl.js';
 import { createAtlasTexture, tileUV, T } from './atlas.js';
-import { mat4, perspective, viewFromEuler, composeTRS, identity, multiply, clamp } from '../core/math.js';
+import { mat4, perspective, viewFromEuler, composeTRS, identity, multiply, clamp, SUN_DIR } from '../core/math.js';
 
 /** Unit cube centred on the origin, uv 0..1 per face, shading baked into light. */
 function cubeVerts() {
@@ -141,6 +142,32 @@ export class Renderer {
     this.fogNear = 34;
     this.fogFar = 82;
     this.skyTint = [0.55, 0.66, 0.82];
+
+    // --- Post-processing --------------------------------------------------
+    //
+    // Off until `initPost` succeeds and `fancy` is on. Every one of these is
+    // allowed to be null: a device that cannot give us a float target, or a
+    // context that has just been lost, must render the game without a look
+    // rather than not render the game.
+    this.post = null;
+    this.sceneTarget = null;
+    this.bloomA = null;
+    this.bloomB = null;
+    this.postW = 0;
+    this.postH = 0;
+    // The grade. Exposed as fields rather than constants so a theme, a boss
+    // phase or the settings screen can push them without a shader edit.
+    // Shared with the mesh builder, which marches along the same vector to
+    // bake shadows. Two copies of this number is a room lit from one direction
+    // and shadowed from another.
+    this.sunDir = SUN_DIR;
+    this.specular = 0.22;
+    this.rim = 0.16;
+    this.bloomAmount = 0.85;
+    this.bloomThreshold = 0.62;
+    this.exposure = 1.04;
+    this.saturation = 1.18;
+    this.vignette = 0.62;
 
     // A GPU reset — backgrounding a tab on Android, an iOS memory warning, a
     // driver timeout — takes the context away. Without preventDefault the
@@ -294,6 +321,127 @@ export class Renderer {
     this.worldMesh = createMesh(gl, world.mesh, this.worldInstVbo);
   }
 
+  /**
+   * Build the post-processing chain, or decide to live without one.
+   *
+   * Called lazily from the first frame that wants it rather than from the
+   * constructor, because it needs the drawing buffer to have a size — and on a
+   * page that has not laid out yet, that size is zero.
+   *
+   * Every failure path here is "no post-processing", never "no game". A device
+   * that cannot allocate the targets still gets the scene, drawn straight to
+   * the screen exactly as it was before any of this existed.
+   */
+  initPost() {
+    if (this.post === false) return false;          // tried once, cannot
+    const gl = this.gl;
+    const w = this.canvas.width, h = this.canvas.height;
+    if (w < 8 || h < 8) return false;
+    if (this.post && this.postW === w && this.postH === h) return true;
+
+    // Half resolution for the bloom. Nobody can see the resolution of a blur,
+    // and it makes the most expensive stage a quarter of the pixels.
+    const bw = Math.max(2, w >> 1), bh = Math.max(2, h >> 1);
+    try {
+      if (!this.post) this.post = createPostPrograms(gl);
+      deleteTarget(gl, this.sceneTarget);
+      deleteTarget(gl, this.bloomA);
+      deleteTarget(gl, this.bloomB);
+      this.sceneTarget = createTarget(gl, w, h, { depth: true, half: true });
+      this.bloomA = createTarget(gl, bw, bh, {});
+      this.bloomB = createTarget(gl, bw, bh, {});
+      if (!this.sceneTarget || !this.bloomA || !this.bloomB) throw new Error('incomplete target');
+      this.postW = w; this.postH = h;
+      return true;
+    } catch (err) {
+      console.warn('Post-processing unavailable:', err && err.message);
+      deleteTarget(gl, this.sceneTarget);
+      deleteTarget(gl, this.bloomA);
+      deleteTarget(gl, this.bloomB);
+      this.sceneTarget = this.bloomA = this.bloomB = null;
+      this.post = false;
+      return false;
+    }
+  }
+
+  /** True while the frame is being drawn into a texture rather than the screen. */
+  get postActive() {
+    return !!(this.fancy && this.post && this.sceneTarget);
+  }
+
+  /**
+   * Resolve the frame: bloom, tonemap, grade, and out to the screen.
+   *
+   * Safe to call when there is no chain — it simply does nothing, which is
+   * what makes the caller a single unconditional line.
+   */
+  present() {
+    if (this.contextLost || !this.postActive) return;
+    const gl = this.gl;
+    const P = this.post;
+    this.flush();
+
+    gl.disable(gl.DEPTH_TEST);
+    gl.depthMask(false);
+    gl.disable(gl.BLEND);
+    gl.bindVertexArray(null);
+    this.st.vao = null;
+
+    const draw = (target, prog, setup) => {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.fbo : null);
+      const w = target ? target.w : this.canvas.width;
+      const h = target ? target.h : this.canvas.height;
+      gl.viewport(0, 0, w, h);
+      gl.useProgram(prog.prog);
+      setup(prog.u);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    };
+
+    const bind = (unit, tex, loc) => {
+      gl.activeTexture(gl.TEXTURE0 + unit);
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.uniform1i(loc, unit);
+    };
+
+    // 1. Bright pass, downsampling to half res as it goes.
+    draw(this.bloomA, P.bright, (u) => {
+      bind(0, this.sceneTarget.tex, u.uScene);
+      gl.uniform2f(u.uTexel, 1 / this.canvas.width, 1 / this.canvas.height);
+      gl.uniform1f(u.uThreshold, this.bloomThreshold);
+    });
+
+    // 2 and 3. Separable blur: across, then down.
+    draw(this.bloomB, P.blur, (u) => {
+      bind(0, this.bloomA.tex, u.uSrc);
+      gl.uniform2f(u.uDir, 1 / this.bloomA.w, 0);
+    });
+    draw(this.bloomA, P.blur, (u) => {
+      bind(0, this.bloomB.tex, u.uSrc);
+      gl.uniform2f(u.uDir, 0, 1 / this.bloomB.h);
+    });
+
+    // 4. Composite to the screen.
+    draw(null, P.composite, (u) => {
+      bind(0, this.sceneTarget.tex, u.uScene);
+      bind(1, this.bloomA.tex, u.uBloom);
+      gl.uniform1f(u.uBloomAmount, this.bloomAmount);
+      gl.uniform1f(u.uExposure, this.exposure);
+      gl.uniform1f(u.uSaturation, this.saturation);
+      gl.uniform1f(u.uVignette, this.vignette);
+    });
+
+    // Hand the pipeline back exactly as the rest of the renderer expects to
+    // find it. Leaving TEXTURE1 bound or the world program unselected is the
+    // kind of thing that shows up three frames later as a black arena.
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthMask(true);
+    gl.enable(gl.BLEND);
+    gl.useProgram(this.prog);
+  }
+
   resize() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2) * this.renderScale;
     // Asking for a drawing buffer wider than the GL limit does not throw: the
@@ -368,6 +516,12 @@ export class Renderer {
     if (this.contextLost) return;
     const gl = this.gl;
     this.resize();
+    // Into a texture when there is a chain to run, straight to the screen when
+    // there is not. Sized here, after resize, so a rotated phone rebuilds the
+    // targets on the frame the canvas actually changed.
+    if (this.fancy) this.initPost();
+    gl.bindFramebuffer(gl.FRAMEBUFFER,
+      this.postActive ? this.sceneTarget.fbo : null);
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     // The sky pass covers every pixel, so clearing colour first would write
     // the whole framebuffer twice — on a software rasteriser that alone cost
@@ -401,6 +555,13 @@ export class Renderer {
     gl.uniform1f(this.u.uFogNear, this.fogNear);
     gl.uniform1f(this.u.uFogFar, this.fogFar);
     gl.uniform3fv(this.u.uGlowColor, this.theme.glow || [0.5, 0.38, 0.18]);
+    // Where the sun is and where the eye is: the two things a baked per-face
+    // shade cannot know, and therefore the two things that were stopping this
+    // renderer from having a highlight anywhere in it.
+    gl.uniform3fv(this.u.uSunDir, this.sunDir);
+    gl.uniform3f(this.u.uCamPos, camera.x, camera.y, camera.z);
+    gl.uniform2f(this.u.uSpecRim,
+      this.fancy ? this.specular : 0, this.fancy ? this.rim : 0);
     this.uploadLights();
     // Anything left queued from an aborted frame is dropped rather than drawn
     // against this frame's camera.

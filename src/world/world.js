@@ -2,7 +2,7 @@
 
 import { BLOCKS, AIR, B } from './blocks.js';
 import { tileUV } from '../render/atlas.js';
-import { clamp, hash2 } from '../core/math.js';
+import { clamp, hash2, SUN_DIR } from '../core/math.js';
 
 export const SX = 64, SY = 28, SZ = 64;
 
@@ -885,9 +885,50 @@ export class World {
     const [t1, t2] = tangents;
     const side1 = this.opaqueAt(nx + t1[0], ny + t1[1], nz + t1[2]);
     const side2 = this.opaqueAt(nx + t2[0], ny + t2[1], nz + t2[2]);
-    if (side1 && side2) return 0.55;
+    // Deepened from 0.55/0.15. Ambient occlusion is the single cheapest thing
+    // that makes a voxel world read as built rather than printed — it is what
+    // puts a seam where two walls meet and a pool of dark in an inside corner
+    // — and the old numbers were faint enough that a screenshot of a large
+    // flat room had no shading information in it at all.
+    if (side1 && side2) return 0.42;
     const corner = this.opaqueAt(nx + t1[0] + t2[0], ny + t1[1] + t2[1], nz + t1[2] + t2[2]);
-    return 1 - (side1 + side2 + corner) * 0.15;
+    return 1 - (side1 + side2 + corner) * 0.19;
+  }
+
+  /**
+   * Is this face in the sun, or in something's shadow?
+   *
+   * Marched here at mesh time rather than shaded at runtime, and that is the
+   * whole reason it is affordable. The world is static and the sun does not
+   * move, so a shadow is a property of the geometry — exactly the kind of fact
+   * that belongs baked into a vertex rather than recomputed sixty times a
+   * second for every pixel it covers. A shadow map would cost a second render
+   * pass of the whole arena every frame to answer the same question.
+   *
+   * This is the difference between a room with objects in it and a room with
+   * objects standing *on* it. Before this, a wall, a pillar and a flight of
+   * steps all cast nothing at all, and the floor of every arena was one
+   * uninterrupted sheet of the same brightness.
+   *
+   * Returns 1 in full sun, and a floor value in shadow rather than zero —
+   * shadowed surfaces are still lit by the sky, and a black shadow in a voxel
+   * game reads as a hole in the floor.
+   */
+  sunlit(x, y, z, dir) {
+    // Start half a block off the face, or the march immediately hits the block
+    // the face belongs to.
+    let px = x + 0.5 + dir[0] * 0.5;
+    let py = y + 0.5 + dir[1] * 0.5;
+    let pz = z + 0.5 + dir[2] * 0.5;
+    // A face pointing away from the sun is in its own shadow and needs no march.
+    if (dir[0] * SUN_DIR[0] + dir[1] * SUN_DIR[1] + dir[2] * SUN_DIR[2] <= 0) return 0.68;
+    const STEPS = 22;
+    for (let i = 0; i < STEPS; i++) {
+      px += SUN_DIR[0]; py += SUN_DIR[1]; pz += SUN_DIR[2];
+      if (py >= SY) break;                       // out into open sky
+      if (this.opaqueAt(px | 0, py | 0, pz | 0)) return 0.68;
+    }
+    return 1;
   }
 
   /**
@@ -951,6 +992,9 @@ export class World {
 
   buildMesh() {
     const light = this.buildLight();
+    // Stable across rebuilds: the door opening in a dungeon re-meshes the
+    // world, and grain that moved when it did would be visible as a shimmer.
+    const seedRef = this.meshSeed || (this.meshSeed = 1337);
     const out = [];
     for (let y = 0; y < SY; y++) {
       for (let z = 0; z < SZ; z++) {
@@ -978,12 +1022,28 @@ export class World {
               ? light[this.idx(nx, ny, nz)] / 15 : 0;
             const glow = Math.max(emissive, inFront);
 
+            // Per-block brightness jitter.
+            //
+            // Every block of a given type was previously identical to every
+            // other, which is why a big flat wall photographed as one solid
+            // rectangle of colour with nothing in it. A few percent of
+            // variation, hashed off the block's own coordinates so it is
+            // stable across frames and rebuilds, is the difference between a
+            // surface and a fill. Deliberately small: this is grain, not
+            // camouflage, and anything stronger reads as noise.
+            const grain = emissive ? 1 : 0.90 + hash2(x * 7 + z, y * 13 + x, seedRef) * 0.20;
+            // One march per face, not per corner: a shadow edge that follows
+            // the block grid is what a voxel shadow looks like, and four
+            // marches would cost four times as much to soften an edge the art
+            // style does not want softened.
+            const sun = emissive ? 1 : this.sunlit(x, y, z, F.dir);
+
             const verts = [];
             for (let c = 0; c < 4; c++) {
               const co = F.corners[c];
               const shade = emissive
                 ? Math.max(F.shade, emissive)
-                : F.shade * this.ao(x, y, z, F.dir, co);
+                : F.shade * this.ao(x, y, z, F.dir, co) * grain * sun;
               const [uu, vv] = FACE_UV[c];
               verts.push([
                 x + co[0], y + co[1], z + co[2],

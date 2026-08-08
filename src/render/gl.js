@@ -94,6 +94,9 @@ uniform vec3 uSunColor;
 uniform vec3 uSkyColor;
 uniform vec3 uGroundColor;
 uniform vec3 uGlowColor;
+uniform vec3 uSunDir;
+uniform vec3 uCamPos;
+uniform vec2 uSpecRim;   // specular strength, rim strength
 
 // Dynamic lights: a fireball in flight, a blast going off, an ultimate.
 //
@@ -125,8 +128,12 @@ void main() {
   // two mixes, and costs no vertex bandwidth at all.
   // Kept to mixes and multiplies: a pow() here runs once per covered pixel of
   // the whole arena, and on a software rasteriser that alone was measurable.
+  // Ambient only. The sun used to be folded in here off the baked per-face
+  // shade, and once a real normal arrived below that became the same light
+  // counted twice — which is why a floor, whose baked shade is already 1.0,
+  // came out pure white.
   float up = clamp((vLight - 0.55) * 2.2222, 0.0, 1.0);
-  vec3 lightCol = mix(uGroundColor, uSkyColor, up) + uSunColor * (up * up);
+  vec3 lightCol = mix(uGroundColor, uSkyColor, up);
   // Emissive light thrown by the room itself, flooded through the air at mesh
   // time and coloured here by the room's own hue. This is what makes the rock
   // beside a lake of fire look like it is beside a lake of fire, and it is the
@@ -148,8 +155,45 @@ void main() {
     float f = clamp(1.0 - d / r, 0.0, 1.0);
     lightCol += uLightColor[i] * f * f;
   }
+  // --- Surface normal, for free ----------------------------------------
+  //
+  // The mesh carries no normals and does not need to. Every face in this game
+  // is flat and axis-aligned, so the derivative of the world position across
+  // two neighbouring pixels *is* the surface plane — two hardware
+  // instructions, no vertex bandwidth, and exact rather than interpolated.
+  //
+  // This is what the renderer was missing to have materials at all. The baked
+  // per-face shade gives direction; it cannot give a highlight, because a
+  // highlight depends on where the camera is and a baked value does not know.
+  vec3 N = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
+  vec3 V = normalize(uCamPos - vWorld);
+  // Face the viewer: the cross product's sign depends on triangle winding and
+  // a back-facing normal turns a highlight into a black patch.
+  if (dot(N, V) < 0.0) N = -N;
+
+  // Sun wrap. Half-Lambert rather than a hard terminator — a voxel face is
+  // large and flat, and a hard N.L makes one whole wall go black while the
+  // wall beside it is fully lit.
+  float ndl = dot(N, uSunDir) * 0.5 + 0.5;
+  lightCol += uSunColor * (ndl * ndl);
+
+  // Specular, by multiplication only. pow() runs once per covered pixel of the
+  // whole arena and was measurable on a software rasteriser on its own, so the
+  // exponent is built from four squarings: s^16 for the cost of four multiplies.
+  vec3 H = normalize(uSunDir + V);
+  float s = max(dot(N, H), 0.0);
+  s *= s; s *= s; s *= s; s *= s;
+  // Rim light: bright where the surface turns away from the camera, which is
+  // what separates a silhouette from the wall behind it.
+  float f = 1.0 - max(dot(N, V), 0.0);
+  f *= f * f;
+
   lightCol = mix(lightCol, vec3(1.0), vEmissive);
   rgb *= lightCol * mix(max(vLight, vGlow * 0.85), 1.0, vEmissive);
+  // Added after the albedo multiply, not before: a highlight is light arriving
+  // at the eye, not more of the surface's own colour.
+  rgb += uSunColor * s * uSpecRim.x * (1.0 - vEmissive);
+  rgb += uSkyColor * f * uSpecRim.y * (1.0 - vEmissive);
 
   rgb = mix(rgb, vec3(1.0, 0.55, 0.55), vFlash);
   float fog = clamp((vDepth - uFogNear) / max(uFogFar - uFogNear, 0.001), 0.0, 1.0);
@@ -190,6 +234,207 @@ void main() {
   col += uSun * glow * glow * 0.55;
   outColor = vec4(col, 1.0);
 }`;
+
+// --- Post-processing --------------------------------------------------------
+//
+// WHY THE SCENE STOPPED GOING STRAIGHT TO THE SCREEN
+//
+// Everything above draws lit voxels and then hands them to the display. That
+// is a renderer, but it is not a *look*. Three things were missing and all
+// three are the same stage of the pipeline:
+//
+//   BLOOM      the game is full of things that are supposed to be brighter
+//              than white — lava, rune blocks, an ultimate going off, a
+//              fireball in flight — and every one of them was being clamped to
+//              1.0 and drawn flat. Light that does not bleed does not read as
+//              light; it reads as a pale blue square.
+//   TONEMAP    linear colour clipped at 1.0 makes every bright surface go
+//              chalky and every shadow go flat. A filmic curve is what puts
+//              contrast back into the midtones and stops highlights turning
+//              into paper.
+//   VIGNETTE   a cheap, honest frame. It costs a multiply and it is the
+//              difference between a viewport and a shot.
+//
+// The chain is: scene -> half-res bright pass -> two blur passes -> composite.
+// Half res because a bloom is a blur and nobody can see the resolution of a
+// blur, and it makes the most expensive stage a quarter of the pixels.
+
+/** One triangle covering the screen. No vertex buffer, no attributes. */
+const POST_VERT = `#version 300 es
+precision highp float;
+out vec2 vUV;
+void main() {
+  vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+  vUV = p;
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}`;
+
+/**
+ * Bright pass, at half resolution.
+ *
+ * A soft knee rather than a hard cut. A hard threshold makes bloom pop in and
+ * out as a surface crosses it, which on a moving voxel face is a flicker you
+ * cannot stop looking at; the knee ramps it in over a range instead.
+ */
+const BRIGHT_FRAG = `#version 300 es
+precision highp float;
+in vec2 vUV;
+uniform sampler2D uScene;
+uniform vec2 uTexel;
+uniform float uThreshold;
+out vec4 outColor;
+void main() {
+  // Four taps in a box, which both downsamples and pre-blurs for free.
+  vec3 c = texture(uScene, vUV + uTexel * vec2(-1.0, -1.0)).rgb
+         + texture(uScene, vUV + uTexel * vec2( 1.0, -1.0)).rgb
+         + texture(uScene, vUV + uTexel * vec2(-1.0,  1.0)).rgb
+         + texture(uScene, vUV + uTexel * vec2( 1.0,  1.0)).rgb;
+  c *= 0.25;
+  float lum = max(c.r, max(c.g, c.b));
+  float knee = smoothstep(uThreshold, uThreshold + 0.45, lum);
+  outColor = vec4(c * knee, 1.0);
+}`;
+
+/**
+ * Separable blur. Run twice — once across, once down — which is two passes of
+ * nine taps instead of one pass of eighty-one.
+ */
+const BLUR_FRAG = `#version 300 es
+precision highp float;
+in vec2 vUV;
+uniform sampler2D uSrc;
+uniform vec2 uDir;
+out vec4 outColor;
+void main() {
+  // Five taps at linear-sampled midpoints, which is a nine-tap gaussian for
+  // the cost of five: the hardware does two of the samples in each fetch.
+  vec3 c = texture(uSrc, vUV).rgb * 0.2270270270;
+  c += texture(uSrc, vUV + uDir * 1.3846153846).rgb * 0.3162162162;
+  c += texture(uSrc, vUV - uDir * 1.3846153846).rgb * 0.3162162162;
+  c += texture(uSrc, vUV + uDir * 3.2307692308).rgb * 0.0702702703;
+  c += texture(uSrc, vUV - uDir * 3.2307692308).rgb * 0.0702702703;
+  outColor = vec4(c, 1.0);
+}`;
+
+/**
+ * Composite: scene + bloom, tonemapped and graded, with a vignette.
+ *
+ * The tonemap is the Narkowicz ACES fit — one rational function, six
+ * multiplies and a divide, and visually indistinguishable from the full curve
+ * at a fraction of its cost. Applied after the bloom is added rather than
+ * before, so the bloom is part of what gets rolled off instead of being pasted
+ * on top of an already-graded image.
+ */
+const COMPOSITE_FRAG = `#version 300 es
+precision highp float;
+in vec2 vUV;
+uniform sampler2D uScene;
+uniform sampler2D uBloom;
+uniform float uBloomAmount;
+uniform float uExposure;
+uniform float uSaturation;
+uniform float uVignette;
+out vec4 outColor;
+
+vec3 aces(vec3 x) {
+  return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+}
+
+void main() {
+  vec3 col = texture(uScene, vUV).rgb;
+  col += texture(uBloom, vUV).rgb * uBloomAmount;
+  col *= uExposure;
+  col = aces(col);
+
+  // Saturation, around the luminance the eye actually weights. Voxel palettes
+  // are flat by construction and a little extra chroma is most of what makes
+  // one look painted rather than printed.
+  float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
+  col = mix(vec3(lum), col, uSaturation);
+
+  // Vignette, and a very slight warm/cool split between centre and edge. Both
+  // are multiplies; neither is subtle enough to notice and both are missed
+  // when they are gone.
+  vec2 d = vUV - 0.5;
+  float v = 1.0 - dot(d, d) * uVignette;
+  col *= v * v;
+
+  outColor = vec4(col, 1.0);
+}`;
+
+function linkPost(gl, frag, names) {
+  const prog = gl.createProgram();
+  gl.attachShader(prog, compilePost(gl, gl.VERTEX_SHADER, POST_VERT));
+  gl.attachShader(prog, compilePost(gl, gl.FRAGMENT_SHADER, frag));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    throw new Error('Post program link failed: ' + gl.getProgramInfoLog(prog));
+  }
+  const u = {};
+  for (const n of names) u[n] = gl.getUniformLocation(prog, n);
+  return { prog, u };
+}
+function compilePost(gl, type, src) { return compile(gl, type, src); }
+
+export function createPostPrograms(gl) {
+  return {
+    bright: linkPost(gl, BRIGHT_FRAG, ['uScene', 'uTexel', 'uThreshold']),
+    blur: linkPost(gl, BLUR_FRAG, ['uSrc', 'uDir']),
+    composite: linkPost(gl, COMPOSITE_FRAG,
+      ['uScene', 'uBloom', 'uBloomAmount', 'uExposure', 'uSaturation', 'uVignette']),
+  };
+}
+
+/**
+ * A colour target, and optionally a depth buffer to go with it.
+ *
+ * `half` asks for a 16-bit float target so the scene can carry values above
+ * 1.0 into the bright pass — which is the entire point of the exercise, since
+ * an 8-bit target clamps exactly the highlights bloom is meant to find. It is
+ * an extension, and on hardware without it this quietly returns an 8-bit
+ * target instead: the bloom still works, it just has less to work with.
+ */
+export function createTarget(gl, w, h, { depth = false, half = false } = {}) {
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  const useHalf = half && !!gl.getExtension('EXT_color_buffer_half_float');
+  if (useHalf) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+  else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  // Linear, because every consumer of these is either a blur or a full-screen
+  // resample and both want the hardware to do the filtering.
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+  const fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  let rbo = null;
+  if (depth) {
+    rbo = gl.createRenderbuffer();
+    gl.bindRenderbuffer(gl.RENDERBUFFER, rbo);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, w, h);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rbo);
+  }
+  const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.bindTexture(gl.TEXTURE_2D, null);
+  if (!ok) {
+    gl.deleteFramebuffer(fbo);
+    gl.deleteTexture(tex);
+    if (rbo) gl.deleteRenderbuffer(rbo);
+    return null;
+  }
+  return { fbo, tex, rbo, w, h, half: useHalf };
+}
+
+export function deleteTarget(gl, t) {
+  if (!t) return;
+  gl.deleteFramebuffer(t.fbo);
+  gl.deleteTexture(t.tex);
+  if (t.rbo) gl.deleteRenderbuffer(t.rbo);
+}
 
 function compile(gl, type, src) {
   const sh = gl.createShader(type);
@@ -236,7 +481,7 @@ export function createProgram(gl) {
   // varied per box, which is exactly what an instance attribute is for.
   for (const name of ['uProj', 'uView', 'uAtlas', 'uFogColor', 'uFogNear',
     'uFogFar', 'uCutoff', 'uSunColor', 'uSkyColor', 'uGroundColor', 'uGlowColor',
-    'uLightPos', 'uLightColor', 'uLightCount']) {
+    'uLightPos', 'uLightColor', 'uLightCount', 'uSunDir', 'uCamPos', 'uSpecRim']) {
     u[name] = gl.getUniformLocation(prog, name);
   }
   return { prog, u };

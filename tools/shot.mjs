@@ -155,6 +155,33 @@ if (process.env.SHOT_RAID) {
   server.close();
   process.exit(0);
 }
+// SHOT_ARENA=<layout number> photographs an arena mid-wave instead of a menu.
+// Graphics work needs to be looked at in the place people actually spend their
+// time, and that is a wave, not a raid room and not the title screen.
+if (process.env.SHOT_ARENA !== undefined) {
+  await frame.evaluate((layout) => {
+    const B = window.CRAFTARENA;
+    B.menus.show(null);
+    B.game.startRun(B.profile.characters[0].id, { layout });
+    B.game.wave = 12;
+    // A wave's worth of enemies, spread around, so the shot has a fight in it.
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2;
+      const p = B.game.player;
+      B.game.spawnMob(i % 3 === 0 ? 'skele' : i % 3 === 1 ? 'brute' : 'husk',
+        p.x + Math.cos(a) * (7 + i), p.y, p.z + Math.sin(a) * (7 + i));
+    }
+    B.game.player.pitch = -0.05;
+  }, Number(process.env.SHOT_ARENA));
+  await page.waitForTimeout(1100);
+  const file = path.join(OUT, `arena-${process.env.SHOT_ARENA}-${width}x${height}.png`);
+  await page.screenshot({ path: file });
+  console.log(file);
+  await browser.close();
+  server.close();
+  process.exit(0);
+}
+
 for (const name of screens) {
   await frame.evaluate((n) => window.CRAFTARENA.menus.show(n), name);
   // Let the entry fade settle so the shot is of the resting state.

@@ -129,3 +129,20 @@ export function hash2(x, y, seed = 0) {
   h = (h ^ (h >> 13)) * 1274126177;
   return ((h ^ (h >> 16)) >>> 0) / 4294967296;
 }
+
+/**
+ * Where the sun is, as a unit vector pointing towards it.
+ *
+ * Lives here rather than in the renderer because two very different parts of
+ * the game need to agree on it exactly: the shader, which uses it for
+ * highlights, and the mesh builder, which marches along it to bake shadows. A
+ * disagreement between those two is a room lit from one direction and shadowed
+ * from another, which reads as broken without being obviously wrong anywhere.
+ */
+// Roughly 38 degrees above the horizon. A high sun is the safe choice and the
+// boring one: it puts every shadow directly underneath the thing casting it,
+// so a wall two blocks thick casts two blocks of shadow and the floor stays a
+// flat sheet. Lower, and the same wall throws a shadow you can see across the
+// room, which is most of what makes an arena look like a place at a time of
+// day rather than a diagram under a lamp.
+export const SUN_DIR = [0.556, 0.618, 0.556];
