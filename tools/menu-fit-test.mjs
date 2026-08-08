@@ -79,7 +79,7 @@ function startServer() {
 const SCREENS = [
   'title', 'sheet', 'options', 'roster', 'classes', 'loadout', 'talents',
   'forge', 'armoury', 'potions', 'raids', 'raid',
-  'stats', 'settings', 'howto', 'diag',
+  'stats', 'settings', 'howto', 'diag', 'donate',
   'pause', 'upgrade', 'results', 'raidkill', 'raidwipe',
   // A locked talent, which is now the tallest the detail panel gets: it shows
   // what the talent does, the per-rank numbers, and the unlock cost. It used

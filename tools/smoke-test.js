@@ -1949,8 +1949,20 @@ check('a keyboard can play the whole game', async () => {
   for (let i = 1; i <= 4; i++) {
     assert(src.includes(`'Digit${i}'`), `skill ${i} has no number key`);
   }
-  for (const key of ['KeyQ', 'KeyE', 'KeyR', 'KeyF']) {
-    assert(src.includes(`'${key}'`), `${key} is no longer a skill binding`);
+  // The belt, on the three keys a hand already resting on WASD can reach.
+  //
+  // QERF used to be a second binding for the same four skills the number row
+  // already had, and the potions were on 5-7 — a stretch you make with your
+  // eyes down, which is the one thing you cannot do at the moment you need a
+  // potion. A duplicate binding is not worth the three best keys on the board.
+  for (const key of ['KeyQ', 'KeyE', 'KeyR']) {
+    assert(src.includes(`${key}') this.state.potions`),
+      `${key} is not bound to a potion`);
+  }
+  assert(!/Key[QERF]'\) this\.state\.skills/.test(src),
+    'QERF are still duplicating the number row');
+  for (const d of ['Digit5', 'Digit6', 'Digit7']) {
+    assert(!src.includes(`'${d}'`), `${d} is still bound — the belt moved to QER`);
   }
   for (const key of ['KeyW', 'KeyA', 'KeyS', 'KeyD']) {
     assert(src.includes(`'${key}'`), `${key} no longer moves`);
@@ -3931,6 +3943,37 @@ check('an archer cannot back away for ever', async () => {
         + 'a wave of archers in an open arena is an unanswerable position');
     }
   }
+});
+
+check('a potion key actually drinks a potion', async () => {
+  const { Game } = await import('../src/game/game.js');
+  const { makeHarness } = await import('./harness.js');
+  const { POTIONS } = await import('../src/data/potions.js');
+
+  // The binding test above reads the source; this one plays the game. A key
+  // wired to a state flag nobody consumes looks correct in every grep and does
+  // nothing when you press it.
+  const h = makeHarness({ level: 30 });
+  const game = new Game(h.renderer, h.audio, h.profile);
+  game.startRun(CLASSES[0], { layout: 0 });
+  const rack = h.profile.potions(game.charId);
+  for (const def of POTIONS.slice(0, 3)) rack[def.id] = 3;
+
+  for (let slot = 0; slot < 3; slot++) {
+    const before = rack[POTIONS[slot].id];
+    const input = h.input();
+    input.potions = [false, false, false];
+    input.potions[slot] = true;
+    game.player.hp = game.player.maxHp * 0.5;
+    game.update(1 / 60, input);
+    assert(rack[POTIONS[slot].id] === before - 1,
+      `belt slot ${slot} did not consume its potion (${before} -> ${rack[POTIONS[slot].id]})`);
+    // Consumed once per press, not once per frame it is held.
+    game.update(1 / 60, input);
+    assert(rack[POTIONS[slot].id] === before - 1,
+      `belt slot ${slot} drained a second potion from one press`);
+  }
+  game.endRun();
 });
 
 // --- Report ----------------------------------------------------------------

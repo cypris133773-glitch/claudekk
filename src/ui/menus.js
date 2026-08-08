@@ -31,6 +31,43 @@ import { QUEST_COUNT } from '../data/quests.js';
 import { talentLines, talentNextGain, setBonusLine } from '../data/talentinfo.js';
 import { POTIONS, POTION_STACK } from '../data/potions.js';
 
+/**
+ * Where a donation goes. One address, written once, so the screen and any
+ * future mention of it cannot drift apart.
+ */
+const DONATE_ADDRESS = '0x398eb88662f612a16ac6fe83bf1c7c56d7a2c23b';
+
+/**
+ * Put text on the clipboard, by whichever route this browser allows.
+ *
+ * The modern API needs a secure context and a permission the browser may
+ * simply refuse; the old one needs an element in the document and a user
+ * gesture. Both are tried because the only screen that uses this is the one
+ * where failing silently actually costs somebody something.
+ */
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch { /* fall through to the old way */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    // Off-screen but focusable: display:none cannot be selected from.
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:-1000px;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 // Presentation only, so it lives here and not in raids.js — the same reason
 // TALENT_GLYPHS does. One glyph per raid; the field colour comes from the
 // raid's own theme, so the icon is lit the way its arena is.
@@ -159,6 +196,7 @@ export class Menus {
       upgrade: () => this.buildUpgradeCards(),
       results: () => this.buildResults(),
       howto: () => this.buildHowTo(),
+      donate: () => this.buildDonate(),
       diag: () => this.buildDiagnostics(),
     }[name];
     if (builder) this.root.appendChild(builder());
@@ -501,6 +539,60 @@ export class Menus {
   // OPTIONS — everything that is not about a character
   // -------------------------------------------------------------------------
 
+  /**
+   * A wallet address, and the one interaction that matters: copying it.
+   *
+   * Nobody types forty-two hexadecimal characters off a phone screen, and
+   * nobody should be asked to — a donate screen that cannot be copied from is
+   * decoration. So the address is a button, the whole thing is one tap, and
+   * the tap says so afterwards, because a copy with no acknowledgement is
+   * indistinguishable from a copy that failed.
+   *
+   * `execCommand` is kept as a fallback deliberately. The clipboard API needs
+   * a secure context and a permission that a browser can refuse; this screen
+   * is the one place in the game where failing quietly costs the player
+   * something, so it falls back rather than assuming.
+   */
+  buildDonate() {
+    const wrap = el('div', 'screen');
+    wrap.appendChild(this.backBar('options'));
+    const p = this.panel('Donate', 'Entirely optional, and thank you');
+
+    p.appendChild(el('p', 'note',
+      'This game is free, has no ads, sells nothing and tracks nothing — '
+      + 'everything you have unlocked is saved in your own browser. '
+      + 'If you have enjoyed it and want to chip in, this is the address.'));
+
+    const label = el('div', 'donate-label', 'Ethereum / EVM');
+    p.appendChild(label);
+
+    const btn = el('button', 'donate-addr');
+    const addr = el('code', 'donate-code');
+    addr.textContent = DONATE_ADDRESS;
+    const hint = el('span', 'donate-hint', 'Tap to copy');
+    btn.appendChild(addr);
+    btn.appendChild(hint);
+    this.click(btn, async () => {
+      const ok = await copyText(DONATE_ADDRESS);
+      hint.textContent = ok ? 'Copied' : 'Could not copy — select it by hand';
+      btn.classList.toggle('copied', ok);
+      clearTimeout(this.donateTimer);
+      this.donateTimer = setTimeout(() => {
+        hint.textContent = 'Tap to copy';
+        btn.classList.remove('copied');
+      }, 2600);
+    });
+    p.appendChild(btn);
+
+    p.appendChild(el('p', 'note',
+      'Only ever send on a network you have checked. Nothing in the game '
+      + 'changes if you donate and nothing is withheld if you do not — '
+      + 'there is no paid content and there never will be.'));
+
+    wrap.appendChild(p);
+    return wrap;
+  }
+
   buildOptions() {
     const wrap = el('div', 'screen');
     wrap.appendChild(this.backBar('title'));
@@ -511,6 +603,7 @@ export class Menus {
       { label: 'SETTINGS', hint: 'Sound, controls and how it looks', go: 'settings' },
       { label: 'RECORDS', hint: 'Everything you have ever done', go: 'stats' },
       { label: 'SOMETHING IS BROKEN', hint: 'Screenshot this and send it', go: 'diag' },
+      { label: 'DONATE', hint: 'If you want to throw something in the hat', go: 'donate' },
     ];
     for (const it of items) {
       const b = el('button', 'menu-btn');
@@ -1918,19 +2011,21 @@ export class Menus {
         <li><b>Left half</b> — drag to move; the stick appears under your thumb</li>
         <li><b>Right half</b> — drag to look, tap to swing</li>
         <li><b>Touch the view</b> to attack — tap to swing, hold to keep swinging</li>
-        <li><b>⤒</b> jump · push the stick to the rim to sprint</li>
-        <li><b>Bottom centre</b> — your four skills, with cooldown rings</li>
+        <li>Push the stick to the rim to <b>sprint</b>. There is no jump — you step up ledges by walking into them</li>
+        <li><b>Bottom corner</b> — your four skills in a block, with the ultimate above them</li>
+        <li><b>Potions</b> sit along the edge; tap one to drink it</li>
       </ul>`,
       `<h3>Keyboard & mouse</h3><ul>
-        <li><b>WASD</b> move · <b>Space</b> jump · <b>Shift</b> sprint</li>
+        <li><b>WASD</b> or arrows move · <b>Shift</b> sprint</li>
         <li><b>Mouse</b> look · <b>Left click</b> attack</li>
-        <li><b>1 2 3 4</b> (or Q E R F) — skills</li>
+        <li><b>1 2 3 4</b> — skills · <b>X</b> — ultimate</li>
+        <li><b>Q E R</b> — potions, without taking a finger off WASD</li>
         <li><b>Esc</b> — pause</li>
       </ul>`,
       `<h3>Controller</h3><ul>
         <li><b>Left stick</b> move · <b>Right stick</b> look</li>
-        <li><b>A</b> jump · <b>X</b> or <b>RT</b> attack · <b>L3/LT</b> sprint</li>
-        <li><b>LB RB Y B</b> — skills 1–4</li>
+        <li><b>X</b> or <b>RT</b> attack · <b>L3/LT</b> sprint</li>
+        <li><b>LB RB Y B</b> — skills 1–4 · <b>A</b> — ultimate</li>
         <li>Plug in and press anything; it takes over automatically.</li>
       </ul>`,
       `<h3>The loop</h3><ul>

@@ -2780,3 +2780,45 @@ body.show-popout-btn #popout-btn { display: block; }
   .rooms-head { font-size: 12px; margin-bottom: 4px; }
   .room-row { padding: 6px 9px; margin-top: 4px; }
 }
+
+/* --- Donate ---------------------------------------------------------------
+   The address is the interaction, not a caption, so it is sized and framed
+   like a button and breaks across lines rather than overflowing a phone. */
+.donate-label {
+  margin: 14px 0 6px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+.donate-addr {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.donate-addr:hover { background: rgba(255, 255, 255, 0.09); }
+.donate-addr.copied { border-color: #7dffb0; background: rgba(125, 255, 176, 0.12); }
+.donate-code {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  /* Forty-two characters with no spaces in them: without this it decides the
+     width of the whole screen. */
+  word-break: break-all;
+  color: #ffd24a;
+}
+.donate-hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+}
+.donate-addr.copied .donate-hint { color: #7dffb0; }

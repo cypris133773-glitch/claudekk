@@ -88,23 +88,24 @@ export class Input {
       if (e.repeat) return;
       const k = e.code;
       this.keys.add(k);
+      // Skills are the number row and nothing else.
+      //
+      // QERF used to be a second binding for the same four, which cost the
+      // three most reachable keys on the board to duplicate something already
+      // bound. The belt had 5-7 instead, and 5 6 7 is a stretch you make with
+      // your eyes down — which is the one thing you cannot do while drinking a
+      // potion, because you drink one at the moment you are about to die.
       if (k === 'Digit1') this.state.skills[0] = true;
       if (k === 'Digit2') this.state.skills[1] = true;
       if (k === 'Digit3') this.state.skills[2] = true;
       if (k === 'Digit4') this.state.skills[3] = true;
-      if (k === 'KeyQ') this.state.skills[0] = true;
-      if (k === 'KeyE') this.state.skills[1] = true;
-      if (k === 'KeyR') this.state.skills[2] = true;
-      if (k === 'KeyF') this.state.skills[3] = true;
-      // The belt continues the number row where the skills stop, so the whole
-      // action bar is one run of keys under the left hand.
-      if (k === 'Digit5') this.state.potions[0] = true;
-      if (k === 'Digit6') this.state.potions[1] = true;
-      if (k === 'Digit7') this.state.potions[2] = true;
-      // The ultimate gets its own key well away from the rotation. 1-4 and
-      // QERF are the four skills and 5-7 is the belt, so the whole left hand is
-      // already spoken for; X is under the thumb and cannot be hit by accident
-      // while reaching for a cooldown.
+      // The belt, under the fingers that are already on WASD.
+      if (k === 'KeyQ') this.state.potions[0] = true;
+      if (k === 'KeyE') this.state.potions[1] = true;
+      if (k === 'KeyR') this.state.potions[2] = true;
+      // The ultimate gets its own key well away from the rotation: 1-4 are the
+      // skills and QER is the belt, so X is under the thumb and cannot be hit
+      // by accident while reaching for a cooldown.
       if (k === 'KeyX') this.state.ultimate = true;
       if (k === 'Escape') this.state.pause = true;
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(k)) e.preventDefault();
