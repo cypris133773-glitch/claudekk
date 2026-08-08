@@ -3,7 +3,7 @@
 
 import {
   createContext, createProgram, createSkyProgram, createMesh, createInstanceBuffer,
-  INSTANCE_FLOATS,
+  INSTANCE_FLOATS, MAX_LIGHTS,
 } from './gl.js';
 import { createAtlasTexture, tileUV, T } from './atlas.js';
 import { mat4, perspective, viewFromEuler, composeTRS, identity, multiply, clamp } from '../core/math.js';
@@ -163,6 +163,57 @@ export class Renderer {
     });
   }
 
+  // ---------------------------------------------------------------------
+  // Dynamic lights
+  // ---------------------------------------------------------------------
+  //
+  // Everything else in this renderer is baked. The sun, the sky bounce and the
+  // emissive flood through the room are all decided when the mesh is built, so
+  // before this the brightest things in the game — a fireball in flight, a
+  // blast going off, an ultimate — lit nothing at all. They were drawn *in
+  // front of* the room rather than happening in it.
+  //
+  // Four slots, because four is what a per-pixel loop can afford on a software
+  // rasteriser and because nobody has ever noticed a fifth simultaneous light
+  // in a voxel arena. When more than four are offered, the four nearest the
+  // camera win — the ones filling the screen are the ones whose absence would
+  // be visible.
+
+  /** Offer a light this frame. Cheap and ignored when the budget is spent. */
+  addLight(x, y, z, radius, color, strength = 1) {
+    if (!this.fancy || radius <= 0) return;
+    this.lightQueue.push({ x, y, z, r: radius, c: color, s: strength });
+  }
+
+  /** Pick the four that matter and hand them to the shader. */
+  uploadLights() {
+    const gl = this.gl;
+    const q = this.lightQueue;
+    if (q.length > MAX_LIGHTS) {
+      // Nearest to the camera, not brightest: a huge light behind you
+      // contributes nothing to a single pixel on screen.
+      const cx = this.camX, cy = this.camY, cz = this.camZ;
+      q.sort((a, b) => ((a.x - cx) ** 2 + (a.y - cy) ** 2 + (a.z - cz) ** 2)
+        - ((b.x - cx) ** 2 + (b.y - cy) ** 2 + (b.z - cz) ** 2));
+    }
+    const n = Math.min(q.length, MAX_LIGHTS);
+    for (let i = 0; i < MAX_LIGHTS; i++) {
+      const l = i < n ? q[i] : null;
+      this.lightPos[i * 4] = l ? l.x : 0;
+      this.lightPos[i * 4 + 1] = l ? l.y : 0;
+      this.lightPos[i * 4 + 2] = l ? l.z : 0;
+      // A radius of zero is the "unused" signal and costs the shader one
+      // comparison, which is cheaper than a second uniform saying how many.
+      this.lightPos[i * 4 + 3] = l ? l.r : 0;
+      this.lightCol[i * 3] = l ? l.c[0] * l.s : 0;
+      this.lightCol[i * 3 + 1] = l ? l.c[1] * l.s : 0;
+      this.lightCol[i * 3 + 2] = l ? l.c[2] * l.s : 0;
+    }
+    gl.uniform4fv(this.u.uLightPos, this.lightPos);
+    gl.uniform3fv(this.u.uLightColor, this.lightCol);
+    q.length = 0;
+  }
+
   /** Everything that has to be re-uploaded after a context loss. */
   buildGpuResources() {
     const gl = this.gl;
@@ -174,6 +225,12 @@ export class Renderer {
     // Room for a busy frame and then some. A measured thirty-mob wave submits
     // about six hundred boxes; overflowing simply flushes early, so the cap is
     // a memory decision rather than a correctness one.
+    // Dynamic-light scratch, allocated once. Uploaded every frame whether or
+    // not anything is lit — a stale light from three frames ago burning a hole
+    // in the floor is worse than four zeroed slots.
+    this.lightQueue = [];
+    this.lightPos = new Float32Array(MAX_LIGHTS * 4);
+    this.lightCol = new Float32Array(MAX_LIGHTS * 3);
     this.instVbo = createInstanceBuffer(gl, BATCH_CAP);
     this.inst = new Float32Array(BATCH_CAP * INSTANCE_FLOATS);
     this.instCount = 0;
@@ -319,7 +376,7 @@ export class Renderer {
       fovRad = 2 * Math.atan(Math.tan(fovRad / 2) / Math.max(this.aspect, 0.35));
     }
     perspective(this.proj, fovRad, this.aspect, 0.06, 260);
-    viewFromEuler(this.view, camera.x, camera.y, camera.z, camera.yaw, camera.pitch);
+    viewFromEuler(this.view, camera.x, camera.y, camera.z, camera.yaw, camera.pitch, camera.roll || 0);
     // Kept for detail culling. Every entity is drawn as a stack of individual
     // draw calls, so what a model costs is entirely a question of how many
     // boxes it is made of — and past twenty blocks most of them are a pixel.
@@ -336,6 +393,7 @@ export class Renderer {
     gl.uniform1f(this.u.uFogNear, this.fogNear);
     gl.uniform1f(this.u.uFogFar, this.fogFar);
     gl.uniform3fv(this.u.uGlowColor, this.theme.glow || [0.5, 0.38, 0.18]);
+    this.uploadLights();
     // Anything left queued from an aborted frame is dropped rather than drawn
     // against this frame's camera.
     this.instCount = 0;

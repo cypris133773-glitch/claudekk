@@ -931,6 +931,10 @@ export class Game {
     const color = player.cls.accent || player.cls.color;
     this.hitstop = Math.max(this.hitstop, 0.20);
     this.screenShake = Math.max(this.screenShake, 0.7);
+    player.fovPunch = 16;
+    // The room itself lights up in the class's colour for as long as the
+    // shockwave lasts.
+    this.r.addLight(player.x, player.y + 1.2, player.z, 22, hexToRgb(color), 2.6);
     this.impactFlash(color, 1.0);
     this.shockwave(player.x, player.y + 0.1, player.z, 5, color);
     this.shockwaves.push(new Shockwave(player.x, player.y + 0.1, player.z, 9.5, color, 0.8));
@@ -1268,6 +1272,14 @@ export class Game {
     if (isLocal && dealt > 0) {
       this.timeSinceCombat = 0;
       this.screenShake = Math.max(this.screenShake, Math.min(0.45, dealt / this.player.maxHp * 1.6));
+      // Lurch away from whatever hit you, scaled by how hard. A shove you can
+      // feel is worth more than a number you have to read.
+      const share = Math.min(1, dealt / (this.player.maxHp * 0.35));
+      const side = source
+        ? Math.sign((source.x - this.player.x) * Math.cos(this.player.yaw)
+          - (source.z - this.player.z) * Math.sin(this.player.yaw)) || 1
+        : 1;
+      this.player.camJolt = clamp(this.player.camJolt + side * share * 0.16, -0.3, 0.3);
       this.audio.play('hurt');
       // Grievous: every hit deepens a wound that only closes if you break off.
       // Stacks rather than refreshes, so trading twenty small hits is worse
@@ -2004,7 +2016,17 @@ export class Game {
       z: p.z,
       yaw: p.yaw + sx * 0.1,
       pitch: clamp(p.pitch - p.viewKick * 0.06 + sy * 0.1, -1.5, 1.5),
-      fov: this.profile.settings.fov + (p.sprinting ? 4 : 0),
+      // Bank into a strafe, and lurch when something hits you.
+      //
+      // `camRoll` is smoothed toward the strafe direction in Player.update, so
+      // it leans in and out rather than snapping; `camJolt` is a one-shot that
+      // decays. Both are small — five degrees of lean, ten of jolt — because
+      // this is the difference between a body and a tripod, and anything more
+      // is a camera with an opinion.
+      roll: (p.camRoll || 0) * 0.09 + (p.camJolt || 0),
+      // A punch of field of view on an ultimate. Nothing else in the game
+      // widens the view, so it is unmistakable and it lasts under a second.
+      fov: this.profile.settings.fov + (p.sprinting ? 4 : 0) + (p.fovPunch || 0),
     };
   }
 

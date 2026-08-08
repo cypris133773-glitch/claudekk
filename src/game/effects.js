@@ -107,6 +107,11 @@ export class Projectile {
       tile: T.BLANK, color: this.color, emissive: 0.9,
       yaw: this.spin * this.life, pitch: this.spin * this.life * 0.7,
     });
+    // A fireball lights the floor it flies over. Radius scales with the shot,
+    // so a Mage's Pyroblast throws a room's worth of light and an arrow throws
+    // almost none — which is the difference between the two, expressed as the
+    // one thing a player never has to be told.
+    r.addLight(this.x, this.y, this.z, 3.5 + s * 14, this.color, 0.8);
   }
 }
 
@@ -363,6 +368,8 @@ export class Telegraph {
 /** A short-lived ring/burst rendered as expanding blocks. */
 export class Shockwave {
   constructor(x, y, z, radius, color, duration = 0.35) {
+    // A blast that lights nothing is a blast drawn in front of the room rather
+    // than one happening in it.
     this.x = x; this.y = y; this.z = z;
     this.radius = radius;
     this.color = hexToRgb(color);
@@ -378,6 +385,11 @@ export class Shockwave {
 
   draw(r) {
     const p = 1 - this.timer / this.duration;
+    // The flash of the blast itself. Brightest at the instant it goes off and
+    // gone by the time the ring has finished expanding, which is how an
+    // explosion actually lights a room — all of it in the first frame.
+    r.addLight(this.x, this.y + 0.8, this.z, this.radius * 2.2 + 4,
+      this.color, (1 - p) * (1 - p) * 2.2);
     const segs = Math.max(14, Math.round(this.radius * 7));
     // Three rings at different radii and heights instead of one. A single
     // expanding circle of blocks reads as a diagram; a stacked, leaning wall

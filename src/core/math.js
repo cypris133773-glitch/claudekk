@@ -77,15 +77,29 @@ export function composeTRS(out, px, py, pz, ry, rx, sx, sy, sz) {
 }
 
 /** First-person view matrix from eye position + yaw/pitch (radians). */
-export function viewFromEuler(out, ex, ey, ez, yaw, pitch) {
+export function viewFromEuler(out, ex, ey, ez, yaw, pitch, roll = 0) {
   const cy = Math.cos(yaw), sy = Math.sin(yaw);
   const cp = Math.cos(pitch), sp = Math.sin(pitch);
   // Camera basis: forward = (-sin(yaw)cos(pitch), sin(pitch), -cos(yaw)cos(pitch))
   const fx = -sy * cp, fy = sp, fz = -cy * cp;
-  const rx = cy, ry = 0, rz = -sy;              // right = normalize(cross(fwd, worldUp))
-  const ux = ry * fz - rz * fy;                 // up = cross(right, fwd)
-  const uy = rz * fx - rx * fz;
-  const uz = rx * fy - ry * fx;
+  let rx = cy, ry = 0, rz = -sy;                // right = normalize(cross(fwd, worldUp))
+  let ux = ry * fz - rz * fy;                   // up = cross(right, fwd)
+  let uy = rz * fx - rx * fz;
+  let uz = rx * fy - ry * fx;
+  // Roll: spin right and up about the forward axis, leaving forward alone.
+  //
+  // A camera that never banks is a camera bolted to a tripod. A few degrees
+  // into a strafe and a kick when something hits you is most of what separates
+  // a first-person view that feels like a body from one that feels like a
+  // floating rectangle — and it costs four multiplies on a matrix built once a
+  // frame.
+  if (roll) {
+    const cr = Math.cos(roll), sr = Math.sin(roll);
+    const nrx = rx * cr + ux * sr, nry = ry * cr + uy * sr, nrz = rz * cr + uz * sr;
+    const nux = ux * cr - rx * sr, nuy = uy * cr - ry * sr, nuz = uz * cr - rz * sr;
+    rx = nrx; ry = nry; rz = nrz;
+    ux = nux; uy = nuy; uz = nuz;
+  }
   out[0] = rx; out[4] = ry; out[8] = rz; out[12] = -(rx * ex + ry * ey + rz * ez);
   out[1] = ux; out[5] = uy; out[9] = uz; out[13] = -(ux * ex + uy * ey + uz * ez);
   out[2] = -fx; out[6] = -fy; out[10] = -fz; out[14] = fx * ex + fy * ey + fz * ez;

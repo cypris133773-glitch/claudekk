@@ -117,6 +117,11 @@ export class Player extends Entity {
     this.resource = this.resourceDef.startFull ? this.resourceMax : 0;
     this.bobPhase = 0;
     this.viewKick = 0;
+    // Camera feel. `camRoll` follows the strafe stick, `camJolt` is a one-shot
+    // lurch from a hit, `fovPunch` widens the view for a moment.
+    this.camRoll = 0;
+    this.camJolt = 0;
+    this.fovPunch = 0;
 
     this.onLethal = () => this.tryCheatDeath();
     this.onAbsorbBroken = () => {
@@ -402,6 +407,13 @@ export class Player extends Entity {
     this.updateBase(dt, game.world);
     this.applyAimAssist(dt, game);
     this.dispersionTimer = Math.max(0, this.dispersionTimer - dt);
+    // Camera feel, integrated here rather than in the camera getter: the
+    // getter runs once per *drawn* frame and this has to run once per
+    // simulation step, or the lean would be frame-rate dependent.
+    const wantRoll = -(input.moveX || 0);
+    this.camRoll += (wantRoll - this.camRoll) * Math.min(1, dt * 7);
+    this.camJolt *= Math.max(0, 1 - dt * 7);
+    this.fovPunch *= Math.max(0, 1 - dt * 3.2);
 
     // Buffs
     let dirty = false;
@@ -825,17 +837,65 @@ export class Player extends Entity {
       gem(along(len * 0.52), bp);
     }
 
-    // T6 alone leaves a trail, and only while swinging — a permanent one would
-    // sit in the corner of the screen for the whole run and stop reading as
-    // anything at all.
-    if (w.trail && swing > 0.02 && swing < 0.98) {
-      for (let i = 1; i <= 3; i++) {
-        const back = i * 0.075;
-        const s = (0.030 - i * 0.006) * S;
+    // The swing arc.
+    //
+    // A swing used to be one number tilting the weapon down and back up, which
+    // at sixty frames a second is a weapon that flickers rather than a blow
+    // that travels. This draws where the blade *was*: eight segments along the
+    // path the last few frames of the swing swept, fading and thinning behind
+    // the edge.
+    //
+    // Every class gets it, in its own accent colour — the T6 trail this
+    // replaced was one tier of one slot, so the other sixty-two appearances in
+    // the game had no swing to look at at all. The tier still shows: a T6
+    // weapon's arc is wider, brighter and lasts a little longer.
+    if (swing > 0.02 && swing < 0.99) {
+      const rich = !!w.trail;
+      // Many thin segments, not a few fat ones. The first pass used six boxes
+      // at five centimetres and read as a solid orange wedge stuck to the
+      // screen — an arc is a *line* the edge travelled, and a line needs to be
+      // sampled finely and drawn thin or it is a shape instead.
+      // Ten, and no more. The arc sweeps about seventy degrees at a radius of
+      // half a unit, which is roughly half a unit of *arc length* to fill —
+      // sixteen boxes three centimetres wide is nearly three times that much
+      // box, and they merged into one solid orange wedge stuck to the screen.
+      // Segment count and segment size have to be chosen against the length of
+      // the path, not picked independently.
+      const segs = rich ? 10 : 7;
+      // The arc sweeps down and across, which is the motion the pitch term
+      // above is already playing — this samples the same curve backwards in
+      // time rather than inventing a second one.
+      const reachOut = 0.52 * S;
+      for (let i = 1; i <= segs; i++) {
+        const t = i / segs;
+        // How far back along the swing this segment is. Later in the swing the
+        // tail is longer, so the arc grows as the blow lands.
+        const back = t * (0.55 + ease * 0.55);
+        const ang = pitch + back * 1.15;
+        const ax = -Math.sin(yaw) * Math.cos(ang);
+        const ay = Math.sin(ang);
+        const az = -Math.cos(yaw) * Math.cos(ang);
+        // Tapers along its length, so the head of the arc is the widest part
+        // and the tail thins to nothing — which is what tells the eye which
+        // way it is travelling.
+        // Tapers along its length, so the head of the arc is the widest part
+        // and the tail thins to nothing — which is what tells the eye which
+        // way it is travelling.
+        const spread = (rich ? 1.0 : 0.75) * (1 - t * 0.7);
+        const s = (0.030 * spread) * S;
+        const fade = (1 - t * t) * (rich ? 0.55 : 0.38) * Math.min(1, swing * 3);
         r.drawBox(
-          px - fwd[0] * back, py - fwd[1] * back + back * 0.35, pz - fwd[2] * back,
-          s, s, s,
-          { tile: T.BLANK, color: accent, emissive: 1 - i * 0.25, yaw, pitch });
+          px + ax * reachOut,
+          py + ay * reachOut,
+          pz + az * reachOut,
+          s, s * 0.28, s,
+          { tile: T.BLANK, color: accent, emissive: 1, alpha: fade, yaw, pitch: ang });
+      }
+      // A point of light travelling with the edge. It is the thing that makes
+      // the arc read as an object moving rather than a decal drawn in place.
+      if (rich) {
+        r.addLight(px + fwd[0] * 1.2, py + fwd[1] * 1.2, pz + fwd[2] * 1.2,
+          4.5, accent, 0.8 * (1 - Math.abs(swing - 0.5) * 2));
       }
     }
   }

@@ -34,12 +34,14 @@ out float vDepth;
 out vec4 vTint;
 out float vEmissive;
 out float vFlash;
+out vec3 vWorld;
 
 void main() {
   mat4 model = mat4(iM0, iM1, iM2, iM3);
   vec4 world = model * vec4(aPos, 1.0);
   vec4 eye = uView * world;
   gl_Position = uProj * eye;
+  vWorld = world.xyz;
   vUV = iRect.xy + aUV * iRect.zw;
   vLight = aLight;
   vGlow = aGlow;
@@ -48,6 +50,16 @@ void main() {
   vEmissive = iMisc.x;
   vFlash = iMisc.y;
 }`;
+
+/**
+ * Dynamic light slots.
+ *
+ * Four: what a per-pixel loop can afford on a software rasteriser, and more
+ * than anyone has noticed missing in a voxel arena. Exported so the renderer
+ * sizes its scratch buffers from the same number the shader is compiled with —
+ * a mismatch here is a uniform upload that silently writes past the array.
+ */
+export const MAX_LIGHTS = 4;
 
 const FRAG = `#version 300 es
 precision highp float;
@@ -58,6 +70,7 @@ in float vDepth;
 in vec4 vTint;
 in float vEmissive;
 in float vFlash;
+in vec3 vWorld;
 
 uniform sampler2D uAtlas;
 uniform vec3 uFogColor;
@@ -68,6 +81,21 @@ uniform vec3 uSunColor;
 uniform vec3 uSkyColor;
 uniform vec3 uGroundColor;
 uniform vec3 uGlowColor;
+
+// Dynamic lights: a fireball in flight, a blast going off, an ultimate.
+//
+// Four of them, because four is what fits in a per-pixel loop on a software
+// rasteriser and because a fifth simultaneous light source in a voxel arena is
+// not something anyone has ever noticed missing. xyz is the position and w is
+// the radius; a radius of zero is an unused slot and costs one comparison.
+//
+// This is the difference between an explosion that is drawn in front of the
+// room and one that happens in it. Everything else in this renderer is baked:
+// the sun, the sky bounce and the emissive flood are all decided at mesh time,
+// so before this the brightest thing in the game lit nothing at all.
+#define MAX_LIGHTS ${MAX_LIGHTS}
+uniform vec4 uLightPos[MAX_LIGHTS];
+uniform vec3 uLightColor[MAX_LIGHTS];
 
 out vec4 outColor;
 
@@ -90,6 +118,17 @@ void main() {
   // beside a lake of fire look like it is beside a lake of fire, and it is the
   // difference between a lit room and an evenly lit one.
   lightCol += uGlowColor * vGlow * vGlow;
+  // Inverse-square-ish falloff, clamped to the radius so a light has an end.
+  // Squaring the linear term rather than dividing keeps it to two multiplies
+  // and gives a softer core, which reads better on flat voxel faces than a
+  // true 1/d^2 hotspot does.
+  for (int i = 0; i < MAX_LIGHTS; i++) {
+    float r = uLightPos[i].w;
+    if (r <= 0.0) continue;
+    float d = distance(vWorld, uLightPos[i].xyz);
+    float f = clamp(1.0 - d / r, 0.0, 1.0);
+    lightCol += uLightColor[i] * f * f;
+  }
   lightCol = mix(lightCol, vec3(1.0), vEmissive);
   rgb *= lightCol * mix(max(vLight, vGlow * 0.85), 1.0, vEmissive);
 
@@ -177,7 +216,8 @@ export function createProgram(gl) {
   // uModel, uTint, uUVOffset, uUVScale, uEmissive and uFlash are gone: they
   // varied per box, which is exactly what an instance attribute is for.
   for (const name of ['uProj', 'uView', 'uAtlas', 'uFogColor', 'uFogNear',
-    'uFogFar', 'uCutoff', 'uSunColor', 'uSkyColor', 'uGroundColor', 'uGlowColor']) {
+    'uFogFar', 'uCutoff', 'uSunColor', 'uSkyColor', 'uGroundColor', 'uGlowColor',
+    'uLightPos', 'uLightColor']) {
     u[name] = gl.getUniformLocation(prog, name);
   }
   return { prog, u };
