@@ -14,7 +14,8 @@
     "test:menus": "node tools/menu-fit-test.mjs",
     "test:play": "node tools/playability-test.mjs",
     "test:net": "node tools/net-test.mjs",
-    "test:duel": "node tools/duel-test.mjs"
+    "test:duel": "node tools/duel-test.mjs",
+    "test:public": "node tools/public-test.mjs"
   },
   "engines": {
     "node": ">=18"

@@ -551,8 +551,14 @@ export class Menus {
 
   /** Step zero: which character, which size, and host or join. */
   duelStart(wrap, d) {
-    const p = this.panel('Fight a friend', 'No server, no account — just a code');
+    const p = this.panel('Fight', 'Join an open game, or send a friend a code');
     wrap.appendChild(this.charPicker());
+
+    // Public games first, because it is the one-tap path and the codes are the
+    // fallback. Asked once per visit to this screen; the controller rate-limits
+    // it so a redraw does not become a request.
+    if (d.matchmaking === null) d.checkMatchmaking();
+    else d.refreshRooms();
 
     const modes = el('div', 'class-picker');
     for (const m of DUEL_MODES) {
@@ -565,28 +571,117 @@ export class Menus {
     p.appendChild(modes);
 
     const menu = el('div', 'main-menu');
-    const hostBtn = el('button', 'menu-btn primary');
-    hostBtn.appendChild(el('span', 'menu-label', 'HOST A MATCH'));
+    if (d.matchmaking !== false) {
+      const pubBtn = el('button', 'menu-btn primary');
+      pubBtn.appendChild(el('span', 'menu-label', 'HOST A PUBLIC GAME'));
+      pubBtn.appendChild(el('span', 'menu-hint',
+        'Anyone can see it and join with one tap'));
+      this.click(pubBtn, () => d.hostPublic(d.mode, this.charId()));
+      menu.appendChild(pubBtn);
+    }
+
+    const hostBtn = el('button', 'menu-btn' + (d.matchmaking === false ? ' primary' : ''));
+    hostBtn.appendChild(el('span', 'menu-label', 'HOST WITH A CODE'));
     hostBtn.appendChild(el('span', 'menu-hint',
-      'You make the codes and send them to your friends'));
+      'Private: you send the code to whoever you want'));
     this.click(hostBtn, () => d.host(d.mode, this.charId()));
     menu.appendChild(hostBtn);
 
     const joinBtn = el('button', 'menu-btn');
-    joinBtn.appendChild(el('span', 'menu-label', 'JOIN A MATCH'));
+    joinBtn.appendChild(el('span', 'menu-label', 'JOIN WITH A CODE'));
     joinBtn.appendChild(el('span', 'menu-hint', 'Paste the code a friend sent you'));
     this.click(joinBtn, () => d.startJoin(this.charId()));
     menu.appendChild(joinBtn);
-    p.appendChild(menu);
 
+    // The list and the buttons, side by side on a screen that is wider than it
+    // is tall. Stacked they are a character picker, a mode picker, a list and
+    // three buttons on a 375-pixel-tall landscape phone, which the
+    // fit-to-screen fallback answered by shrinking everything to 68% — and a
+    // lobby row you cannot hit with a thumb is not a lobby.
+    const lobby = el('div', 'duel-lobby');
+    lobby.appendChild(this.duelRooms(d));
+    lobby.appendChild(menu);
+    p.appendChild(lobby);
+
+    // One short paragraph, not three.
+    //
+    // The long version said the same three true things — direct connection,
+    // the host runs the fight, one pair in six cannot connect — and pushed the
+    // screen past the fold on half the phones tested, which the fit-to-screen
+    // fallback then answered by shrinking the room list to 60%. A lobby you
+    // cannot tap is worse than a lobby you were not warned about.
     p.appendChild(el('p', 'note',
-      'Your two browsers talk to each other directly. Nothing about the match '
-      + 'is stored anywhere, and a duel pays no gold — it is for the fight.'
-      + '<br><br>About one pair in six cannot connect this way, because some '
-      + 'networks block it. If that happens, try again from a different '
-      + 'network — there is nothing to fix on either end.'));
+      'You connect straight to each other. Nothing is saved and a duel pays no '
+      + 'gold — the host runs the fight, so play for fun rather than pride. '
+      + 'Some networks block it entirely; if it will not connect, that is why.'));
     wrap.appendChild(p);
     return wrap;
+  }
+
+  /**
+   * The open games, and the one tap that gets you into one.
+   *
+   * Deliberately at the top of the screen and deliberately short: a lobby list
+   * is only worth having if it is the first thing you see and the last thing
+   * you have to think about. Three lines each — who, what size, how long ago —
+   * and a button.
+   */
+  duelRooms(d) {
+    const box = el('div', 'rooms');
+    const head = el('div', 'rooms-head');
+    head.appendChild(el('b', null, 'Open games'));
+    const refresh = el('button', 'tiny-btn', '↻');
+    refresh.title = 'Refresh';
+    this.click(refresh, () => d.refreshRooms(true));
+    head.appendChild(refresh);
+    box.appendChild(head);
+
+    if (d.matchmaking === false) {
+      box.appendChild(el('p', 'note',
+        'Public games are switched off in this build. Codes still work.'));
+      return box;
+    }
+    if (d.matchmaking === null) {
+      box.appendChild(el('p', 'note', 'Looking…'));
+      return box;
+    }
+    if (!d.rooms.length) {
+      box.appendChild(el('p', 'note',
+        'Nobody is hosting right now. Host one and someone will find it.'));
+      return box;
+    }
+
+    // Four, not six. The list shares a screen with three buttons and a
+    // character picker, and the fifth row is what pushed a 320px phone into
+    // the shrink-to-fit fallback.
+    for (const r of d.rooms.slice(0, 4)) {
+      const row = el('button', 'room-row');
+      const age = Math.max(0, Math.round((Date.now() - r.at) / 1000));
+      // A build stamp that does not match ours cannot be joined — the two
+      // sides would generate different arenas from the same seed. Said here
+      // rather than discovered after a handshake.
+      const stale = r.build && r.build !== this.ctx.build;
+      // Text nodes, not innerHTML.
+      //
+      // A room name is typed by a stranger and arrives over the network, which
+      // makes it the only string in this entire game that did not come from
+      // this repository. Every other `innerHTML` on this screen interpolates
+      // our own data; this one would interpolate theirs, and that is the
+      // difference between a template and a script tag running on your page.
+      const name = el('span', 'room-name');
+      name.textContent = r.name;
+      const mode = el('span', 'room-mode');
+      mode.textContent = r.mode;
+      const when = el('span', 'room-age');
+      when.textContent = stale ? 'different version' : `${age}s ago`;
+      row.appendChild(name);
+      row.appendChild(mode);
+      row.appendChild(when);
+      row.disabled = stale;
+      this.click(row, () => d.joinPublic(r.id, this.charId()));
+      box.appendChild(row);
+    }
+    return box;
   }
 
   /** A reusable "here is a long string, take it" block. */

@@ -2715,3 +2715,68 @@ body.show-popout-btn #popout-btn { display: block; }
 /* A bonus naming a skill you have not equipped is worth nothing, and saying so
    is more useful than printing it as though it were live. */
 .set-row-skill.off { color: #ff9a7a; font-weight: 600; }
+
+/* The open-games list. First thing on the Fight screen, because a lobby is
+   only worth having if it is the first thing you see. */
+.rooms {
+  margin: 8px 0 10px;
+  padding: 9px 11px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-2);
+}
+.rooms-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.rooms-head .tiny-btn { margin-left: auto; }
+.rooms .note { margin: 4px 2px 2px; }
+
+.room-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  margin-top: 5px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  min-width: 0;
+}
+.room-row:hover:not(:disabled) { border-color: rgba(110, 200, 255, 0.5); }
+.room-row:active:not(:disabled) { transform: translateY(2px); }
+.room-row:disabled { opacity: 0.45; border-left-color: rgba(255, 255, 255, 0.15); }
+.room-name {
+  font-weight: 700;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.room-mode {
+  font-size: 11px;
+  color: var(--gold);
+  letter-spacing: 0.06em;
+  flex: 0 0 auto;
+}
+.room-age { margin-left: auto; font-size: 11px; color: var(--dim); flex: 0 0 auto; }
+
+/* The Fight screen's two halves: what is already running, and how to start
+   something. One column when there is height for it, two when there is not. */
+.duel-lobby { display: grid; gap: 4px; }
+@media (max-height: 560px) and (min-width: 600px) {
+  .duel-lobby { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+  .duel-lobby .rooms { margin: 0; }
+  .duel-lobby .main-menu { margin: 0; }
+  .rooms-head { font-size: 12px; margin-bottom: 4px; }
+  .room-row { padding: 6px 9px; margin-top: 4px; }
+}

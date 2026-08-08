@@ -320,6 +320,11 @@ export class Match {
 
   joinReceive(msg) {
     const peer = this.peers.get('h');
+    // The peer can be gone by the time a message is handled: `close()` clears
+    // the map, and a datagram already in flight still arrives afterwards. Every
+    // branch below replies on `peer`, so one guard here is the difference
+    // between leaving a lobby cleanly and a TypeError on the way out.
+    if (!peer) return;
     if (msg.t === 'hello') {
       // Refused loudly rather than allowed to desync. Two players on different
       // builds generate different arenas from the same seed, and the symptom
