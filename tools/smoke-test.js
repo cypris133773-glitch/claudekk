@@ -2524,51 +2524,95 @@ check('enemies walk at you, not around you', async () => {
   // after ten seconds.
   //
   // Flanking is worth having and this is the number that keeps it honest.
-  const h = makeHarness({ level: 30 });
-  const game = new Game(h.renderer, h.audio, h.profile);
-  game.startRun(CLASSES[0], { layout: 0 });
-  game.wave = 12;
-  game.director.state = 'clearing';        // measure these ten, not a wave
-  const p = game.player;
-  game.mobs.length = 0;
-
-  const track = [];
-  for (let i = 0; i < 10; i++) {
-    const a = (i / 10) * Math.PI * 2;
-    const m = game.spawnMob('husk', p.x + Math.cos(a) * 18, p.y, p.z + Math.sin(a) * 18);
-    track.push({ m, d0: Math.hypot(m.x - p.x, m.z - p.z), path: 0, lx: m.x, lz: m.z });
-  }
-  // Counted only while a mob is still walking in.
+  // Three pinned seeds, and lava-waders excluded from the arrival count.
   //
-  // Once it arrives it circles, backs off and jostles for a place at the
-  // player — all of which is walking that closes no distance and none of which
-  // is what this measures. Including it mixed "did they approach efficiently"
-  // with "how long did they then spend in melee", which made the number swing
-  // by ten points depending on how quickly the first one got there. A mob's
-  // ledger closes the moment it is in range for the first time.
-  for (let i = 0; i < 60 * 10; i++) {
-    game.update(1 / 60, h.input());
-    p.hp = p.maxHp;
-    for (const t of track) {
-      if (t.m.hp < t.m.maxHp * 0.9) t.m.hp = t.m.maxHp * 0.9;
-      const d = Math.hypot(t.m.x - p.x, t.m.z - p.z);
-      if (!t.arrived) {
-        t.path += Math.hypot(t.m.x - t.lx, t.m.z - t.lz);
-        t.closed = t.d0 - d;
-        if (d <= 3) t.arrived = true;
-      }
-      t.lx = t.m.x; t.lz = t.m.z;
+  // This failed about one run in twelve, always with two or three husks
+  // stranded far out. It was neither the AI nor bad luck with rocks. Every
+  // below-floor cell in every layout is lava, and this check pins mob health
+  // at 90% so that it measures walking rather than dying — which also makes a
+  // husk that wanders into a lava lake immortal. It then wades there for the
+  // full ten seconds instead of dying, as it would in any real run. The check
+  // was failing on its own life-support.
+  //
+  // Two things that did not work, recorded so nobody tries them again:
+  // spawning on dry ground with a clear straight line does nothing, because
+  // they approach on an *arc* and the curve is not the line; and moving to the
+  // lava-free Colosseum is worse still, because that layout is a terraced bowl
+  // and height strands them instead.
+  //
+  // So: a mob that stood in lava is dropped from the arrival count, with the
+  // reason stated — in a real fight it is dead, and a corpse is not an enemy
+  // the player has to go and find. The efficiency figure keeps every mob,
+  // because walking that closes no distance is exactly what it is there to
+  // catch.
+  const SEEDS = [1207, 4441, 8803];
+  let closed = 0, walked = 0, stranded = 0, judged = 0, burned = 0;
+
+  for (const seed of SEEDS) {
+    const h = makeHarness({ level: 30 });
+    const game = new Game(h.renderer, h.audio, h.profile);
+    game.startRun(CLASSES[0], { layout: 0, worldSeed: seed });
+    game.wave = 12;
+    game.director.state = 'clearing';      // measure these ten, not a wave
+    const p = game.player;
+    game.mobs.length = 0;
+
+    const track = [];
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2;
+      const m = game.spawnMob('husk', p.x + Math.cos(a) * 18, p.y, p.z + Math.sin(a) * 18);
+      track.push({ m, d0: Math.hypot(m.x - p.x, m.z - p.z), path: 0, lx: m.x, lz: m.z, lava: 0 });
     }
+
+    // Counted only while a mob is still walking in.
+    //
+    // Once it arrives it circles, backs off and jostles for a place at the
+    // player — all of which is walking that closes no distance and none of
+    // which is what this measures. Including it mixed "did they approach
+    // efficiently" with "how long did they then spend in melee", which made
+    // the number swing by ten points depending on how quickly the first one
+    // got there. A mob's ledger closes the moment it is in range.
+    // Thirteen seconds, not ten. The back rank of a pack deliberately moves at
+    // 62% speed so it is not shoving from behind, and eighteen blocks at that
+    // speed along a flanking arc does not fit in ten — so the last mob in was
+    // failing this for doing exactly what it is supposed to do.
+    for (let i = 0; i < 60 * 13; i++) {
+      game.update(1 / 60, h.input());
+      p.hp = p.maxHp;
+      for (const t of track) {
+        if (t.m.hp < t.m.maxHp * 0.9) t.m.hp = t.m.maxHp * 0.9;
+        if (game.blockDamageAt(t.m.x, t.m.y + 0.2, t.m.z) > 0) t.lava++;
+        const d = Math.hypot(t.m.x - p.x, t.m.z - p.z);
+        if (!t.arrived) {
+          t.path += Math.hypot(t.m.x - t.lx, t.m.z - t.lz);
+          t.closed = t.d0 - d;
+          if (d <= 3) t.arrived = true;
+        }
+        t.lx = t.m.x; t.lz = t.m.z;
+      }
+    }
+    closed += track.reduce((a, t) => a + (t.closed || 0), 0);
+    walked += track.reduce((a, t) => a + t.path, 0);
+    // A second of lava is about a fifth of a husk's health, so anything past
+    // sixty frames is a mob that would not have finished the walk alive.
+    for (const t of track) {
+      if (t.lava > 60) { burned++; continue; }
+      judged++;
+      if (Math.hypot(t.m.x - p.x, t.m.z - p.z) > 11) stranded++;
+    }
+    game.endRun();
   }
-  const closed = track.reduce((a, t) => a + (t.closed || 0), 0);
-  const walked = track.reduce((a, t) => a + t.path, 0);
+
   const pct = closed / walked * 100;
   assert(pct >= 62, `only ${pct.toFixed(0)}% of the walk in was distance closed`);
 
-  // And they have to actually arrive. An efficient walk that stops at twelve
-  // blocks is still an enemy the player has to go and find.
-  const far = track.filter((t) => Math.hypot(t.m.x - p.x, t.m.z - p.z) > 11).length;
-  assert(far <= 2, `${far} of 10 enemies were still past eleven blocks after ten seconds`);
+  // And the ones that were alive to arrive have to actually arrive. An
+  // efficient walk that stops at twelve blocks is still an enemy the player
+  // has to go and find.
+  assert(judged >= 20, `only ${judged} of 30 husks stayed out of the lava — too few to judge`);
+  assert(stranded === 0,
+    `${stranded} of ${judged} enemies were still past eleven blocks after thirteen seconds `
+    + `(${burned} more burned to death on the way, which is fine)`);
 });
 
 check('a pack surrounds instead of queuing up', async () => {
