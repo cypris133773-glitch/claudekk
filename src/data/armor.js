@@ -111,11 +111,41 @@ export function ownedTier(gear, slotId) {
 // is a third of a Paladin's health and nearly double a Hunter's, and one table
 // has to be fair to all nine.
 
-/** Slot effects every class shares, per rung. */
+/**
+ * Slot effects every class shares, per rung.
+ *
+ * THESE NUMBERS WERE TOO SMALL BY HALF, AND IT WAS THE WHOLE DIFFICULTY BUG
+ *
+ * Reported from play: a level-51 character dying on wave 12. Measured, the
+ * complaint was far worse than it sounded, and it was not about wave 12.
+ *
+ * Across the entire game — sixty levels, all seven tiers, about nineteen
+ * million gold of gear — a character's *offence* grew by six to seven and a
+ * half times. Their effective health grew by 2.06x. Armour grew by exactly
+ * nothing: 0.26 on a naked level-1 Warrior and 0.26 in a full tier-6 set,
+ * because not one shared slot granted any.
+ *
+ * Enemy damage reaches 2.0x wave 1 by wave 12. So a fully geared level-60
+ * character standing on wave 12 was precisely as fragile as a naked level-1
+ * character standing on wave 1 — every level and every tier they had ever
+ * bought, cancelled out by wave twelve of an endless mode. By wave 30 they
+ * were twice as fragile as a beginner. You killed everything easily and then
+ * evaporated, which is exactly what the reports described.
+ *
+ * So the defensive rungs are now sized against the offensive ones rather than
+ * chosen to feel modest. Health per rung roughly triples, armour appears on
+ * two slots, and boots carry health as well as dodge. A full set is worth
+ * about 4x effective health end to end, which is what it takes to stay level
+ * with a curve that doubles enemy damage by wave 12.
+ *
+ * `tools/smoke-test.js` now holds this as a ratio between the two curves,
+ * because neither number was wrong on its own and looking at either alone is
+ * how it shipped.
+ */
 export const SHARED_SLOT_EFFECTS = {
-  chest: { effect: { maxHpPct: 0.060 } },
-  helm: { effect: { maxHpPct: 0.034, critChance: 0.010 } },
-  boots: { effect: { moveSpeed: 0.0215, dodge: 0.0085 } },
+  chest: { effect: { maxHpPct: 0.105, armor: 0.020 } },
+  helm: { effect: { maxHpPct: 0.060, critChance: 0.010, armor: 0.012 } },
+  boots: { effect: { maxHpPct: 0.030, moveSpeed: 0.0215, dodge: 0.0145 } },
   ring: { effect: { allDamage: 0.026, critMult: 0.017 } },
 };
 

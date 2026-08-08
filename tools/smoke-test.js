@@ -882,12 +882,24 @@ check('a full set is a real difference and a bounded one', () => {
     const full = gearMods(cls.id, Object.fromEntries(GEAR_SLOT_IDS.map((id) => [id, MAX_TIER])));
     const dmg = damageWeight(full);
     // The ceiling moved when set bonuses started scaling with their tier. It
-    // is still a ceiling: a full endgame set may roughly double your damage
-    // and double your health, and past that the Armoury's price curve stops
-    // being the thing that paces the game.
+    // is still a ceiling: a full endgame set may roughly double your damage,
+    // and past that the Armoury's price curve stops being the thing that paces
+    // the game.
     assert(dmg > 0.5 && dmg < 1.7, `${cls.id} full T6 grants ${(dmg * 100).toFixed(0)}% damage`);
-    assert(full.maxHpPct > 0.5 && full.maxHpPct < 1.1,
+
+    // Health's ceiling was raised deliberately, and it is the fix for the
+    // difficulty report rather than a slackened bound. At the old cap of
+    // +110% a full set could not keep pace with a curve that doubles enemy
+    // damage by wave 12 — measured, a fully geared level-60 character was
+    // exactly as fragile on wave 12 as a beginner on wave 1. The floor is
+    // what matters here and it went up, not down.
+    assert(full.maxHpPct > 1.2 && full.maxHpPct < 2.0,
       `${cls.id} full T6 grants ${(full.maxHpPct * 100).toFixed(0)}% health`);
+
+    // Armour has to arrive from gear at all. It used to be entirely a class
+    // constant: 0.26 on a naked Warrior and 0.26 in a full T6 set.
+    assert((full.armor || 0) > 0.15,
+      `${cls.id} full T6 grants ${((full.armor || 0) * 100).toFixed(0)}% armour`);
   }
 
   // Every tier is a step up on the one below it.
@@ -3027,6 +3039,16 @@ check('a boss keeps casting for the whole fight', async () => {
   //
   // So this counts. A boss that stops casting is not a crash and is not
   // visible in any other test — it just quietly stops being a boss fight.
+  // Two simulated minutes rather than one, and the thresholds scaled with it.
+  //
+  // At sixty seconds this failed about one run in three, always on 2 casts
+  // against a floor of 3, and always on a different boss. That is not a
+  // regression, it is the sample being too short: a cast cadence has real
+  // randomness in it, and a boss that spends one gap out of position drops
+  // below the floor by chance. Doubling the window halves the variance of the
+  // rate without weakening what is being asserted — a boss that casts once and
+  // stops, which is the bug this exists for, still reads as 1.
+  const WINDOW = 120;
   const run = (setup) => {
     const h = makeHarness({ level: 60, gear: 6 });
     const game = new Game(h.renderer, h.audio, h.profile);
@@ -3034,7 +3056,7 @@ check('a boss keeps casting for the whole fight', async () => {
     let casts = 0;
     const orig = boss.castRaid.bind(boss);
     boss.castRaid = (...a) => { casts++; return orig(...a); };
-    for (let i = 0; i < 60 * 60; i++) {
+    for (let i = 0; i < WINDOW * 60; i++) {
       game.update(1 / 60, h.input());
       // Held alive and healthy so the count measures cadence rather than how
       // fast the harness kills things.
@@ -3048,8 +3070,8 @@ check('a boss keeps casting for the whole fight', async () => {
     game.startRaid(CLASSES[0], RAIDS[0], 0);
     return game.raidBoss;
   });
-  assert(raidCasts >= 4,
-    `a raid boss cast ${raidCasts} times in a minute — it should be casting on a cadence`);
+  assert(raidCasts >= 8,
+    `a raid boss cast ${raidCasts} times in ${WINDOW}s — it should be casting on a cadence`);
 
   // And the three arena bosses, which run the same pipeline now.
   for (const id of ['colossus', 'warden', 'broodmother']) {
@@ -3059,7 +3081,7 @@ check('a boss keeps casting for the whole fight', async () => {
       const p = game.player;
       return game.spawnMob(id, p.x + 7, p.y, p.z);
     });
-    assert(casts >= 3, `the ${id} cast ${casts} times in a minute`);
+    assert(casts >= 6, `the ${id} cast ${casts} times in ${WINDOW}s`);
   }
 });
 
@@ -3727,6 +3749,188 @@ check('perspective matrix is well formed', () => {
   assert(m[11] === -1, 'w row wrong');
   assert(m[0] > 0 && m[5] > 0, 'scale wrong');
   assert(Number.isFinite(m[14]) && m[14] < 0, 'depth term wrong');
+});
+
+
+// --- Defensive progression ---------------------------------------------------
+
+check('gear buys defence at the rate the waves demand', async () => {
+  const { makeHarness } = await import('./harness.js');
+  const { Game } = await import('../src/game/game.js');
+  const { talentPointsForLevel } = await import('../src/data/levels.js');
+  const { waveScaling } = await import('../src/game/waves.js');
+
+  // The bug this exists for, and it shipped for the whole life of the game.
+  //
+  // Reported: a level-51 character dying on wave 12. Measured, the offensive
+  // curve grew 6-7.6x from a naked level-1 character to a full tier-6 one, and
+  // the *defensive* curve grew 2.06x — with armour completely flat, because
+  // not one shared gear slot granted any. Enemy damage reaches 2x by wave 12.
+  // So a fully geared level-60 character standing on wave 12 was exactly as
+  // fragile as a beginner on wave 1: sixty levels and seven tiers of gear,
+  // cancelled out by wave twelve.
+  //
+  // Nothing caught it because nothing compared the two curves. Every existing
+  // check looked at one side alone, and neither side is wrong on its own —
+  // which is precisely how a game ships that you cannot survive.
+  const ehpAt = (classId, level, gear) => {
+    const h = makeHarness({ level, gear });
+    const cls = CLASSES.find((c) => c.id === classId);
+    const ranks = h.profile.character(cls.id).talents;
+    let left = talentPointsForLevel(level);
+    for (const br of cls.talents) {
+      for (const n of br.nodes) {
+        const take = Math.min(n.max, left);
+        if (take > 0) { ranks[n.id] = take; left -= take; }
+      }
+    }
+    const game = new Game(h.renderer, h.audio, h.profile);
+    game.startRun(cls, { layout: 0 });
+    const p = game.player;
+    const out = { ehp: p.maxHp / (1 - p.armor) / (1 - p.dodge), armor: p.armor };
+    game.endRun();
+    return out;
+  };
+
+  // Each rung is a character at the level that tier unlocks at, wearing it.
+  const RUNGS = [[1, undefined], [11, 0], [21, 1], [31, 2], [41, 3], [51, 4], [60, 5], [60, 6]];
+
+  for (const classId of ['warrior', 'mage', 'priest']) {
+    const rows = RUNGS.map(([lv, g]) => ehpAt(classId, lv, g));
+    const base = rows[0], top = rows[rows.length - 1];
+    const growth = top.ehp / base.ehp;
+
+    // A full set has to be worth more than doubling, because the waves it is
+    // for have already more than doubled what they hit you for.
+    assert(growth >= 3.2,
+      `${classId} effective health grows only ${growth.toFixed(2)}x from naked to full T6 `
+      + '— enemy damage reaches 3.4x by wave 30, so that is a character who gets '
+      + 'more fragile the more they own');
+
+    // Armour must actually move. It was 0.26 at level 1 and 0.26 in a full T6
+    // set, and a stat that never changes is a stat the player is paying for
+    // and not receiving.
+    assert(top.armor > base.armor + 0.12,
+      `${classId} armour goes ${base.armor.toFixed(2)} -> ${top.armor.toFixed(2)} across the whole game`);
+
+    // And it has to climb the whole way, not arrive in one lump at the end.
+    for (let i = 1; i < rows.length; i++) {
+      assert(rows[i].ehp > rows[i - 1].ehp * 1.05,
+        `${classId} rung ${i} is not a real defensive upgrade `
+        + `(${Math.round(rows[i - 1].ehp)} -> ${Math.round(rows[i].ehp)} effective health)`);
+    }
+  }
+
+  // The ratio, stated directly: at the wave a tier is meant for, a character in
+  // that tier must be gaining on the wave rather than losing to it.
+  const TIER_WAVE = [1, 8, 12, 16, 20, 24, 28, 34];
+  const rows = RUNGS.map(([lv, g]) => ehpAt('warrior', lv, g));
+  const baseRatio = rows[0].ehp / waveScaling(TIER_WAVE[0]).damage;
+  for (let i = 1; i < rows.length; i++) {
+    const ratio = rows[i].ehp / waveScaling(TIER_WAVE[i]).damage;
+    assert(ratio >= baseRatio * 0.85,
+      `at wave ${TIER_WAVE[i]} a T${i - 1} character is ${(ratio / baseRatio).toFixed(2)}x `
+      + 'as durable as a beginner on wave 1 — gear is not keeping up with the curve');
+  }
+});
+
+check('a damage-over-time tick respects armour', async () => {
+  const { makeHarness } = await import('./harness.js');
+  const { Game } = await import('../src/game/game.js');
+
+  // Dots fire from Entity.updateBase, which has no reference to the game and
+  // therefore never went through the mitigation that every ordinary blow does.
+  // Measured on a level-51 character in a full tier-4 set, unmitigated dots
+  // were over a third of the damage that killed them, and none of it cared
+  // what they were wearing.
+  const h = makeHarness({ level: 60, gear: 6 });
+  const game = new Game(h.renderer, h.audio, h.profile);
+  game.startRun(CLASSES[0], { layout: 0 });
+  const p = game.player;
+  assert(p.armor > 0.05, 'this check needs a class that wears armour');
+
+  const tick = (armor) => {
+    p.armor = armor;
+    p.hp = p.maxHp;
+    p.dots.length = 0;
+    p.applyDot(100, 10, 'poison', null);
+    const before = p.hp;
+    p.updateBase(1, null);
+    return before - p.hp;
+  };
+
+  const soft = tick(0);
+  const hard = tick(0.5);
+  assert(soft > 0 && hard > 0, 'the dot did not tick at all');
+  assert(hard < soft * 0.6,
+    `armour changed dot damage from ${soft.toFixed(1)} to ${hard.toFixed(1)} — `
+    + 'a 50% reduction should roughly halve it');
+  game.endRun();
+});
+
+check('an archer cannot back away for ever', async () => {
+  const { makeHarness } = await import('./harness.js');
+  const { Game } = await import('../src/game/game.js');
+  const { isRangedType, MAX_RANGED_SHARE } = await import('../src/game/mobs.js');
+
+  // Traced in a real run: one Bonecaster, alive for over a minute, killing a
+  // level-51 character in a full tier-4 set from full health while the wave
+  // sat unable to end. It retreated at full movement speed with no limit, and
+  // a player closing on it approaches at an angle — you are strafing, you are
+  // avoiding its shots — so the gap never shut. On the open Colosseum layout,
+  // which has no cover to break line of sight with, that was the median
+  // outcome and not a freak one: median run depth there was wave 4 against
+  // wave 10-16 everywhere else.
+  //
+  // Asserted as the mechanism rather than as a chase. A pursuit in a live
+  // arena is a geometry problem — who is circling whom, and what is in the
+  // way — and measuring the emergent version tells you as much about the
+  // harness's inability to walk round a pillar as about the archer.
+  const h = makeHarness({ level: 51, gear: 4 });
+  const game = new Game(h.renderer, h.audio, h.profile);
+  game.startRun(CLASSES[0], { layout: 0 });
+  const p = game.player;
+  const mob = game.spawnMob('skele', p.x + 6, p.y, p.z);
+
+  // Pinned just inside its back-off band, so it retreats every frame it is
+  // willing to. What is being measured is how long it stays willing.
+  let retreatingFrames = 0;
+  for (let i = 0; i < 10 * 60; i++) {
+    mob.x = p.x + 6; mob.z = p.z; mob.y = p.y;
+    mob.hp = mob.maxHp;
+    mob.vx = 0; mob.vz = 0;
+    game.update(1 / 60, h.input());
+    // Backing away means moving away from the player along the line between.
+    if (mob.vx * 1 > 0.3) retreatingFrames++;
+  }
+  assert(retreatingFrames > 0, 'the archer never backed away at all — this check is not measuring it');
+  assert(retreatingFrames < 4 * 60,
+    `held inside its own minimum range for ten seconds, the Bonecaster spent `
+    + `${(retreatingFrames / 60).toFixed(1)}s of it backing away — it has no retreat budget`);
+
+  // And it must be slower going backwards than a player is going forwards,
+  // or no budget in the world lets anyone close the distance.
+  const { MOB_TYPES } = await import('../src/game/mobs.js');
+  for (const id of Object.keys(MOB_TYPES)) {
+    if (!isRangedType(id) || MOB_TYPES[id].boss) continue;
+    assert(MOB_TYPES[id].speed * 0.55 < p.moveSpeed * 0.6,
+      `${id} backs away at ${(MOB_TYPES[id].speed * 0.55).toFixed(1)} against a player at `
+      + `${p.moveSpeed.toFixed(1)} — that gap cannot be made up while strafing`);
+  }
+  game.endRun();
+
+  // And the roster cap, so a wave is never mostly things shooting from range.
+  for (const wave of [12, 20, 30, 45]) {
+    for (let seed = 0; seed < 40; seed++) {
+      const queue = buildWaveQueue(wave);
+      const trash = queue.filter((e) => !e.boss);
+      if (trash.length < 4) continue;
+      const ranged = trash.filter((e) => isRangedType(e.typeId)).length;
+      assert(ranged / trash.length <= MAX_RANGED_SHARE + 0.2,
+        `wave ${wave} rolled ${ranged} ranged of ${trash.length} — `
+        + 'a wave of archers in an open arena is an unanswerable position');
+    }
+  }
 });
 
 // --- Report ----------------------------------------------------------------

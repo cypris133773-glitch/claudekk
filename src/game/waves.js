@@ -38,7 +38,7 @@ export function waveScaling(wave, diff = null) {
   const d = diff || { hp: 1, damage: 1, souls: 1 };
   return {
     hp: (1 + w * 0.11 + Math.pow(w, 1.30) * 0.007) * d.hp,
-    damage: (1 + w * 0.075 + Math.pow(w, 1.30) * 0.008) * d.damage,
+    damage: (1 + w * 0.055 + Math.pow(w, 1.26) * 0.006) * d.damage,
     speed: Math.min(1.55, 1 + w * 0.012),
     // Reward grows faster than it used to, and faster than linearly. A deep
     // wave is worth going for rather than merely worth surviving.
@@ -58,7 +58,11 @@ export function waveBudget(wave) {
  */
 export function waveConcurrent(wave, cap = 30, diff = null) {
   const bonus = diff ? diff.concurrent : 0;
-  return Math.min(cap + bonus, 4 + bonus + Math.floor(wave * 0.7));
+  // 0.7 a wave meant twenty-five enemies on you at wave 30 against a defensive
+  // curve worth four times a beginner's — the crowd, not the individual
+  // enemy, was doing most of the killing. At 0.45 the horde still grows all
+  // the way to the cap, it just takes until wave 58 rather than wave 37.
+  return Math.min(cap + bonus, 4 + bonus + Math.floor(wave * 0.45));
 }
 
 export function isBossWave(wave) {
@@ -106,7 +110,7 @@ export function buildWaveQueue(wave, diff = null) {
 
   let guard = 0;
   while (budget > 0 && guard++ < 500) {
-    const typeId = rollMobType(wave);
+    const typeId = rollMobType(wave, queue);
     const cost = MOB_TYPES[typeId].cost || 1;
     if (cost > budget && queue.length) break;
     const elite = Math.random() < chance;

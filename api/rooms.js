@@ -13,16 +13,33 @@
 // player records. Once two browsers are connected the room is deleted and this
 // server has nothing to do with the game they play.
 //
-// WHAT IT COSTS
+// WHAT IT COSTS, AND WHY IT NO LONGER COSTS A DASHBOARD VISIT
 //
-// One Vercel serverless function and a key-value store, which on the free tier
-// is free. It is stateless by necessity — serverless functions do not share
-// memory and there is no guarantee two requests hit the same instance — so the
-// rooms live in the KV, not in a variable.
+// One Vercel serverless function, and — if you want it to be reliable — a
+// key-value store, which on the free tier is free.
 //
-// It degrades rather than breaks: with no KV configured, every endpoint
-// answers with `configured: false` and the game falls back to the invite codes,
-// which have never needed anything and still do not.
+// It used to *require* the store. With none connected every endpoint answered
+// `configured: false` and the lobby read "public games are switched off in
+// this build", which is a sentence that blames the build for a deployment
+// setting. A player who just wants to see open games does not have an Upstash
+// account and should not need one to find out whether anybody is playing.
+//
+// So there are two backends now:
+//
+//   UPSTASH   a real key-value store, when KV_REST_API_URL / _TOKEN (or the
+//             UPSTASH_REDIS_REST_* pair) are set. Durable, shared across every
+//             instance and region. This is what you want in the long run and
+//             connecting one is still the recommendation.
+//
+//   MEMORY    a Map inside the running function, used when nothing is
+//             configured. Zero setup, and honest about its limits: Vercel may
+//             run more than one instance, and two players who land on
+//             different ones cannot see each other's rooms. A cold start
+//             empties it. For a handful of concurrent players in one region it
+//             works, and "usually finds your friend" beats "switched off".
+//
+// The client is told which one it got, so the lobby can say so rather than
+// leaving somebody to wonder why a game they can see will not join.
 //
 // WHAT IT DELIBERATELY DOES NOT DO
 //

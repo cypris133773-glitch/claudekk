@@ -62,7 +62,11 @@ export const MOB_TYPES = {
   },
   skele: {
     name: 'Bonecaster', weight: 6, minWave: 3, cost: 2,
-    hp: 50, damage: 10, speed: 2.9, range: 18, attackSpeed: 0.6, souls: 5,
+    // Range was 18, which is most of the way across the arena and further than
+    // the thing is comfortably visible on a phone. At 13 it still outranges
+    // every melee enemy and still has to be dealt with, but it is somewhere
+    // you can decide to go.
+    hp: 50, damage: 10, speed: 2.9, range: 13, attackSpeed: 0.6, souls: 5,
     height: 1.8, width: 0.55, behavior: 'ranged', projectile: { speed: 22, gravity: 6, color: '#e8e4d0', size: 0.22 },
     skin: { head: hex('#e0dcc4'), body: hex('#cfcab0'), arm: hex('#e0dcc4'), leg: hex('#cfcab0'), face: T.FACE_SKELE, headTile: T.BONE, bodyTile: T.BONE, spines: hex('#cfcab0'), spineCount: 5 },
   },
@@ -959,20 +963,61 @@ export class Mob extends Entity {
     }
   }
 
+  /**
+   * Archers, and the one enemy in the game that could not be caught.
+   *
+   * This backed away at full movement speed with no limit, which sounds
+   * harmless and is not. A player closing on it approaches at an angle — you
+   * strafe, you are avoiding its shots — so their closing speed is well under
+   * their top speed, while the archer's retreat is exactly its top speed. The
+   * gap therefore never shuts. Traced in a real run: one Bonecaster, alive for
+   * over a minute, killed a level-51 character in a full tier-4 set from full
+   * health while the wave sat unable to end. On the Colosseum layout, which is
+   * an open bowl with no cover to break line of sight, that was the median
+   * outcome rather than a freak one.
+   *
+   * Two limits, and between them an archer is now something you can decide to
+   * walk at:
+   *
+   *   BACKPEDAL   it retreats at just over half speed. You do not sprint
+   *               while shooting, and a player at a jog now gains ground.
+   *   KITE_MAX    it may only spend so long backing away before it has to
+   *               hold and shoot. The budget refills while it is not
+   *               retreating, so an archer that has been left alone is still
+   *               dangerous to approach — it just cannot run for ever.
+   */
   aiRanged(dt, game, target, dist, nx, nz, speed) {
     const ideal = 11;
+    const BACKPEDAL = 0.55;
+    const KITE_MAX = 1.6;
+    if (this.kiteLeft === undefined) this.kiteLeft = KITE_MAX;
     const los = game.world.lineOfSight(this.x, this.eyeY, this.z, target.x, target.centerY, target.z);
     if (!los) {
       // No shot from here. Close in rather than plinking at a wall — this is
       // what used to leave archers stalled at nominal range forever.
       this.moveToward(nx, nz, speed);
-    } else if (dist > ideal + 3) this.moveToward(nx, nz, speed);
-    else if (dist < ideal - 3) {
+      this.kiteLeft = Math.min(KITE_MAX, this.kiteLeft + dt);
+    } else if (dist > ideal + 3) {
+      this.moveToward(nx, nz, speed);
+      this.kiteLeft = Math.min(KITE_MAX, this.kiteLeft + dt);
+    } else if (dist < ideal - 3 && this.kiteLeft > 0) {
       // Back off, but keep circling so retreating does not walk it into a
       // corner it cannot get out of.
-      this.moveToward(-nx, -nz, speed);
+      this.kiteLeft -= dt;
+      this.moveToward(-nx, -nz, speed * BACKPEDAL);
       this.strafe(nx, nz, speed * 0.45, this.id % 2 ? 1 : -1);
-    } else this.strafe(nx, nz, speed * 0.7, this.id % 2 ? 1 : -1);
+    } else {
+      // Holding ground: still circling, but no longer opening the gap. This is
+      // the branch an out-of-budget archer falls into, and it is the one that
+      // makes it killable. The circle is slower than it used to be because a
+      // player walking at where the thing *is* chases its tail otherwise.
+      this.strafe(nx, nz, speed * 0.45, this.id % 2 ? 1 : -1);
+      // Budget refills only once it is genuinely disengaged — beyond its own
+      // preferred range. Refilling merely for being outside melee let it
+      // oscillate on the spot: back off, hold, regain, back off again, which
+      // put a hard floor under how close anyone could ever get.
+      if (dist > ideal + 2) this.kiteLeft = Math.min(KITE_MAX, this.kiteLeft + dt * 0.5);
+    }
 
     if (this.attackTimer <= 0 && dist < this.def.range && los && !this.allyInLine(game, nx, nz, dist)) {
       this.attackTimer = 1 / this.def.attackSpeed;
@@ -2006,11 +2051,52 @@ export function createRaidBoss(raid, boss, x, y, z) {
 }
 
 /** Choose a mob type for the current wave, respecting unlock gates. */
-export function rollMobType(wave) {
+/**
+ * Whether a mob type fights from outside arm's reach.
+ *
+ * The distinction matters for one reason: uptime. A melee enemy has to walk to
+ * you and spends most of its life doing that, or dying on the way. An enemy
+ * with a range of twelve or more starts shooting the moment it arrives and
+ * never stops, so its listed damage-per-second is very nearly what it actually
+ * deals. On paper the Bonecaster is the second-weakest thing in the game at 6
+ * dps; measured across twelve full runs it was the top killer in every single
+ * one, and in one run it dealt every point of damage that killed the player.
+ */
+export const RANGED_BEHAVIORS = new Set(['ranged', 'caster', 'leech']);
+export function isRangedType(id) {
+  const t = MOB_TYPES[id];
+  return !!t && RANGED_BEHAVIORS.has(t.behavior);
+}
+
+/**
+ * The most of a wave's roster that may be things shooting you from range.
+ *
+ * Without a cap this is a pure weighted roll, and a deep wave would routinely
+ * come up half archers — six of them spread around the arena at eighteen
+ * metres, none reachable while the melee is on you, all firing continuously.
+ * That is not a difficulty setting, it is an unanswerable position, and it was
+ * the single largest cause of death in the game.
+ */
+export const MAX_RANGED_SHARE = 0.3;
+
+/**
+ * Roll one enemy for a wave's roster.
+ *
+ * `roster` is what has been picked so far, so the cap above can be enforced
+ * against the wave actually being built rather than against an average.
+ */
+export function rollMobType(wave, roster = null) {
+  let ranged = 0;
+  if (roster) for (const e of roster) if (!e.boss && isRangedType(e.typeId)) ranged++;
+  const capped = roster
+    && roster.length >= 3
+    && ranged >= Math.ceil(roster.length * MAX_RANGED_SHARE);
+
   const pool = [];
   for (const [id, t] of Object.entries(MOB_TYPES)) {
     if (t.boss || t.weight <= 0) continue;
     if (wave < t.minWave) continue;
+    if (capped && isRangedType(id)) continue;
     for (let i = 0; i < t.weight; i++) pool.push(id);
   }
   return pool.length ? pick(pool) : 'husk';

@@ -14,7 +14,7 @@
 import { Game } from '../src/game/game.js';
 import { CLASSES, CLASS_BY_ID, defaultLoadout, resolveLoadout } from '../src/data/classes.js';
 import { GEAR_SLOT_IDS, MAX_TIER, tierSkillBonus } from '../src/data/armor.js';
-import { PERMANENT, talentPointsForBestWave } from '../src/data/permanent.js';
+import { PERMANENT } from '../src/data/permanent.js';
 import { talentPointsForLevel } from '../src/data/levels.js';
 import { RAIDS } from '../src/data/raids.js';
 import { forwardVec } from '../src/core/math.js';
@@ -159,9 +159,9 @@ function botInput(game) {
   return state;
 }
 
-function simulateRun(classId, { forge = 0, gear = -1, talentPoints = 0, layout } = {}) {
+function simulateRun(classId, { forge = 0, gear = -1, talentPoints = 0, layout, level = SIM_LEVEL } = {}) {
   const cls = CLASS_BY_ID[classId];
-  const profile = stubProfile(forge, gear);
+  const profile = stubProfile(forge, gear, level);
   if (talentPoints > 0) autoSpendTalents(profile, cls, talentPoints);
 
   const game = new Game(stubRenderer, stubAudio, profile);
@@ -244,6 +244,12 @@ const gearIdx = args.indexOf('--gear');
 if (gearIdx >= 0) {
   gear = Number.isFinite(Number(args[gearIdx + 1])) ? Number(args[gearIdx + 1]) : MAX_TIER;
   args.splice(gearIdx, 2);
+}
+let simLevel = SIM_LEVEL;
+const levelIdx = args.indexOf('--level');
+if (levelIdx >= 0) {
+  simLevel = Number(args[levelIdx + 1]) || SIM_LEVEL;
+  args.splice(levelIdx, 2);
 }
 let layout;
 const layoutIdx = args.indexOf('--layout');
@@ -340,7 +346,8 @@ for (const id of targets) {
     // Talent points scale with the best wave reached so far, like the real game.
     const best = results.length ? Math.max(...results.map((r) => r.wave)) : 0;
     results.push(simulateRun(id, {
-      forge, gear, layout, talentPoints: talentPointsForBestWave(best),
+      forge, gear, layout, level: simLevel,
+      talentPoints: talentPointsForLevel(simLevel),
     }));
   }
   const waves = results.map((r) => r.wave);

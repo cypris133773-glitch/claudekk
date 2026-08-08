@@ -51,6 +51,25 @@ export class Entity {
 
   get disabled() { return this.freeze > 0 || this.stun > 0; }
 
+  /**
+   * Damage reduction for hits that do not come through the game's damage
+   * pipeline — which in practice means dot ticks.
+   *
+   * Every ordinary blow is routed through `Game.dealDamage` or
+   * `Game.damageEntity`, and armour is applied there. A dot tick is not: it
+   * fires from `updateBase`, which has no reference to the game, so for as
+   * long as dots have existed they have been landing *unmitigated* on both
+   * sides. Measured on a level-51 character in a full tier-4 set, that was
+   * over a third of the damage that killed them, and none of it cared what
+   * they were wearing.
+   *
+   * Dodge is deliberately not applied. You do not dodge poison that is already
+   * in you; the roll happened when the dot was applied.
+   */
+  get dotMitigation() {
+    return Math.max(0, Math.min(0.75, this.isPlayerKind ? (this.armor || 0) : (this.armorPct || 0)));
+  }
+
   /** Damage entry point. Returns the amount actually applied. */
   damage(amount, opts = {}) {
     if (this.dead || this.invuln > 0) return 0;
@@ -177,7 +196,8 @@ export class Entity {
     for (let i = this.dots.length - 1; i >= 0; i--) {
       const d = this.dots[i];
       const tick = Math.min(dt, d.remaining);
-      const dealt = this.damage(d.dps * tick, { source: d.source, isDot: true });
+      const dealt = this.damage(d.dps * tick * (1 - this.dotMitigation),
+        { source: d.source, isDot: true });
       if (d.source && d.source.onDotDamage) d.source.onDotDamage(dealt);
       d.remaining -= dt;
       if (d.remaining <= 0) {
