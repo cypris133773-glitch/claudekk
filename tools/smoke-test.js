@@ -1943,7 +1943,12 @@ check('a keyboard can play the whole game', async () => {
   for (const key of ['KeyW', 'KeyA', 'KeyS', 'KeyD']) {
     assert(src.includes(`'${key}'`), `${key} no longer moves`);
   }
-  assert(src.includes("keys.has('Space')"), 'Space no longer jumps');
+  // Jump is gone, and so is its key. Every step in the arena is one block and
+  // the collision resolver walks up those on its own, so there is nothing left
+  // to jump over — and the button was occupying the best square inch of a
+  // phone screen to do it. What replaced the binding is the ultimate.
+  assert(!src.includes("s.jump"), 'jump is still being polled');
+  assert(src.includes("'KeyX'"), 'the ultimate has no key');
   assert(src.includes("'Escape'"), 'Escape no longer pauses');
   assert(src.includes('ShiftLeft'), 'Shift no longer sprints');
 
@@ -2619,6 +2624,64 @@ check('a pack surrounds instead of queuing up', async () => {
   assert(after > 0.08,
     `a one-sided pack only reached a spread of ${after.toFixed(3)} in ten seconds `
     + `(${bestSectors} of 8 sectors at its widest)`);
+});
+
+check('every arena is walkable without a jump', async () => {
+  const { createArena, LAYOUT_COUNT, LAYOUT_NAMES, SX, SZ } = await import('../src/world/world.js');
+
+  // There is no jump any more, so the arena has to be built for a body that
+  // can step exactly one block. Two failures matter and they are opposites:
+  // somewhere you cannot get *to*, and somewhere you cannot get *out of*.
+  //
+  // The second one is a softlock and is the reason this check exists. Spires
+  // put its landmark crystal at exactly the point the player spawns on, so
+  // every run of that layout began standing on a one-block pillar two blocks
+  // above the pad — a curiosity with a jump, an unplayable run without one,
+  // and 99.9% of the layout unreachable when it was first measured.
+  const HW = 0.3, H = 1.8;
+  const standable = (w, x, z) => {
+    const g = w.groundAt(x, z, 26);
+    if (g <= 0) return null;
+    return w.boxBlocked(x, g + 0.02, z, HW, H) ? null : g;
+  };
+
+  for (let layout = 0; layout < LAYOUT_COUNT; layout++) {
+    for (const seed of [211, 907]) {
+      const w = createArena(seed % 4, seed, layout, {});
+      const sp = w.playerSpawn;
+
+      // You can leave the spot you start on.
+      const sg = standable(w, sp.x, sp.z);
+      assert(sg !== null, `${LAYOUT_NAMES[layout]}: the spawn is inside geometry`);
+      let escapes = 0;
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1]]) {
+        const ng = standable(w, sp.x + dx, sp.z + dz);
+        if (ng !== null && ng - sg <= 1.001) escapes++;
+      }
+      assert(escapes > 0,
+        `${LAYOUT_NAMES[layout]}: the player spawns somewhere they cannot step off`);
+
+      // And nowhere in the arena is a hole you fall into and stay in. Falling
+      // is free — gravity ignores step height — so the trap is a cell whose
+      // every neighbour is more than a block above it.
+      let traps = 0;
+      for (let x = 1; x < SX - 1; x++) {
+        for (let z = 1; z < SZ - 1; z++) {
+          const g = standable(w, x + 0.5, z + 0.5);
+          if (g === null) continue;
+          if (Math.hypot(x - sp.x, z - sp.z) > 24) continue;
+          let out = false;
+          for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const ng = standable(w, x + dx + 0.5, z + dz + 0.5);
+            if (ng !== null && ng - g <= 1.001) { out = true; break; }
+          }
+          if (!out) traps++;
+        }
+      }
+      assert(traps === 0,
+        `${LAYOUT_NAMES[layout]} seed ${seed}: ${traps} cells you could walk into and not out of`);
+    }
+  }
 });
 
 check('a wave stays killable, and pays more the deeper it is', async () => {

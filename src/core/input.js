@@ -11,10 +11,10 @@ export const isTouchDevice = () =>
  * long stretches; the skill buttons are taps and would only make the view
  * lurch if a stray drag counted.
  */
-// Buttons a finger may start on and still keep driving the look. Only jump is
-// left in the cluster, and jumping mid-drag is exactly what a player expects
+// Buttons a finger may start on and still keep driving the look. The cluster
+// is the skills now, and casting mid-drag is exactly what a player expects
 // to be able to do.
-const DRAG_THROUGH = new Set(['jump']);
+const DRAG_THROUGH = new Set(['skill0', 'skill1', 'skill2', 'skill3', 'ult']);
 
 export class Input {
   constructor(canvas, settings) {
@@ -24,7 +24,6 @@ export class Input {
       moveX: 0, moveY: 0,
       lookX: 0, lookY: 0,
       attack: false,
-      jump: false,
       sprint: false,
       skills: [false, false, false, false],
       // One flag per potion type on the belt, in POTIONS order. Separate from
@@ -64,7 +63,7 @@ export class Input {
   reset() {
     const s = this.state;
     s.moveX = s.moveY = s.lookX = s.lookY = 0;
-    s.attack = s.jump = s.sprint = false;
+    s.attack = s.sprint = false;
     s.skills = [false, false, false, false];
     this.keys.clear();
     this.heldButtons.clear();
@@ -343,7 +342,7 @@ export class Input {
   // Standard-mapping layout, which covers Xbox, PlayStation, Switch Pro and
   // the Steam Deck's built-in controls.
   //   left stick  move        right stick  look
-  //   A jump      X attack    RT attack
+  //   A ultimate  X attack    RT attack
   //   LB/RB/Y/B   skills 1-4  Start        pause
 
   /**
@@ -407,7 +406,7 @@ export class Input {
     }
     if (pressed(9)) this.state.pause = true;      // Start
 
-    this.padJump = btn(0);                        // A
+    this.padUlt = btn(0);                         // A
     this.padAttack = btn(2) || btn(7);            // X or right trigger
     this.padSprint = btn(10) || btn(6);           // L3 or left trigger
     this.padPrev = gp.buttons.map((b) => !!(b && b.pressed));
@@ -418,7 +417,7 @@ export class Input {
   poll(dt = 1 / 60) {
     const s = this.state;
     this.padMove = null;
-    this.padJump = this.padAttack = this.padSprint = false;
+    this.padUlt = this.padAttack = this.padSprint = false;
     if (this.enabled) this.pollGamepad(dt);
     // Keyboard movement
     let mx = 0, my = 0;
@@ -462,8 +461,6 @@ export class Input {
     s.moveX = clamp(mx, -1, 1);
     s.moveY = clamp(my, -1, 1);
 
-    s.jump = this.keys.has('Space') || this.heldButtons.has('jump')
-      || this.buttonHits.has('jump') || this.padJump;
     // Sprint has no button any more. On a keyboard it is still Shift; on touch
     // it is the joystick pushed to the rim, which is the gesture a player
     // already makes when they want to move faster and costs no screen space.
@@ -488,7 +485,7 @@ export class Input {
     for (let i = 0; i < s.potions.length; i++) {
       if (this.buttonHits.has('potion' + i)) s.potions[i] = true;
     }
-    if (this.buttonHits.has('ult')) s.ultimate = true;
+    if (this.buttonHits.has('ult') || this.padUlt) s.ultimate = true;
     if (this.buttonHits.has('pause')) s.pause = true;
     this.buttonHits.clear();
     return s;

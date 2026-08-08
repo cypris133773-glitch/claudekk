@@ -516,7 +516,15 @@ export class World {
       this.set(px, FLOOR_Y + height, pz, B.GLOW);
       this.spawnPoints.push({ x: px + 0.5, y: FLOOR_Y + height, z: pz + 0.5 });
     }
-    this.set(cx, FLOOR_Y + 3, cz, B.CRYSTAL);
+    // The landmark crystal, off the middle rather than on it.
+    //
+    // It sat at exactly (cx, cz), which is exactly where the player spawns —
+    // so every run of this layout began standing on top of a one-block pillar
+    // two blocks above the pad around it. With a jump that was a curiosity;
+    // without one it is a softlock, and the flood-fill probe measured 99.9% of
+    // the layout as unreachable from the spawn. The Colosseum builder already
+    // learned this lesson and says so in its own comment.
+    this.set(cx + 3, FLOOR_Y + 3, cz + 3, B.CRYSTAL);
 
     // Tall thin spires — cover from ranged fire, and something to break line
     // of sight while you reposition.
@@ -638,7 +646,15 @@ export class World {
     // Raised centre so there is one place with sightlines over the whole maze,
     // worth fighting to hold.
     this.plateau(cx, cz, 5, 3, P.accent, P.trim, [[1, 0], [-1, 0], [0, 1], [0, -1]]);
-    this.set(cx, FLOOR_Y + 3, cz, B.CRYSTAL);
+    // The landmark crystal, off the middle rather than on it.
+    //
+    // It sat at exactly (cx, cz), which is exactly where the player spawns —
+    // so every run of this layout began standing on top of a one-block pillar
+    // two blocks above the pad around it. With a jump that was a curiosity;
+    // without one it is a softlock, and the flood-fill probe measured 99.9% of
+    // the layout as unreachable from the spawn. The Colosseum builder already
+    // learned this lesson and says so in its own comment.
+    this.set(cx + 3, FLOOR_Y + 3, cz + 3, B.CRYSTAL);
     for (let i = 0; i < 4; i++) {
       const a = (i / 4) * Math.PI * 2 + 0.4;
       this.lavaDisc(Math.round(cx + Math.cos(a) * 15), Math.round(cz + Math.sin(a) * 15), 2, inArena);
@@ -857,6 +873,36 @@ export class World {
    */
   moveAABB(ent, dt) {
     const hw = ent.width / 2;
+    /**
+     * Walk up a one-block ledge instead of stopping at it.
+     *
+     * This is what replaces the jump button. Every step in the arena is one
+     * block by construction, so a body that steps over one block never needs
+     * to leave the ground — and a game with nothing to jump over does not need
+     * a jump, which is a whole control freed up on a screen where controls are
+     * the scarce resource.
+     *
+     * Only when grounded and only by exactly one block: a step-up that works
+     * in mid-air is a climb, and one that clears two blocks is a jump with a
+     * different name.
+     */
+    const stepUp = (e, axis) => {
+      if (!e.onGround) return false;
+      const before = e.y;
+      e.y += 1.02;
+      // The body has to fit where it is going, or this teleports into a wall.
+      if (this.boxBlocked(e.x, e.y, e.z, hw, e.height)) { e.y = before; return false; }
+      // And there has to be something under it — otherwise walking into the
+      // side of a pillar would lift you up its face.
+      const ahead = axis === 0 ? Math.sign(e.vx) : 0;
+      const aheadZ = axis === 2 ? Math.sign(e.vz) : 0;
+      if (!this.isSolid(e.x + ahead * (hw + 0.3), e.y - 0.5, e.z + aheadZ * (hw + 0.3))) {
+        e.y = before;
+        return false;
+      }
+      return true;
+    };
+
     const step = (axis, delta) => {
       if (delta === 0) return false;
       if (axis === 0) ent.x += delta; else if (axis === 1) ent.y += delta; else ent.z += delta;
@@ -893,8 +939,8 @@ export class World {
         if (ent.vy < 0) ent.onGround = true;
         ent.vy = 0;
       }
-      if (step(0, ent.vx * sdt)) ent.hitWallX = true;
-      if (step(2, ent.vz * sdt)) ent.hitWallZ = true;
+      if (step(0, ent.vx * sdt)) { ent.hitWallX = true; if (ent.autoStep) stepUp(ent, 0); }
+      if (step(2, ent.vz * sdt)) { ent.hitWallZ = true; if (ent.autoStep) stepUp(ent, 2); }
     }
     // Safety net. The sealed edges should make this unreachable, but a single
     // escaped entity softlocks a wave, so recover rather than trust it.
@@ -907,6 +953,25 @@ export class World {
       ent.vx = ent.vy = ent.vz = 0;
       ent.outOfBounds = true;
     }
+  }
+
+  /** Whether an axis-aligned body at this position overlaps anything solid. */
+  boxBlocked(x, y, z, hw, height) {
+    const minX = Math.floor(x - hw), maxX = Math.floor(x + hw);
+    const minY = Math.floor(y), maxY = Math.floor(y + height);
+    const minZ = Math.floor(z - hw), maxZ = Math.floor(z + hw);
+    for (let yy = minY; yy <= maxY; yy++) {
+      for (let zz = minZ; zz <= maxZ; zz++) {
+        for (let xx = minX; xx <= maxX; xx++) {
+          if (!this.isSolid(xx, yy, zz)) continue;
+          if (x + hw <= xx || x - hw >= xx + 1) continue;
+          if (y + height <= yy || y >= yy + 1) continue;
+          if (z + hw <= zz || z - hw >= zz + 1) continue;
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   /** Ray march against solid blocks. Returns hit distance or `max` if clear. */

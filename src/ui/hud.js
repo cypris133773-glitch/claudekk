@@ -470,13 +470,18 @@ export class Hud {
    */
   drawUltimate(p, baseX, baseY, size, gap, rects) {
     if (!p.ult) return;
+    const s = Math.round(size * 1.12);
+    const x = baseX + 4 * (size + gap) + gap * 1.6;
+    this.drawUltimateAt(p, x + s / 2, baseY - (s - size) / 2 + s / 2, s, rects);
+  }
+
+  /** The ultimate, centred on a point. Both layouts route through here. */
+  drawUltimateAt(p, cx, cy, s, rects) {
+    if (!p.ult) return;
     const c = this.ctx;
     const charge = Math.max(0, Math.min(1, p.ultCharge || 0));
     const ready = charge >= 1;
-    const s = Math.round(size * 1.12);
-    const x = baseX + 4 * (size + gap) + gap * 1.6;
-    const y = baseY - (s - size) / 2;
-    const cx = x + s / 2, cy = y + s / 2;
+    const x = cx - s / 2, y = cy - s / 2;
     const r = s * 0.5;
     const color = p.cls.accent || p.cls.color;
 
@@ -1210,10 +1215,30 @@ export class Hud {
     const baseX = this.w / 2 - totalW / 2;
     const baseY = this.h - size - (touch ? 14 + s.b : 18);
 
+    // Where the buttons actually go.
+    //
+    // On desktop, one centred row: there is no thumb to reach with and a row
+    // reads left to right with the number keys under it.
+    //
+    // On touch they are a block in the corner the jump button used to own.
+    // That corner is the best square inch on a phone — it is where the thumb
+    // already rests — and it was spending it on a verb the game no longer has.
+    // Two by two, because a row of four across the bottom puts the outer two
+    // at the far end of a thumb's arc, and the ultimate sits above the block
+    // where the same thumb reaches without covering the four.
+    const cluster = touch;
+    const cw = size * 2 + gap;                       // cluster width
+    const dir = lefty ? 1 : -1;                      // toward the screen edge
+    const edge = lefty ? s.l : this.w - s.r;
+    const clusterX = lefty ? edge + 16 : edge - 16 - cw;
+    const clusterY = this.h - s.b - 18 - (size * 2 + gap);
+    const slotAt = (i) => (cluster
+      ? { x: clusterX + (i % 2) * (size + gap), y: clusterY + ((i / 2) | 0) * (size + gap) }
+      : { x: baseX + i * (size + gap), y: baseY });
+
     for (let i = 0; i < n; i++) {
       const skill = p.skills[i];
-      const x = baseX + i * (size + gap);
-      const y = baseY;
+      const { x, y } = slotAt(i);
 
       const cd = p.cooldowns[i];
       const rank = p.rankOf(i);
@@ -1272,24 +1297,29 @@ export class Hud {
       });
     }
 
-    this.drawUltimate(p, baseX, baseY, size, gap, rects);
+    // The ultimate: on the end of the row on desktop, above the block on
+    // touch, where the same thumb reaches it without covering the four.
+    if (cluster) {
+      this.drawUltimateAt(p, clusterX + cw / 2, clusterY - size * 0.72, size * 1.05, rects);
+    } else {
+      this.drawUltimate(p, baseX, baseY, size, gap, rects);
+    }
 
     if (touch) {
-      // Jump is the only action button left in the thumb corner.
+      // Nothing left in the corner but the skills.
       //
-      // Attacking is a tap on the view instead. The attack button was the
-      // largest control on the screen and it did the one thing the game
-      // already does when you touch anything that is not a control — so it
-      // spent its space competing with the look drag it sat next to.
+      // Attacking is a tap on the view: the attack button was the largest
+      // control on the screen and it did the one thing the game already does
+      // when you touch anything that is not a control.
       //
-      // Sprint went for the same reason from the other direction: it was on
-      // by default, nobody turned it off mid-fight, and a button nobody
-      // presses is a button in the way of the ones they do.
-      const dir = lefty ? 1 : -1;                     // toward the screen edge
-      const edge = lefty ? s.l : this.w - s.r;
-      const ax = edge + dir * (18 + ar);
-      const ay = this.h - s.b - 22 - ar;
-      this.touchButton(ax, ay, ar, '⤒', 'jump', rects, '#8fd8ff');
+      // Sprint went for the same reason from the other direction — it was on
+      // by default and nobody turned it off mid-fight.
+      //
+      // Jump went because there is nothing left to jump over. Every step in
+      // the arena is one block and the collision resolver walks up those on
+      // its own, so the button was occupying the best square inch of a phone
+      // screen to do nothing. The skills have it now.
+      //
       // Pause, top centre. On a phone there was no way to reach the menu at
       // all — Esc and the gamepad Start button are the only other routes, and
       // neither exists on a touchscreen. Top centre is the one area no thumb

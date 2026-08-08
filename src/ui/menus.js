@@ -343,12 +343,17 @@ export class Menus {
       // that this is a door that only ever says no.
       { label: 'BOSS FIGHTS', hint: this.raidHint(this.charId()),
         hide: level < 6, go: () => this.show('raids') },
-      // Hidden until level 6, alongside BOSS FIGHTS. A duel between two level-1
-      // characters with two skills each is not a fight, it is a race to press
-      // the one button that does damage, and a mode whose first impression is
-      // that is a mode nobody comes back to.
-      { label: 'FIGHT A FRIEND', hint: 'Send a code · 1v1, 2v2 or 3v3',
-        hide: level < 6, go: () => this.show('duel') },
+      // Open from level 1.
+      //
+      // It was gated at 6 on the theory that a duel between two level-1
+      // characters is a race to press the one button that does damage. That
+      // reasoning was about the *matchup*, and it is the wrong thing to gate
+      // on: both sides are level 1, so it is an even fight, and it is the
+      // fastest way for someone to find out whether they like this game at
+      // all. A mode nobody can reach for their first three hours is a mode
+      // most people never reach.
+      { label: 'FIGHT', hint: 'Play against someone · 1v1, 2v2 or 3v3',
+        go: () => this.show('duel') },
       { label: 'GET STRONGER',
         hint: spendable ? `${spendable} points to spend` : 'Spend your gold and your points',
         go: () => this.show('sheet') },
@@ -571,16 +576,27 @@ export class Menus {
     p.appendChild(modes);
 
     const menu = el('div', 'main-menu');
-    if (d.matchmaking !== false) {
-      const pubBtn = el('button', 'menu-btn primary');
-      pubBtn.appendChild(el('span', 'menu-label', 'HOST A PUBLIC GAME'));
-      pubBtn.appendChild(el('span', 'menu-hint',
-        'Anyone can see it and join with one tap'));
-      this.click(pubBtn, () => d.hostPublic(d.mode, this.charId()));
-      menu.appendChild(pubBtn);
-    }
+    // Always drawn, even when it cannot be used.
+    //
+    // Hiding it when matchmaking is off was worse than useless: the screen
+    // looked exactly like the build that never had public games, so the only
+    // way to find out whether the feature existed was to read a small grey
+    // line. A disabled button with the reason on it is the difference between
+    // "this game has no public matches" and "this deployment has not been
+    // finished setting up".
+    const off = d.matchmaking === false;
+    const pubBtn = el('button', 'menu-btn' + (off ? '' : ' primary'));
+    pubBtn.appendChild(el('span', 'menu-label', 'HOST A PUBLIC GAME'));
+    pubBtn.appendChild(el('span', 'menu-hint', off
+      ? (d.broken
+        ? 'Unavailable — the server is not answering'
+        : 'Unavailable — no matchmaking store is connected')
+      : 'Anyone can see it and join with one tap'));
+    pubBtn.disabled = off;
+    this.click(pubBtn, () => d.hostPublic(d.mode, this.charId()));
+    menu.appendChild(pubBtn);
 
-    const hostBtn = el('button', 'menu-btn' + (d.matchmaking === false ? ' primary' : ''));
+    const hostBtn = el('button', 'menu-btn' + (off ? ' primary' : ''));
     hostBtn.appendChild(el('span', 'menu-label', 'HOST WITH A CODE'));
     hostBtn.appendChild(el('span', 'menu-hint',
       'Private: you send the code to whoever you want'));

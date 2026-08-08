@@ -563,19 +563,39 @@ async function runViewport(browser, port, vp) {
         { results });
     }
 
-    // ---- 7. jump button ----------------------------------------------------
+    // ---- 7. the corner belongs to the skills -------------------------------
+    //
+    // Jump is gone: every step in the arena is one block and the collision
+    // resolver walks up those on its own, so the button was occupying the best
+    // square inch of a phone screen to do nothing. What replaced it is the
+    // skill cluster, and what has to be true is that the cluster is actually
+    // in the corner a thumb rests in rather than merely somewhere on screen.
+    //
+    // That the step-up *works* is checked in the smoke test, which is allowed
+    // to build a ledge to walk into. This one only owns the layout.
     {
-      const b = byName('jump');
-      if (!b) {
-        rep.add('jump button', false, 'no "jump" hit rect exists in input.buttonRects');
-      } else {
-        await frame.evaluate(() => window.__PLAYTEST.reset());
-        await touch.tap(b.cx, b.cy, 150, 8);
-        await sleep(900);
-        const r = await frame.evaluate(() => window.__PLAYTEST.read());
-        rep.add('jump: tap ⤒ button', r.airFrames > 2 && (r.maxRise > 0.25 || r.maxVy > 2),
-          `airborne ${r.airFrames} frames, peak rise ${n(r.maxRise)} blocks, peak vy ${n(r.maxVy)}`,
-          { airFrames: r.airFrames, maxRise: r.maxRise, maxVy: r.maxVy });
+      const jump = byName('jump');
+      rep.add('no jump control remains', !jump,
+        jump ? 'a jump hit rect is still registered' : 'gone');
+      // One pad per *equipped* skill, not four. A level-1 character has two
+      // skills unlocked, so asserting four here measured the unlock table
+      // rather than the layout — and failed on a character that was correct.
+      const equipped = await frame.evaluate(() => window.CRAFTARENA.game.player.skills.length);
+      const pads = [0, 1, 2, 3].map((i) => byName('skill' + i)).filter(Boolean);
+      const ult = byName('ult');
+      rep.add('every skill has a pad, and the ultimate has one',
+        pads.length === equipped && !!ult,
+        `${pads.length} pads for ${equipped} equipped skills, `
+        + `ultimate ${ult ? 'present' : 'MISSING'}`);
+      if (pads.length && ult) {
+        // Bottom third of the screen and hard against one side: that is what
+        // "where the thumb already is" means, and it is the whole reason for
+        // moving them off the centre line.
+        const low = Math.min(...pads.map((b) => b.cy)) > vp.height * 0.55;
+        const side = pads.every((b) => b.cx < vp.width * 0.35 || b.cx > vp.width * 0.65);
+        rep.add('the cluster is thumb-reachable', low && side,
+          `lowest pad at ${n(Math.min(...pads.map((b) => b.cy)) / vp.height * 100, 0)}% down, `
+          + `${side ? 'against one edge' : 'across the middle'}`);
       }
     }
 
