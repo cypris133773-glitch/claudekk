@@ -2446,8 +2446,39 @@ check('the four new enemies each do the thing they exist for', async () => {
     }
     assert(firstAt >= 0 && firstAt < 9,
       `the Lancer's first charge came at ${firstAt < 0 ? 'never' : firstAt.toFixed(1) + 's'}`);
-    assert(charges >= 2,
-      `the Lancer charged ${charges} time(s) in thirty seconds; it should keep disengaging`);
+    // Counting charges over a window measures the arena as much as the enemy:
+    // a Lancer that spends the fight jammed in a corner legitimately gets one
+    // off, which happened in about one run in eight and is not a bug. The
+    // disengage is the actual mechanism, so it is tested directly and in the
+    // open, where the answer depends on nothing but the Lancer.
+    assert(charges >= 1, `the Lancer charged ${charges} times in thirty seconds`);
+  }
+
+  // The disengage, on its own.
+  //
+  // A charge needs five blocks of run-up. Put a Lancer in melee with its lance
+  // ready and it must give ground to make them — that one behaviour is the
+  // whole difference between this enemy and a husk with a different hat.
+  {
+    const { game, h, p } = fresh();
+    const l = game.spawnMob('lancer', p.x + 2, p.y, p.z);
+    l.hp = l.maxHp = 1e7;
+    l.lanceTimer = 0;
+    let away = 0, frames = 0;
+    for (let i = 0; i < 60; i++) {
+      game.update(1 / 60, h.input());
+      p.hp = p.maxHp;
+      l.hp = l.maxHp;
+      const d = Math.hypot(l.x - p.x, l.z - p.z);
+      if (d > 6) break;                       // it made its room
+      // Is it moving away from the player, or into them?
+      const outward = ((l.x - p.x) * l.vx + (l.z - p.z) * l.vz) / (d || 1);
+      if (Math.hypot(l.vx, l.vz) > 0.4) { frames++; if (outward > 0) away++; }
+    }
+    assert(frames > 0, 'the Lancer never moved with its lance ready');
+    assert(away > frames * 0.6,
+      `the Lancer spent ${frames - away} of ${frames} moving frames closing on the player `
+      + 'while its lance was ready, instead of making room to charge');
   }
 });
 
@@ -2590,6 +2621,74 @@ check('a pack surrounds instead of queuing up', async () => {
     + `(${bestSectors} of 8 sectors at its widest)`);
 });
 
+check('a Hexer casts, and a stun stops it', async () => {
+  const { Game } = await import('../src/game/game.js');
+  const { makeHarness } = await import('./harness.js');
+
+  // Every other telegraph in the arena asks "can you move". This one asks
+  // "can you reach it", and it is the only enemy whose whole design is a thing
+  // you *stop* rather than a thing you dodge — so both halves have to work or
+  // it is an archer with a longer wind-up.
+  const fight = () => {
+    const h = makeHarness({ level: 60 });
+    const game = new Game(h.renderer, h.audio, h.profile);
+    game.startRun(CLASSES[0], { layout: 0 });
+    game.mobs.length = 0;
+    const p = game.player;
+    const m = game.spawnMob('hexer', p.x, p.y, p.z - 9);
+    m.maxHp = 1e7; m.hp = 1e7;
+    return { game, h, p, m };
+  };
+
+  // It casts, and the cast lands for real damage.
+  const a = fight();
+  let landed = 0, lowest = a.p.maxHp, sawBar = false;
+  for (let i = 0; i < 60 * 20; i++) {
+    a.game.update(1 / 60, a.h.input());
+    if (a.m.cast) sawBar = true;
+    lowest = Math.min(lowest, a.p.hp);
+    a.p.hp = a.p.maxHp;
+  }
+  assert(sawBar, 'the Hexer never started a cast in twenty seconds');
+  landed = a.p.maxHp - lowest;
+  assert(landed > a.p.maxHp * 0.15,
+    `a finished Hex took ${Math.round(landed)} of ${a.p.maxHp}: not worth stopping`);
+
+  // A stun cuts it, and leaves it staggered — an interrupt that only cancels
+  // the spell is worth exactly the spell.
+  const b = fight();
+  let cut = 0, stagger = 0;
+  for (let i = 0; i < 60 * 20; i++) {
+    b.game.update(1 / 60, b.h.input());
+    b.p.hp = b.p.maxHp;
+    if (b.m.cast && b.m.cast.remaining < b.m.cast.total * 0.5) {
+      b.game.dealDamage(b.p, b.m, 1, { stun: 1, silent: true });
+      // Sampled here, not after the loop: the stagger runs down as the caster
+      // recovers, so reading it at the end measures how long ago the last
+      // interrupt was rather than whether interrupts stagger.
+      if (!b.m.cast) { cut++; stagger = Math.max(stagger, b.m.staggered); }
+    }
+  }
+  assert(cut >= 1, 'a stun did not stop the cast');
+  assert(stagger > 0, 'an interrupted caster was not staggered');
+
+  // A hit with neither stun nor knockback must not interrupt, or every point
+  // of damage is an interrupt and the mechanic has no moment in it.
+  const c = fight();
+  let poked = 0, survived = 0;
+  for (let i = 0; i < 60 * 20; i++) {
+    c.game.update(1 / 60, c.h.input());
+    c.p.hp = c.p.maxHp;
+    if (c.m.cast) {
+      poked++;
+      c.game.dealDamage(c.p, c.m, 1, { silent: true });
+      if (c.m.cast) survived++;
+    }
+  }
+  assert(poked > 0 && survived === poked,
+    `${poked - survived} of ${poked} plain hits cancelled a cast`);
+});
+
 check('crossing elements detonates, and repeating one does not', async () => {
   const { Game } = await import('../src/game/game.js');
   const { castSkill } = await import('../src/game/skills.js');
@@ -2641,27 +2740,36 @@ check('crossing elements detonates, and repeating one does not', async () => {
     for (let k = 0; k < 60; k++) f.game.update(1 / 60, f.h.input());
   };
 
-  const a = fight();
-  cast(a, 0);
-  assert(a.m.elemTag && a.m.elemTag.id === 'fire',
-    `a fireball left ${a.m.elemTag ? a.m.elemTag.id : 'no mark'}`);
-  const beforeCross = a.m.hp;
-  cast(a, 1);
-  const crossed = beforeCross - a.m.hp;
-  assert(!a.m.elemTag, 'crossing elements did not spend the mark');
+  // What the detonation is worth, measured against the same skill cast into
+  // the same target with and without a mark on it.
+  //
+  // The first version of this compared two fireballs against a fireball and a
+  // frost nova, which is not a controlled comparison at all — those are two
+  // different skills with two different damage numbers, and the ratio it
+  // produced said more about Fireball than about the combo.
+  const bare = fight();
+  cast(bare, 1);
+  const alone = bare.m.maxHp - bare.m.hp;
+
+  const combo = fight();
+  cast(combo, 0);
+  assert(combo.m.elemTag && combo.m.elemTag.id === 'fire',
+    `a fireball left ${combo.m.elemTag ? combo.m.elemTag.id : 'no mark'}`);
+  const beforeCross = combo.m.hp;
+  cast(combo, 1);
+  const crossed = beforeCross - combo.m.hp;
+  assert(!combo.m.elemTag, 'crossing elements did not spend the mark');
+  assert(crossed > alone * 1.8,
+    `a frost nova deals ${Math.round(alone)} bare and ${Math.round(crossed)} onto a `
+    + 'burning target: the detonation is not worth switching for');
 
   // Same element again: refreshes, does not detonate. The reward is
   // specifically for switching, and a Mage holding one button must not be
   // detonating every second.
-  const b = fight();
-  cast(b, 0);
-  const beforeSame = b.m.hp;
-  cast(b, 0);
-  const same = beforeSame - b.m.hp;
-  assert(b.m.elemTag && b.m.elemTag.id === 'fire', 'repeating an element cleared the mark');
-  assert(crossed > same * 1.6,
-    `crossing dealt ${Math.round(crossed)} and repeating dealt ${Math.round(same)}: `
-    + 'the combo is not worth switching for');
+  const same = fight();
+  cast(same, 0);
+  cast(same, 0);
+  assert(same.m.elemTag && same.m.elemTag.id === 'fire', 'repeating an element cleared the mark');
 });
 
 check('a buff grants everything its tooltip promises', async () => {
@@ -2740,6 +2848,10 @@ check('how something died is visible in how it comes apart', async () => {
   game.r.fancy = true;
   game.startRun(CLASSES[0], { layout: 0 });
   const p = game.player;
+  // Crit is rolled, so an "ordinary" kill lands a natural critical about one
+  // time in twelve and comes apart as a burst — which is correct behaviour and
+  // a flaky test. The one case that wants a critical asks for one explicitly.
+  p.critChance = 0;
 
   // Every enemy used to come apart the same way, which threw away the one
   // moment where the player's choice of damage is most visible. These read

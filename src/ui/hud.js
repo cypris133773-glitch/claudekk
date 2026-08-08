@@ -921,6 +921,29 @@ export class Hud {
       c.fillRect(s.x - w / 2, s.y, w, h);
       c.fillStyle = m.def.boss ? '#ff5a3c' : (m.elite ? '#ffd24a' : '#77dd66');
       c.fillRect(s.x - w / 2 + 1, s.y + 1, (w - 2) * pct, h - 2);
+      // The cast bar.
+      //
+      // Above the health bar, in the caster's own colour, filling left to
+      // right. It has to be unmistakably *not* a health bar — a player who
+      // reads it as health will watch it fill and do nothing, which is exactly
+      // the wrong response. So it fills the other way, sits apart, and carries
+      // the name of what is being cast.
+      if (m.cast) {
+        const done = 1 - m.cast.remaining / m.cast.total;
+        const cy = s.y - (touch ? 20 : 17);
+        c.fillStyle = 'rgba(0,0,0,0.75)';
+        c.fillRect(s.x - w / 2, cy, w, h + 1);
+        c.fillStyle = m.cast.color || '#a35cff';
+        c.fillRect(s.x - w / 2 + 1, cy + 1, (w - 2) * done, h - 1);
+        this.font(touch ? 11 : 10);
+        c.textAlign = 'center';
+        c.fillStyle = '#e0c8ff';
+        c.shadowColor = 'rgba(0,0,0,0.9)';
+        c.shadowBlur = 4;
+        c.fillText(m.cast.name, s.x, cy - 7);
+        c.shadowBlur = 0;
+      }
+
       // A ward is worth reading before you commit a cooldown into it, so it
       // gets its own sliver above the bar rather than being folded into it.
       if (m.absorb > 0) {

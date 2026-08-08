@@ -1177,6 +1177,18 @@ export class Game {
       dmg *= 2;
     }
 
+    // Interrupts.
+    //
+    // A stun or a solid knock cuts a cast in progress. Deliberately not its
+    // own verb: every class already has something that stuns or throws, so
+    // nobody has to go and bring a special tool, and the skills that were
+    // already the crowd-control ones quietly became the answer to a caster
+    // too. Checked before the damage lands, so a killing blow does not also
+    // print an interrupt for a cast that was never going to finish.
+    if (target.cast && (opts.stun || (opts.knockback || 0) >= 3)) {
+      this.onInterrupt(source, target);
+    }
+
     const dealt = target.damage(dmg, { ...opts, source, crit });
     if (dealt <= 0) return 0;
 
@@ -1255,6 +1267,25 @@ export class Game {
    * detonation is visibly the same *kind* of event as a Meteor rather than a
    * number appearing.
    */
+/**
+   * A cast cut short.
+   *
+   * The stagger is what makes it worth doing: an interrupt that only cancels
+   * the spell is worth exactly the spell, and one that also opens a window is
+   * worth going out of your way for.
+   */
+  onInterrupt(source, target) {
+    if (!target.interruptCast()) return;
+    this.burst(target.x, target.y + target.height, target.z, 18, '#ffd24a');
+    this.shockwave(target.x, target.y + 0.1, target.z, 2.2, '#ffd24a');
+    if (source === this.player) {
+      this.floaters.push(new FloatText(target.x, target.y + target.height + 0.6, target.z,
+        'INTERRUPTED', '#ffd24a', true));
+      this.hitstop = Math.max(this.hitstop, 0.06);
+      this.audio.play('deny');
+    }
+  }
+
   detonate(source, target, elementId, stored) {
     const e = ELEMENTS[elementId];
     if (!e) return;

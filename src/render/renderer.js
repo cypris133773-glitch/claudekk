@@ -182,6 +182,13 @@ export class Renderer {
   /** Offer a light this frame. Cheap and ignored when the budget is spent. */
   addLight(x, y, z, radius, color, strength = 1) {
     if (!this.fancy || radius <= 0) return;
+    // A light whose whole sphere is behind you contributes nothing to a single
+    // pixel, and uploading it costs the same as uploading a useful one — which
+    // on a software rasteriser means every frame with a stray projectile at
+    // the far end of the arena paid the full per-pixel loop for nothing.
+    const dx = x - this.camX, dy = y - this.camY, dz = z - this.camZ;
+    const reach = radius + 6;
+    if (dx * dx + dy * dy + dz * dz > reach * reach) return;
     this.lightQueue.push({ x, y, z, r: radius, c: color, s: strength });
   }
 
@@ -211,6 +218,7 @@ export class Renderer {
     }
     gl.uniform4fv(this.u.uLightPos, this.lightPos);
     gl.uniform3fv(this.u.uLightColor, this.lightCol);
+    gl.uniform1i(this.u.uLightCount, n);
     q.length = 0;
   }
 

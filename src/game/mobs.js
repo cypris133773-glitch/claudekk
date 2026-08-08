@@ -168,6 +168,21 @@ export const MOB_TYPES = {
     tagline: 'Mends the pack. Kill it first or kill nothing.',
     skin: { head: hex('#7fae5e'), body: hex('#4a6b36'), arm: hex('#7fae5e'), leg: hex('#324825'), face: T.FACE_HEXER, emissive: 0.2, cloak: hex('#324825'), spines: hex('#c8ff9a'), spineCount: 5 },
   },
+  hexer: {
+    name: 'Hexer', weight: 3, minWave: 10, cost: 3,
+    hp: 96, damage: 34, speed: 3.2, range: 15, attackSpeed: 0.5, souls: 15,
+    height: 1.8, width: 0.5, behavior: 'caster',
+    // The enemy the interrupt mechanic exists for.
+    //
+    // Everything else in the arena telegraphs something you dodge. This
+    // telegraphs something you *stop* — a two-second bar over its head and a
+    // hit that hurts badly if it finishes. Any stun or knockback cuts it, so
+    // nobody has to bring a special tool; the crowd-control skills that were
+    // already in every class's kit quietly became the answer to it.
+    castTime: 2.0, castDamage: 3.2, castRadius: 5.0,
+    tagline: 'Casts. Stop it, or take all of it.',
+    skin: { head: hex('#6a4fa8'), body: hex('#3b2a63'), arm: hex('#6a4fa8'), leg: hex('#2a1c48'), face: T.FACE_HEXER, emissive: 0.3, hat: hex('#2a1c48'), cloak: hex('#2a1c48'), spines: hex('#c9a9ff'), spineCount: 4 },
+  },
   splitter: {
     name: 'Splitter', weight: 3, minWave: 16, cost: 4,
     hp: 200, damage: 22, speed: 3.0, range: 2.8, attackSpeed: 0.8, souls: 18,
@@ -365,6 +380,7 @@ export class Mob extends Entity {
       case 'blinker': this.aiBlinker(dt, game, target, dist, nx, nz, speed); break;
       case 'lancer': this.aiLancer(dt, game, target, dist, nx, nz, speed); break;
       case 'leech': this.aiLeech(dt, game, target, dist, nx, nz, speed); break;
+      case 'caster': this.aiCaster(dt, game, target, dist, nx, nz, speed); break;
       case 'boss': this.aiBoss(dt, game, target, dist, nx, nz, speed); break;
       case 'boss_warden': this.aiWarden(dt, game, target, dist, nx, nz, speed); break;
       case 'boss_brood': this.aiBrood(dt, game, target, dist, nx, nz, speed); break;
@@ -372,6 +388,7 @@ export class Mob extends Entity {
       default: this.aiMelee(dt, game, target, dist, nx, nz, speed);
     }
 
+    this.updateCast(dt, game);
     this.walkPhase += Math.hypot(this.vx, this.vz) * dt * 2.4;
     this.autoJump(world, nx, nz);
     this.checkStuck(dt, game, dist);
@@ -767,7 +784,12 @@ export class Mob extends Entity {
     }
     if (this.windup > 0) { this.vx *= 0.3; this.vz *= 0.3; return; }
 
-    this.lanceTimer = (this.lanceTimer || rand(4, 2)) - dt;
+    // `?? ` and not `||`. A lance timer that reaches exactly zero is ready to
+    // fire, and `0 || rand(4, 2)` silently rolls it a fresh two-to-four second
+    // wait instead — the one value that means "now" was the one value the
+    // idiom threw away.
+    if (this.lanceTimer === undefined) this.lanceTimer = rand(4, 2);
+    this.lanceTimer -= dt;
     const clear = game.world.lineOfSight(this.x, this.eyeY, this.z, target.x, target.centerY, target.z);
 
     // Give ground to make a lane.
@@ -782,18 +804,38 @@ export class Mob extends Entity {
     // up rather than fleeing — and a Lancer with its back to a wall stops
     // trying and just fights.
     if (this.lanceTimer <= 0 && dist <= 5.5 && clear) {
-      this.backoff = (this.backoff === undefined ? 1.4 : this.backoff) - dt;
-      if (this.backoff > 0 && !this.hitWallX && !this.hitWallZ) {
-        this.vx = -nx * speed * 0.85;
-        this.vz = -nz * speed * 0.85;
+      this.backoff = (this.backoff === undefined ? 1.6 : this.backoff) - dt;
+      if (this.backoff > 0) {
+        // Straight back, or around the side when straight back is a wall.
+        //
+        // Giving up on a blocked retreat was correct-looking and wrong: an
+        // arena has walls in it, so a Lancer fighting near one would sit in
+        // melee for a full cadence doing nothing it exists to do. A fighter
+        // backed against a wall circles, and circling opens the same lane.
+        // Which way it circles is fixed per mob, so it commits rather than
+        // jittering between the two.
+        const blocked = this.hitWallX || this.hitWallZ;
+        if (blocked) {
+          if (this.circleDir === undefined) this.circleDir = Math.random() < 0.5 ? -1 : 1;
+          this.vx = -nz * speed * this.circleDir;
+          this.vz = nx * speed * this.circleDir;
+        } else {
+          this.vx = -nx * speed * 0.85;
+          this.vz = -nz * speed * 0.85;
+        }
+        // Facing you the whole way, so this reads as winding up rather than
+        // fleeing.
         this.yaw = Math.atan2(-nx, -nz);
         return;
       }
-      // Could not make room. Try again after a normal cadence rather than
-      // retrying every frame from inside the player's hitbox.
-      if (this.backoff <= 0) { this.lanceTimer = rand(5, 3); this.backoff = undefined; }
+      // Ran out of time to make room. Try again after a normal cadence rather
+      // than retrying every frame from inside the player's hitbox.
+      this.lanceTimer = rand(5, 3);
+      this.backoff = undefined;
+      this.circleDir = undefined;
     } else if (dist > 5.5) {
       this.backoff = undefined;
+      this.circleDir = undefined;
     }
 
     if (this.lanceTimer <= 0 && dist > 5 && dist < 20 && clear) {
@@ -819,6 +861,52 @@ export class Mob extends Entity {
       return;
     }
     this.aiMelee(dt, game, target, dist, nx, nz, speed);
+  }
+
+  /**
+   * Stands off and casts something worth stopping.
+   *
+   * The cast is the enemy. It plants itself, puts a bar over its head and a
+   * ring on the floor where the hit will land, and two seconds later that hit
+   * lands for three times what an ordinary shot does. Every other telegraph in
+   * the arena asks "can you move"; this one asks "can you reach it".
+   *
+   * It will not cast without line of sight, so kiting behind cover is a real
+   * answer as well — which is what stops the mechanic from being a tax on
+   * classes with no stun off cooldown.
+   */
+  aiCaster(dt, game, target, dist, nx, nz, speed) {
+    if (this.cast) {
+      // Planted. A caster that walks while casting is a caster you cannot
+      // punish for casting.
+      this.vx *= 0.2; this.vz *= 0.2;
+      this.yaw = Math.atan2(-nx, -nz);
+      return;
+    }
+    if (this.staggered > 0) {
+      this.staggered -= dt;
+      this.vx *= 0.4; this.vz *= 0.4;
+      return;
+    }
+    const clear = game.world.lineOfSight(this.x, this.eyeY, this.z,
+      target.x, target.centerY, target.z);
+    this.castCd = (this.castCd === undefined ? rand(3, 1) : this.castCd) - dt;
+    if (this.castCd <= 0 && dist < this.def.range && dist > 4 && clear) {
+      this.castCd = rand(7, 4.5);
+      const def = this.def;
+      const tx = target.x, tz = target.z;
+      const ty = game.world.groundAt(tx, tz, target.y + 3);
+      game.telegraph(tx, ty, tz, def.castRadius, def.castTime, null, '#a35cff');
+      game.sfx('curse');
+      this.startCast('Hex', def.castTime, (g) => {
+        g.explode(tx, ty + 0.4, tz, def.castRadius, this.damageAmount * def.castDamage, {
+          team: TEAM.ENEMY, source: this, color: '#a35cff', knockback: 5,
+        });
+      }, '#a35cff');
+      return;
+    }
+    // Between casts it behaves like an archer: keeps its distance, plinks.
+    this.aiRanged(dt, game, target, dist, nx, nz, speed);
   }
 
   /**

@@ -32,6 +32,15 @@ export class Entity {
     this.absorb = 0;
     this.invuln = 0;
     this.knockResist = 0;
+    // A cast in progress: { name, remaining, total, color, onDone }.
+    //
+    // Separate from `windup`, which is a melee tell that cannot be stopped.
+    // A cast is a *conversation*: it takes long enough to see, it does
+    // something worth stopping, and it can be stopped. That last part is the
+    // whole point — a telegraph you can only dodge is a reflex test, and a
+    // telegraph you can answer is a fight.
+    this.cast = null;
+    this.staggered = 0;
     this.lifetime = Infinity;
     this.age = 0;
     this.lastDamagedAge = 0;
@@ -101,6 +110,46 @@ export class Entity {
     } else {
       this.dots.push({ dps, remaining: duration, total: dps * duration, type, source });
     }
+  }
+
+  /** Begin an interruptible cast. Returns false if one is already running. */
+  startCast(name, duration, onDone, color) {
+    if (this.cast || this.disabled) return false;
+    this.cast = { name, remaining: duration, total: duration, onDone, color };
+    return true;
+  }
+
+  /**
+   * Tick a cast. Fires its payload when the bar fills.
+   *
+   * Being disabled mid-cast does not cancel it — a stun is an interrupt and
+   * goes through interruptCast, which is a deliberate action with a reward.
+   * If merely being stunned also silently cancelled casts, then every stun in
+   * the game would be an interrupt by accident and the mechanic would have no
+   * moment in it.
+   */
+  updateCast(dt, game) {
+    if (!this.cast) return;
+    this.cast.remaining -= dt;
+    if (this.cast.remaining > 0) return;
+    const done = this.cast.onDone;
+    this.cast = null;
+    if (done && !this.dead) done(game);
+  }
+
+  /**
+   * Cut a cast short. Returns true if there was one to cut.
+   *
+   * The stagger is what makes it worth doing: an interrupt that only cancels
+   * the spell is worth exactly the spell, and an interrupt that also opens a
+   * window is worth going out of your way for.
+   */
+  interruptCast() {
+    if (!this.cast) return false;
+    this.cast = null;
+    this.staggered = 1.2;
+    this.stun = Math.max(this.stun, 0.7);
+    return true;
   }
 
   totalDotDamageRemaining() {

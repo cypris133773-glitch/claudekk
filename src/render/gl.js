@@ -54,12 +54,25 @@ void main() {
 /**
  * Dynamic light slots.
  *
- * Four: what a per-pixel loop can afford on a software rasteriser, and more
- * than anyone has noticed missing in a voxel arena. Exported so the renderer
- * sizes its scratch buffers from the same number the shader is compiled with —
- * a mismatch here is a uniform upload that silently writes past the array.
+ * Two, and it was four until it was measured.
+ *
+ * This runs per covered pixel of the whole arena, so on a software rasteriser
+ * — which is what the playability harness runs on, and the worst hardware this
+ * will ever meet — the loop bound is most of its cost. Four dropped the
+ * landscape phone case from 45 fps to about 20, right onto the harness's
+ * floor, and it failed about half the time.
+ *
+ * Two is not a compromise so much as an admission of what the feature is
+ * actually for: the shot you just fired, and the blast that just went off. A
+ * third simultaneous light in a voxel arena is not something anyone has ever
+ * noticed missing, and the nearest-camera sort below means the two you get are
+ * the two filling the screen.
+ *
+ * Exported so the renderer sizes its scratch buffers from the same number the
+ * shader is compiled with — a mismatch is a uniform upload that silently
+ * writes past the array.
  */
-export const MAX_LIGHTS = 4;
+export const MAX_LIGHTS = 2;
 
 const FRAG = `#version 300 es
 precision highp float;
@@ -96,6 +109,7 @@ uniform vec3 uGlowColor;
 #define MAX_LIGHTS ${MAX_LIGHTS}
 uniform vec4 uLightPos[MAX_LIGHTS];
 uniform vec3 uLightColor[MAX_LIGHTS];
+uniform int uLightCount;
 
 out vec4 outColor;
 
@@ -122,9 +136,14 @@ void main() {
   // Squaring the linear term rather than dividing keeps it to two multiplies
   // and gives a softer core, which reads better on flat voxel faces than a
   // true 1/d^2 hotspot does.
-  for (int i = 0; i < MAX_LIGHTS; i++) {
+  // Bounded by a count, not by the array size.
+  //
+  // Most frames have no dynamic light at all — nothing is in flight and
+  // nothing has just gone off — and a fixed four-iteration loop made every one
+  // of those frames pay for the busiest one. On a software rasteriser that is
+  // per covered pixel of the whole arena, and it was measurably half the frame.
+  for (int i = 0; i < uLightCount; i++) {
     float r = uLightPos[i].w;
-    if (r <= 0.0) continue;
     float d = distance(vWorld, uLightPos[i].xyz);
     float f = clamp(1.0 - d / r, 0.0, 1.0);
     lightCol += uLightColor[i] * f * f;
@@ -217,7 +236,7 @@ export function createProgram(gl) {
   // varied per box, which is exactly what an instance attribute is for.
   for (const name of ['uProj', 'uView', 'uAtlas', 'uFogColor', 'uFogNear',
     'uFogFar', 'uCutoff', 'uSunColor', 'uSkyColor', 'uGroundColor', 'uGlowColor',
-    'uLightPos', 'uLightColor']) {
+    'uLightPos', 'uLightColor', 'uLightCount']) {
     u[name] = gl.getUniformLocation(prog, name);
   }
   return { prog, u };

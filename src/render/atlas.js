@@ -73,6 +73,14 @@ export const T = {
   FACE_VISOR: 38,
   /** Empty sockets and a hanging jaw. The undead face. */
   FACE_HOLLOW: 39,
+  /**
+   * The hooded, glowing-eyed face the Leech and the Hexer wear.
+   *
+   * Both already named `T.FACE_HEXER` in their skins and the constant did not
+   * exist, so `drawHumanoid` read `undefined`, took its "this mob has no face"
+   * branch, and the Leech has been a blank purple head since it shipped.
+   */
+  FACE_HEXER: 43,
 };
 
 function px(data, x, y, r, g, b, a = 255) {
@@ -221,6 +229,19 @@ function buildAtlasPixels() {
     if (rect(x, y, 3, 4, 5, 7) || rect(x, y, 10, 4, 12, 7)) return [14, 14, 14];
     if (rect(x, y, 5, 8, 10, 13) && !rect(x, y, 6, 8, 9, 10)) return [14, 14, 14];
     return shade([255, 255, 255], (hash2(x, y, 42) - 0.5) * 30);
+  });
+
+  // A hood with two lit eyes in it and nothing else. The shape has to read at
+  // fifteen blocks, which is the range these two fight at, so it is two bright
+  // shapes on a dark field rather than a face with features.
+  paint(data, T.FACE_HEXER, (x, y) => {
+    const hood = rect(x, y, 1, 0, 14, 3) || x <= 2 || x >= 13;
+    if (hood) return shade([26, 18, 42], (hash2(x, y, 47) - 0.5) * 16);
+    if (rect(x, y, 4, 6, 6, 8) || rect(x, y, 9, 6, 11, 8)) return [206, 168, 255];
+    // A thin bright rim under the eyes, which is what makes them read as lit
+    // rather than as two pale squares.
+    if (rect(x, y, 4, 9, 6, 9) || rect(x, y, 9, 9, 11, 9)) return [120, 80, 190];
+    return shade([38, 26, 58], (hash2(x, y, 48) - 0.5) * 20);
   });
 
   paint(data, T.FACE_CRAWLER, (x, y) => {
