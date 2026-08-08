@@ -11,9 +11,28 @@
 // clearing waves, which brings the spread down to about 48x. That is a gap a
 // curve can actually hold.
 //
-// The second is the curve itself, and it is deliberately Classic-shaped: the
-// first levels are an evening, the last ones are a project. Level 2 arrives in
-// two runs, level 5 in ten, and level 60 in roughly 235 — about 48 hours.
+// The second is the curve itself, and it is now short on purpose: level 2 in
+// one run, level 10 inside ten minutes, and level 60 in about three hours of
+// play. Measured, not asserted — `node tools/level-probe.mjs` walks a whole
+// career on the clock and prints where each level lands.
+//
+// WHY THE CAP MOVED FROM A HUNDRED HOURS TO THREE
+//
+// Because the level was gating the wrong thing. Thirteen skills unlock across
+// the sixty levels, and a curve that took a hundred hours meant most players
+// would never see half of their own class — the last four skills sat behind
+// levels 41, 48, 54 and 60, which is to say behind weeks. A class you have not
+// finished meeting is a class you cannot have an opinion about.
+//
+// What is long in this game is not meant to be the level. It is the gear, the
+// Forge, the Armoury sets and Mastery, all of which are bought with gold and
+// all of which are uncapped. Levels are the ramp that hands you your kit; the
+// game is what you do with it afterwards.
+//
+// One consequence, stated plainly because it is permanent: every existing
+// character jumps forward the first time this build loads, because their
+// banked XP now buys far more. Nobody loses anything — XP is only ever added
+// — but a character who was level 30 last night is likely 60 this morning.
 
 /** XP for one ordinary kill. Flat, and flat on purpose — see above. */
 export const XP_PER_KILL = 2;
@@ -28,22 +47,32 @@ export function xpForWave(wave) {
 
 export const MAX_LEVEL = 60;
 
-// The curve. A gentle linear head (HEAD) keeps the opening levels quick, and
-// the geometric term (GROWTH) is what turns the last ten into the grind the
-// cap is supposed to be.
+// The curve.
 //
-// GROWTH is the one dial that moves the whole thing, and it moves it a long
-// way for a small change, because it compounds fifty-nine times. Measured
-// against the real spawn budgets and a career that deepens as you level:
+//   BASE    what the first level costs, and therefore the scale of the whole
+//           thing. This is the dial that sets the length: the road to 60 is
+//           very close to linear in it.
+//   HEAD    a linear ramp, and where nearly all of the shape comes from. At
+//           0.16 the last level costs about ten times the first, which is the
+//           whole "later levels are longer" effect — no exponent required.
+//   GROWTH  a small geometric term on top, so the final stretch tightens
+//           rather than staying perfectly straight. Kept near 1 deliberately;
+//           it compounds fifty-nine times and a third decimal place here is
+//           worth more than a doubling of BASE.
 //
-//   1.045 -> ~40 hours    1.050 -> ~47    1.060 -> ~67    1.071 -> ~100
+// The measured result of these three, from tools/level-probe.mjs:
 //
-// BASE and HEAD are what hold the opening anchors — level 2 in two runs,
-// level 5 in ten — so retuning the length means touching GROWTH and nothing
-// else.
-const BASE = 1100;
+//   lv 2   2 min      lv 20   25 min      lv 50   2.2 h
+//   lv 5   5 min      lv 30   54 min      lv 60   3.2 h
+//
+// Worth knowing before touching these: the curve was not the only thing that
+// was too long, and past a point it is not the binding constraint at all.
+// Even a completely flat curve could not deliver 60 in three hours until BASE
+// came down — what a run pays is the other half of the equation, and at these
+// speeds it is the half that dominates.
+const BASE = 120;
 const HEAD = 0.16;
-const GROWTH = 1.050;
+const GROWTH = 1.008;
 
 /**
  * XP needed to go from `level` to `level + 1`. Returns Infinity at the cap, so

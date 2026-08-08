@@ -1261,26 +1261,41 @@ check('a full talent tree costs far more than the cap grants', async () => {
   }
 });
 
-check('the level grind is long at the top and quick at the bottom', async () => {
-  const { xpToReach, MAX_LEVEL, xpForRun } = await import('../src/data/levels.js');
+check('the road to 60 is about three hours, and still ramps', async () => {
+  const { xpToReach, xpToNext, MAX_LEVEL, xpForRun } = await import('../src/data/levels.js');
   const { waveBudget } = await import('../src/game/waves.js');
-  // A beginner run: wave 5, with the real spawn budgets behind it.
+  // A beginner run: wave 5, with the real spawn budgets behind it. Wave 5 is
+  // what tools/balance-sim.js actually measures a fresh character reaching.
   let kills = 0;
   for (let w = 1; w <= 5; w++) kills += waveBudget(w);
   const beginner = xpForRun({ wavesCleared: 5, kills });
 
-  const toL5 = xpToReach(5) / beginner;
-  assert(toL5 > 6 && toL5 < 16,
-    `level 5 takes ${toL5.toFixed(1)} beginner runs; the target is about ten`);
+  // The first level lands inside the first run. Anything slower and a new
+  // player finishes their first game having been shown nothing.
   const toL2 = xpToReach(2) / beginner;
-  assert(toL2 >= 1.5 && toL2 <= 3.5, `level 2 takes ${toL2.toFixed(1)} runs`);
+  assert(toL2 <= 1.2, `level 2 takes ${toL2.toFixed(1)} beginner runs; it should land in the first`);
+  const toL5 = xpToReach(5) / beginner;
+  assert(toL5 > 1 && toL5 < 6,
+    `level 5 takes ${toL5.toFixed(1)} beginner runs; the target is a handful`);
 
-  // And the tail has to actually be a tail: the last ten levels must cost more
-  // than the first fifty put together, or the cap is reachable by accident.
-  const first50 = xpToReach(50);
-  const last10 = xpToReach(MAX_LEVEL) - first50;
-  assert(last10 > first50,
-    `levels 50-60 cost ${last10} against ${first50} for 1-50: the tail is too flat`);
+  // Short is not the same as flat. Every level must cost more than the one
+  // before it, and the last must cost several times the first — otherwise
+  // levelling stops being a ramp and becomes a counter.
+  for (let L = 1; L < MAX_LEVEL - 1; L++) {
+    assert(xpToNext(L + 1) > xpToNext(L),
+      `level ${L + 1} costs no more than level ${L}: the curve has gone flat`);
+  }
+  const ramp = xpToNext(MAX_LEVEL - 1) / xpToNext(1);
+  assert(ramp > 6 && ramp < 40,
+    `the last level costs ${ramp.toFixed(1)}x the first; the shape wants roughly ten`);
+
+  // And the headline claim itself, checked rather than asserted in a comment.
+  // The model is an estimate and the window is wide on purpose — what it is
+  // guarding against is the curve quietly growing back into a hundred hours.
+  const { career } = await import('./level-probe.mjs');
+  const hours = career().hours;
+  assert(hours > 1.5 && hours < 5,
+    `the modelled road to 60 is ${hours.toFixed(1)} hours; the target is about three`);
 });
 
 check('XP awarded live matches what the run is worth', async () => {
@@ -2322,17 +2337,33 @@ check('the four new enemies each do the thing they exist for', async () => {
       `the halves carry ${(total / parentHp * 100).toFixed(0)}% of the parent's health`);
   }
 
-  // Lancer — telegraphs, then commits.
+  // Lancer — telegraphs, then commits, and then does it again.
+  //
+  // Twice, not once. A charge needs run-up, and the first version of this
+  // enemy could only ever find it on the way in: it charged if its timer
+  // happened to come up before it closed, and after that stood in melee
+  // swinging forever. One charge in twenty seconds passed the old assertion
+  // and was not the enemy. It now gives ground to make a lane, which measures
+  // two to three charges every twenty seconds with the first inside six.
   {
     const { game, h, p } = fresh();
     const l = game.spawnMob('lancer', p.x, p.y, p.z - 12);
-    let charged = false;
-    for (let i = 0; i < 60 * 12 && !charged; i++) {
+    let charges = 0, was = l.state, firstAt = -1;
+    for (let i = 0; i < 60 * 20; i++) {
       game.update(1 / 60, h.input());
+      // Both held up: this measures the behaviour, not who wins the fight.
       p.hp = p.maxHp;
-      if (l.state === 'charge') charged = true;
+      l.hp = l.maxHp;
+      if (l.state === 'charge' && was !== 'charge') {
+        charges++;
+        if (firstAt < 0) firstAt = i / 60;
+      }
+      was = l.state;
     }
-    assert(charged, 'the Lancer never charged in twelve seconds');
+    assert(firstAt >= 0 && firstAt < 9,
+      `the Lancer's first charge came at ${firstAt < 0 ? 'never' : firstAt.toFixed(1) + 's'}`);
+    assert(charges >= 2,
+      `the Lancer charged ${charges} time(s) in twenty seconds; it should keep disengaging`);
   }
 });
 
@@ -2397,43 +2428,69 @@ check('a pack surrounds instead of queuing up', async () => {
   // queue arriving one at a time from the same direction.
   for (let i = 0; i < 16; i++) game.spawnMob('husk', p.x + 14 + (i % 4), p.y, p.z + (i % 5) - 2);
 
-  const sectors = () => {
-    const seen = new Set();
-    for (const m of game.mobs) {
-      if (m.dead || Math.hypot(m.x - p.x, m.z - p.z) > 22) continue;
-      seen.add((((Math.atan2(m.z - p.z, m.x - p.x) + Math.PI) / (Math.PI / 4)) | 0) % 8);
-    }
-    return seen.size;
-  };
-  const before = sectors();
-  assert(before <= 3, `the fixture did not spawn a lopsided pack (${before} sectors)`);
+  const near = () => game.mobs.filter(
+    (m) => !m.dead && Math.hypot(m.x - p.x, m.z - p.z) <= 22);
 
-  // Sampled across the last three seconds rather than at one instant. A
-  // snapshot is noisy — the pack is moving, and whether two mobs happen to
-  // share a sector on the frame you looked is luck. The best moment in a
-  // window is the honest answer to "did they surround".
-  let after = 0;
+  /**
+   * How spread out the pack is, as one number between 0 and 1.
+   *
+   * Every nearby mob contributes a unit vector for its bearing; the length of
+   * their average is how much they agree. All on one side gives a mean of
+   * length 1 and a spread of 0; an even ring cancels out and gives 1.
+   *
+   * This replaced counting how many of eight sectors were occupied, which was
+   * the right idea measured the wrong way. With sixteen mobs and eight buckets
+   * the count lands on 3, 4, 5 or 6 depending on which frame you looked at —
+   * so the assertion failed about one run in five while the behaviour it was
+   * testing was fine. Chunky metric, flaky gate. A continuous one has no
+   * bucket edges to fall either side of.
+   */
+  const spread = () => {
+    const ms = near();
+    if (!ms.length) return 0;
+    let sx = 0, sz = 0;
+    for (const m of ms) {
+      const a = Math.atan2(m.z - p.z, m.x - p.x);
+      sx += Math.cos(a); sz += Math.sin(a);
+    }
+    return 1 - Math.hypot(sx, sz) / ms.length;
+  };
+  const sectors = () => new Set(near().map(
+    (m) => (((Math.atan2(m.z - p.z, m.x - p.x) + Math.PI) / (Math.PI / 4)) | 0) % 8)).size;
+
+  const before = spread();
+  assert(before < 0.02, `the fixture did not spawn a lopsided pack (spread ${before.toFixed(3)})`);
+
+  // Averaged across the last three seconds rather than read at one instant:
+  // the pack is moving, and one frame is a coin toss about who is where.
+  let sum = 0, n = 0, bestSectors = 0;
   for (let i = 0; i < 60 * 10; i++) {
     game.update(1 / 60, h.input());
     // Both sides held up, so this measures movement rather than who wins.
     p.hp = p.maxHp;
     for (const m of game.mobs) if (m.hp < m.maxHp * 0.9) m.hp = m.maxHp * 0.9;
-    if (i > 60 * 7 && i % 10 === 0) after = Math.max(after, sectors());
+    if (i > 60 * 7 && i % 5 === 0) {
+      sum += spread(); n++;
+      bestSectors = Math.max(bestSectors, sectors());
+    }
   }
+  const after = sum / n;
 
   // The naive version of this — every mob steering at whichever sector is
   // emptiest — makes it *worse*, because they all evaluate the same data on
-  // the same frame and stampede. That version measured 2 sectors going to 1.
-  // This is the number that tells the two apart.
+  // the same frame and stampede. That version stayed at a spread of about
+  // 0.01: sixteen enemies in a single file. This is the number that tells the
+  // two apart, and it is nowhere near the threshold from either side.
   //
-  // Four, not five. Spread and approach pull against each other: the arc that
-  // fans a pack out is the same arc that stops it closing, and a first pass at
-  // this was wide enough that only half of everything a mob walked was
-  // distance closed — which reads as wandering, not flanking. The arc is
-  // capped and faded now, measured at 70% of walking pointed at the player,
-  // and four sectors from two is still a genuine surround.
-  assert(after >= 4,
-    `a one-sided pack spread from ${before} sectors to only ${after} in ten seconds`);
+  // Spread and approach pull against each other: the arc that fans a pack out
+  // is the same arc that stops it closing, and a first pass was wide enough
+  // that only half of everything a mob walked was distance closed — which
+  // reads as wandering, not flanking. The arc is capped and faded now,
+  // measured at 70% of walking pointed at the player, and this measures
+  // between 0.12 and 0.35 across twenty-five runs against 0.004 at the start.
+  assert(after > 0.08,
+    `a one-sided pack only reached a spread of ${after.toFixed(3)} in ten seconds `
+    + `(${bestSectors} of 8 sectors at its widest)`);
 });
 
 check('a boss keeps casting for the whole fight', async () => {

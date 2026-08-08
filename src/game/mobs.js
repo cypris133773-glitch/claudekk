@@ -769,6 +769,33 @@ export class Mob extends Entity {
 
     this.lanceTimer = (this.lanceTimer || rand(4, 2)) - dt;
     const clear = game.world.lineOfSight(this.x, this.eyeY, this.z, target.x, target.centerY, target.z);
+
+    // Give ground to make a lane.
+    //
+    // A charge needs five blocks of run-up, and a Lancer that walks in and
+    // stays in melee never gets them again — its whole reason to exist fires
+    // once, if the first timer happens to come up before it closes, and after
+    // that it is a husk with a different hat. Backing off when the lance is
+    // ready is what turns it into a rhythm: close, trade, disengage, commit.
+    //
+    // Capped, and it keeps facing you the whole way, so this reads as winding
+    // up rather than fleeing — and a Lancer with its back to a wall stops
+    // trying and just fights.
+    if (this.lanceTimer <= 0 && dist <= 5.5 && clear) {
+      this.backoff = (this.backoff === undefined ? 1.4 : this.backoff) - dt;
+      if (this.backoff > 0 && !this.hitWallX && !this.hitWallZ) {
+        this.vx = -nx * speed * 0.85;
+        this.vz = -nz * speed * 0.85;
+        this.yaw = Math.atan2(-nx, -nz);
+        return;
+      }
+      // Could not make room. Try again after a normal cadence rather than
+      // retrying every frame from inside the player's hitbox.
+      if (this.backoff <= 0) { this.lanceTimer = rand(5, 3); this.backoff = undefined; }
+    } else if (dist > 5.5) {
+      this.backoff = undefined;
+    }
+
     if (this.lanceTimer <= 0 && dist > 5 && dist < 20 && clear) {
       this.lanceTimer = rand(7, 4);
       // Planted, facing, and telegraphed on the floor along the lane it will
