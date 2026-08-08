@@ -38,7 +38,19 @@ export function buildMods(cls, talentRanks, permanent) {
       }
     }
   }
-  for (const [k, v] of Object.entries(permanent || {})) add(k, v);
+  // The permanent side can now carry skill-scoped entries of its own: a tier
+  // set names a skill the same way a Mastery talent does. Merged into the same
+  // sub-bag rather than flattened, or a set bonus that says "Execute" would
+  // quietly apply to all four of your skills.
+  for (const [k, v] of Object.entries(permanent || {})) {
+    if (k === 'skills') {
+      for (const [id, bag] of Object.entries(v || {})) {
+        for (const [key, n] of Object.entries(bag)) addTo(id, key, n);
+      }
+    } else {
+      add(k, v);
+    }
+  }
   return mods;
 }
 

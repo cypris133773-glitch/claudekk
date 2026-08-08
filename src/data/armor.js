@@ -272,6 +272,102 @@ export const SET_BONUSES = {
 };
 
 
+/**
+ * How much a set is worth at each tier.
+ *
+ * Set bonuses used to be a flat table: the two-piece of a full Frostwrought
+ * set paid exactly what the two-piece of the Battleworn set you bought at
+ * level 1 paid. Seven tiers of gear underneath it got stronger every rung and
+ * the thing on top — the part with a name, the part a player is actually
+ * chasing — did not move at all. The last set in the game read the same as the
+ * first.
+ *
+ * Linear in the tier, which matches how the pieces themselves scale (per rung
+ * owned), so the set keeps a constant share of what the gear is worth instead
+ * of shrinking into irrelevance behind it. T0 pays what it always did; T6 pays
+ * two and a half times as much.
+ */
+export function setScale(tier) {
+  return 1 + Math.max(0, tier) * 0.50;
+}
+
+/**
+ * The part of a set that changes how a *skill* works.
+ *
+ * Stats are what gear is; this is what a *set* is. Each tier names one of the
+ * class's thirteen skills and makes it dramatically better — so upgrading from
+ * Spectral to Titanforged is not "the same bonus, bigger", it is a different
+ * skill becoming the one your build is about. That is the whole reason to
+ * chase the next set rather than to stop at whichever one is affordable.
+ *
+ * The skill each tier names is one that unlocks around that tier's own level,
+ * so the bonus arrives roughly when the skill does and the set is a reason to
+ * go and try it.
+ *
+ * These numbers are large on purpose and are not as large as they look. A
+ * bonus scoped to one skill is worth its magnitude times that skill's share of
+ * your damage, and you have four equipped — so a +90% is nearer +20% overall,
+ * and it is zero if the named skill is not one of your four. That last part is
+ * deliberate and is the same rule the talent tree runs on: gear and loadout
+ * are one decision, not two.
+ */
+export const TIER_SKILL_EFFECTS = [
+  { skillDamage: 0.20 },
+  { skillDamage: 0.28, skillCooldown: 0.10 },
+  { skillDamage: 0.36, skillRadius: 0.18 },
+  { skillDamage: 0.45, skillCost: 0.25 },
+  { skillDamage: 0.55, skillCooldown: 0.20 },
+  { skillDamage: 0.68, skillRadius: 0.28 },
+  { skillDamage: 0.90, skillCooldown: 0.30 },
+];
+
+/**
+ * Which skill each tier empowers, per class, T0 through T6.
+ *
+ * Chosen so that a class reads as itself all the way up the ladder — a Warrior
+ * ends on Earthsplitter and a Mage on Arcane Blast — and so that no tier names
+ * a skill the player cannot have unlocked yet.
+ */
+export const TIER_SKILL_FOCUS = {
+  warrior: ['whirlwind', 'execute', 'thunderclap', 'rend', 'bladestorm', 'shockwave', 'earthsplitter'],
+  mage: ['fireball', 'meteor', 'flamestrike', 'blizzard', 'pyroblast', 'frostbolt', 'arcaneblast'],
+  warlock: ['corruption', 'shadowfury', 'chaosbolt', 'rainoffire', 'unstable', 'felflame', 'doomguard'],
+  shaman: ['chainlightning', 'stormstrike', 'lavaburst', 'thunderstorm', 'elementalblast', 'frostshock', 'earthquake'],
+  priest: ['smite', 'holynova', 'mindblast', 'mindsear', 'holyword', 'shadowword', 'lightwell'],
+  rogue: ['ambush', 'eviscerate', 'shuriken', 'crimsontempest', 'bladeflurry', 'backstab', 'poisonbomb'],
+  demonslayer: ['glaivethrow', 'soulcleave', 'sigilofflame', 'chaosnova', 'feldevastation', 'shear', 'annihilation'],
+  paladin: ['crusaderstrike', 'judgement', 'hammerofwrath', 'avengershield', 'divinestorm', 'holystrike', 'wordofglory'],
+  hunter: ['arcaneshot', 'explosiveshot', 'serpentsting', 'volley', 'killshot', 'steadyshot', 'rapidfire'],
+};
+
+/** Which threshold the skill bonus sits at. Four of six: the middle rung. */
+export const SKILL_SET_THRESHOLD = 4;
+
+/** The skill a tier's set empowers, and by how much. Null outside the table. */
+export function tierSkillBonus(classId, tier) {
+  const list = TIER_SKILL_FOCUS[classId];
+  const effect = TIER_SKILL_EFFECTS[tier];
+  if (!list || !effect || !list[tier]) return null;
+  return { skill: list[tier], effect };
+}
+
+/**
+ * The skill bonus as a sentence. Generated from the effect rather than written
+ * beside it, so a retune cannot leave the description behind.
+ */
+export function tierSkillDesc(classId, tier, skillName) {
+  const b = tierSkillBonus(classId, tier);
+  if (!b) return '';
+  const name = skillName || 'That skill';
+  const parts = [];
+  if (b.effect.skillDamage) parts.push(`${Math.round(b.effect.skillDamage * 100)}% stronger`);
+  if (b.effect.skillRadius) parts.push(`${Math.round(b.effect.skillRadius * 100)}% wider`);
+  if (b.effect.skillCooldown) parts.push(`comes back ${Math.round(b.effect.skillCooldown * 100)}% sooner`);
+  if (b.effect.skillCost) parts.push(`costs ${Math.round(b.effect.skillCost * 100)}% less`);
+  const last = parts.pop();
+  return `${name} is ${parts.length ? `${parts.join(', ')} and ${last}` : last}.`;
+}
+
 export const SET_THRESHOLDS = [2, 4, 6];
 
 /** How many slots sit at `tier` or better. */
@@ -355,6 +451,31 @@ export function slotDesc(classId, slotId) {
   return describeEffect(slotEffect(classId, slotId), 1);
 }
 
+/**
+ * Add one modifier bag into another, in place.
+ *
+ * Every caller used to write this inline as a one-line `Object.entries` loop,
+ * which was fine while every value was a number. A bag can now carry a
+ * `skills` sub-bag, and `(undefined || 0) + {…}` is the string "0[object
+ * Object]" — a corruption with no error and no symptom until some skill's
+ * damage multiplier comes out NaN three systems later. One function, so there
+ * is one place that knows the shape.
+ */
+export function mergeMods(target, source) {
+  for (const [k, v] of Object.entries(source || {})) {
+    if (k === 'skills') {
+      const into = target.skills || (target.skills = {});
+      for (const [id, bag] of Object.entries(v)) {
+        const dst = into[id] || (into[id] = {});
+        for (const [key, n] of Object.entries(bag)) dst[key] = (dst[key] || 0) + n;
+      }
+    } else {
+      target[k] = (target[k] || 0) + v;
+    }
+  }
+  return target;
+}
+
 /** Everything a class's gear grants, flattened into one bag. */
 export function gearMods(classId, gear) {
   const mods = {};
@@ -366,12 +487,30 @@ export function gearMods(classId, gear) {
       mods[k] = (mods[k] || 0) + v * rungs;
     }
   }
-  // The set, and only the highest one that pays.
+  // The set, and only the highest one that pays. Scaled by its tier, so the
+  // last set in the game is not the first set in the game with a new colour.
   const set = activeSet(gear);
   if (set) {
     const table = SET_BONUSES[classId] || SET_BONUSES.warrior;
+    const k = setScale(set.tier);
     for (const th of set.met) {
-      for (const [k, v] of Object.entries(table[th].effect)) mods[k] = (mods[k] || 0) + v;
+      for (const [key, v] of Object.entries(table[th].effect)) {
+        // Integer effects — an extra pet, an extra chain jump — are counts and
+        // do not scale. Two and a half demons is not a thing, and rounding it
+        // up would make the highest tier grant a whole extra one by accident.
+        mods[key] = (mods[key] || 0) + (INTEGER_MODS.has(key) ? v : v * k);
+      }
+    }
+    // The skill half, at four pieces. Kept in its own bag rather than the flat
+    // one: it names a skill, and a bonus that named a skill and then applied
+    // to all of them would be four times the bonus it says it is.
+    if (set.pieces >= SKILL_SET_THRESHOLD) {
+      const sb = tierSkillBonus(classId, set.tier);
+      if (sb) {
+        const skills = mods.skills || (mods.skills = {});
+        const bag = skills[sb.skill] || (skills[sb.skill] = {});
+        for (const [key, v] of Object.entries(sb.effect)) bag[key] = (bag[key] || 0) + v;
+      }
     }
   }
   // The weapon's rider. One key per class, scaled by the weapon's own rungs.

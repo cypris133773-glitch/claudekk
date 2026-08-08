@@ -10,6 +10,7 @@ import {
   gearCost, gearMods, gearRating, gearName, tierLevel, maxTierForLevel,
   ownedTier, canBuy, ladderCost, setTier, hasFullSet, missingForSet,
   slotEffect, weaponAppearance, legacyArmorRefund,
+  tierSkillBonus, tierSkillDesc, setScale, mergeMods, activeSet, SET_BONUSES,
 } from '../src/data/armor.js';
 import {
   PERMANENT, upgradeCost, permanentMods, talentPointsForBestWave,
@@ -880,9 +881,51 @@ check('a full set is a real difference and a bounded one', () => {
   for (const cls of CLASSES) {
     const full = gearMods(cls.id, Object.fromEntries(GEAR_SLOT_IDS.map((id) => [id, MAX_TIER])));
     const dmg = damageWeight(full);
-    assert(dmg > 0.5 && dmg < 1.0, `${cls.id} full T6 grants ${(dmg * 100).toFixed(0)}% damage`);
-    assert(full.maxHpPct > 0.5 && full.maxHpPct < 0.9,
+    // The ceiling moved when set bonuses started scaling with their tier. It
+    // is still a ceiling: a full endgame set may roughly double your damage
+    // and double your health, and past that the Armoury's price curve stops
+    // being the thing that paces the game.
+    assert(dmg > 0.5 && dmg < 1.7, `${cls.id} full T6 grants ${(dmg * 100).toFixed(0)}% damage`);
+    assert(full.maxHpPct > 0.5 && full.maxHpPct < 1.1,
       `${cls.id} full T6 grants ${(full.maxHpPct * 100).toFixed(0)}% health`);
+  }
+
+  // Every tier is a step up on the one below it.
+  //
+  // This is the bug the whole tier-scaling change exists to fix, and it was
+  // invisible: set bonuses were a flat table, so the two-piece of a full
+  // Frostwrought set paid exactly what the two-piece of the Battleworn set
+  // bought at level 1 paid. Seven tiers of pieces got stronger every rung and
+  // the part with a name on it never moved.
+  for (const cls of CLASSES) {
+    let prevDmg = -1, prevHp = -1;
+    for (let t = 0; t <= MAX_TIER; t++) {
+      const m = gearMods(cls.id, Object.fromEntries(GEAR_SLOT_IDS.map((id) => [id, t])));
+      const d = damageWeight(m);
+      assert(d > prevDmg, `${cls.id} T${t} is no stronger than T${t - 1} (${d.toFixed(2)})`);
+      assert(m.maxHpPct > prevHp, `${cls.id} T${t} is no tougher than T${t - 1}`);
+      prevDmg = d; prevHp = m.maxHpPct;
+    }
+  }
+
+  // The four-piece names one skill and must reach only that skill. A bonus
+  // that leaked into the flat bag would be worth four times what it says.
+  for (const cls of CLASSES) {
+    for (let t = 0; t <= MAX_TIER; t++) {
+      const gear = Object.fromEntries(GEAR_SLOT_IDS.map((id) => [id, t]));
+      const m = gearMods(cls.id, gear);
+      const focus = tierSkillBonus(cls.id, t);
+      assert(focus, `${cls.id} has no skill bonus at T${t}`);
+      assert(cls.skills.some((s) => s.id === focus.skill),
+        `${cls.id} T${t} names a skill it does not have: ${focus.skill}`);
+      assert(m.skills && m.skills[focus.skill],
+        `${cls.id} T${t} four-piece granted nothing to ${focus.skill}`);
+      assert(!('skillDamage' in m), `${cls.id} T${t} leaked a skill bonus into the flat bag`);
+      // Three pieces is not four: the skill half must not pay early.
+      const three = { weapon: t, chest: t, helm: t };
+      assert(!gearMods(cls.id, three).skills,
+        `${cls.id} T${t} paid its four-piece at three pieces`);
+    }
   }
   // Counting mods must never arrive as a fraction: a Shaman with one rung of a
   // trinket would otherwise get a whole extra chain jump, because the loop that
@@ -2435,19 +2478,32 @@ check('enemies walk at you, not around you', async () => {
     const m = game.spawnMob('husk', p.x + Math.cos(a) * 18, p.y, p.z + Math.sin(a) * 18);
     track.push({ m, d0: Math.hypot(m.x - p.x, m.z - p.z), path: 0, lx: m.x, lz: m.z });
   }
+  // Counted only while a mob is still walking in.
+  //
+  // Once it arrives it circles, backs off and jostles for a place at the
+  // player — all of which is walking that closes no distance and none of which
+  // is what this measures. Including it mixed "did they approach efficiently"
+  // with "how long did they then spend in melee", which made the number swing
+  // by ten points depending on how quickly the first one got there. A mob's
+  // ledger closes the moment it is in range for the first time.
   for (let i = 0; i < 60 * 10; i++) {
     game.update(1 / 60, h.input());
     p.hp = p.maxHp;
     for (const t of track) {
       if (t.m.hp < t.m.maxHp * 0.9) t.m.hp = t.m.maxHp * 0.9;
-      t.path += Math.hypot(t.m.x - t.lx, t.m.z - t.lz);
+      const d = Math.hypot(t.m.x - p.x, t.m.z - p.z);
+      if (!t.arrived) {
+        t.path += Math.hypot(t.m.x - t.lx, t.m.z - t.lz);
+        t.closed = t.d0 - d;
+        if (d <= 3) t.arrived = true;
+      }
       t.lx = t.m.x; t.lz = t.m.z;
     }
   }
-  const closed = track.reduce((a, t) => a + (t.d0 - Math.hypot(t.m.x - p.x, t.m.z - p.z)), 0);
+  const closed = track.reduce((a, t) => a + (t.closed || 0), 0);
   const walked = track.reduce((a, t) => a + t.path, 0);
   const pct = closed / walked * 100;
-  assert(pct >= 62, `only ${pct.toFixed(0)}% of what enemies walked was distance closed`);
+  assert(pct >= 62, `only ${pct.toFixed(0)}% of the walk in was distance closed`);
 
   // And they have to actually arrive. An efficient walk that stops at twelve
   // blocks is still an enemy the player has to go and find.

@@ -14,7 +14,7 @@
 import { Match, matchConfig, DUEL_MODES } from './duel.js';
 import { peerSupported } from './peer.js';
 import { permanentMods, masteryMods, masteryRank } from '../data/permanent.js';
-import { gearMods, ownedTier } from '../data/armor.js';
+import { gearMods, mergeMods, ownedTier } from '../data/armor.js';
 import { LAYOUT_COUNT } from '../world/world.js';
 
 /**
@@ -30,9 +30,7 @@ export function selfPayload(profile, charId) {
   const ch = profile.character(charId);
   const cls = profile.classOf(charId);
   const perm = permanentMods(profile.forgeLevels(charId));
-  for (const [k, v] of Object.entries(gearMods(cls.id, profile.gear(charId)))) {
-    perm[k] = (perm[k] || 0) + v;
-  }
+  mergeMods(perm, gearMods(cls.id, profile.gear(charId)));
   for (const [k, v] of Object.entries(masteryMods(masteryRank(ch.mastery || 0)))) {
     perm[k] = (perm[k] || 0) + v;
   }

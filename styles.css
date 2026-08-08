@@ -2656,3 +2656,62 @@ body.show-popout-btn #popout-btn { display: block; }
   .tt-effects-head { margin-top: 1px; }
   .tt-locked-note { margin-top: 2px; }
 }
+
+/* ---------------------------------------------------------------------------
+   Set bonuses in the Armoury
+
+   These existed only in code before: six slots each said what they granted,
+   and the reason to complete a set rather than buy whatever was cheapest was
+   never on screen anywhere. Every threshold is listed whether or not it is
+   met — the unmet ones are the argument for the next purchase.
+   --------------------------------------------------------------------------- */
+
+.set-panel {
+  margin: 8px 0 10px;
+  padding: 9px 11px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-2);
+}
+.set-panel-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.set-panel-head b { font-size: 13px; }
+.set-panel-count { margin-left: auto; font-size: 11px; color: var(--dim); }
+
+.set-row {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  padding: 4px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  color: var(--dim);
+}
+.set-row:first-of-type { border-top: 0; }
+/* The count in its own disc, so the eye can find "what does four pieces give
+   me" without reading a sentence to get there. */
+.set-row-n {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 800;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--line);
+}
+.set-row-body { display: flex; flex-direction: column; gap: 2px; font-size: 11.5px; line-height: 1.4; min-width: 0; }
+.set-row.on { color: var(--text); }
+.set-row.on .set-row-n { background: rgba(255, 210, 74, 0.18); border-color: rgba(255, 210, 74, 0.5); color: var(--gold); }
+
+/* The skill half of the four-piece. Accent-coloured because it is the part
+   that changes how the character plays rather than what its numbers are. */
+.set-row-skill { color: var(--accent); font-weight: 700; }
+/* A bonus naming a skill you have not equipped is worth nothing, and saying so
+   is more useful than printing it as though it were live. */
+.set-row-skill.off { color: #ff9a7a; font-weight: 600; }

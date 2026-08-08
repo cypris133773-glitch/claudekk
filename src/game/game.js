@@ -13,7 +13,7 @@ import { difficultyFor } from '../data/difficulty.js';
 import { affixesForWave, affixSoulBonus } from '../data/affixes.js';
 import { rollPotion, POTIONS, POTION_BY_ID, DROP_CHANCE, ELITE_DROP_CHANCE, BOSS_DROPS, POTION_LIFETIME } from '../data/potions.js';
 import { xpForRun, xpForWave, XP_PER_KILL, XP_ELITE_MULT, XP_BOSS_MULT } from '../data/levels.js';
-import { gearMods, ownedTier, weaponAppearance, gearCost, GEAR_BY_ID } from '../data/armor.js';
+import { gearMods, mergeMods, ownedTier, weaponAppearance, gearCost, GEAR_BY_ID } from '../data/armor.js';
 import { MECHANICS, coreSlotFor, bossGold } from '../data/raids.js';
 import { forwardVec, clamp, rand, dist2 } from '../core/math.js';
 import { T } from '../render/atlas.js';
@@ -194,9 +194,7 @@ export class Game {
     // are per character now — only gold is shared — so a fresh character starts
     // with the level it has earned and nothing it has not.
     const perm = permanentMods(this.profile.forgeLevels(this.charId));
-    for (const [k, v] of Object.entries(gearMods(classDef.id, this.profile.gear(this.charId)))) {
-      perm[k] = (perm[k] || 0) + v;
-    }
+    mergeMods(perm, gearMods(classDef.id, this.profile.gear(this.charId)));
     for (const [k, v] of Object.entries(masteryMods(masteryRank(cd.mastery || 0)))) {
       perm[k] = (perm[k] || 0) + v;
     }

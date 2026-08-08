@@ -14,7 +14,8 @@ import {
 import {
   GEAR_SLOTS, GEAR_SLOT_IDS, GEAR_TIERS, MAX_TIER, canBuy, ownedTier, gearRating, setTier,
   maxTierForLevel, tierLevel, tierColor, gearName, slotDesc, slotSummary,
-  GEAR_BY_ID, gearCost, gearMods,
+  GEAR_BY_ID, gearCost, gearMods, mergeMods, activeSet, setScale,
+  tierSkillBonus, tierSkillDesc, SKILL_SET_THRESHOLD, SET_BONUSES, SET_THRESHOLDS,
 } from '../data/armor.js';
 import {
   RAIDS, RAID_BY_ID, RAID_BY_TIER, MECHANICS, CORE_ORDER, coreSlotFor, bossGold,
@@ -27,7 +28,7 @@ import { storage, MAX_CHARACTERS } from '../core/save.js';
 import { DIFFICULTIES } from '../data/difficulty.js';
 import { skillIconElement, iconElement, schoolFor, SCHOOLS } from './icons.js';
 import { QUEST_COUNT } from '../data/quests.js';
-import { talentLines, talentNextGain } from '../data/talentinfo.js';
+import { talentLines, talentNextGain, setBonusLine } from '../data/talentinfo.js';
 import { POTIONS, POTION_STACK } from '../data/potions.js';
 import { DUEL_MODES } from '../net/duel.js';
 
@@ -441,9 +442,7 @@ export class Menus {
     // The six numbers, built the same way a run builds them, so what is shown
     // is what will be played rather than a second implementation that drifts.
     const perm = permanentMods(this.profile.forgeLevels(charId));
-    for (const [k, v] of Object.entries(gearMods(cls.id, this.profile.gear(charId)))) {
-      perm[k] = (perm[k] || 0) + v;
-    }
+    mergeMods(perm, gearMods(cls.id, this.profile.gear(charId)));
     for (const [k, v] of Object.entries(masteryMods(masteryRank(ch.mastery || 0)))) {
       perm[k] = (perm[k] || 0) + v;
     }
@@ -1868,6 +1867,67 @@ export class Menus {
   // The Armoury — six slots, seven tiers, per class
   // -------------------------------------------------------------------------
 
+  /**
+   * The set you are wearing, and the two rungs above it.
+   *
+   * The Armoury never showed this at all. Six slots each said what they grant,
+   * and the bonuses for wearing two, four and six pieces of the same tier —
+   * the reason to complete a set rather than to buy whatever is cheapest —
+   * existed only in the code. A player could complete a full Frostwrought set
+   * and never once be told what it did.
+   *
+   * Every threshold is listed whether or not it is met, because the ones you
+   * have not reached are the argument for the next purchase. The numbers are
+   * the real ones, scaled by the tier, so "+10% melee damage" on a Battleworn
+   * set and "+40%" on a Frostwrought one are visibly the same bonus grown up.
+   */
+  setPanel(cls, gear, charId) {
+    const box = el('div', 'set-panel');
+    const set = activeSet(gear);
+    if (!set) {
+      box.appendChild(el('div', 'set-panel-head', 'Set bonuses'));
+      box.appendChild(el('p', 'note',
+        'Wear two pieces of the same tier to start earning them. '
+        + 'Four unlocks a bonus that empowers one of your skills, and six is the whole set.'));
+      return box;
+    }
+
+    const table = SET_BONUSES[cls.id] || SET_BONUSES.warrior;
+    const k = setScale(set.tier);
+    const head = el('div', 'set-panel-head');
+    head.appendChild(el('b', null, `${GEAR_TIERS[set.tier].name} set`));
+    head.appendChild(el('span', 'set-panel-count', `${set.pieces} of 6 pieces`));
+    box.appendChild(head);
+
+    const equipped = new Set(this.profile.loadout(charId).map((s) => s.id || s));
+    for (const th of SET_THRESHOLDS) {
+      const on = set.pieces >= th;
+      const row = el('div', 'set-row' + (on ? ' on' : ''));
+      row.appendChild(el('span', 'set-row-n', `${th}`));
+      const body = el('span', 'set-row-body');
+      // Generated from the effect at this tier, not the table's hand-written
+      // sentence. The table is written at T0 and every tier multiplies it, so
+      // printing the sentence verbatim would tell a player in a full T6 set
+      // the numbers from the set they wore at level 1.
+      body.appendChild(el('span', null, setBonusLine(table[th].effect, k) || table[th].desc));
+      // The four-piece carries the skill half as well.
+      if (th === SKILL_SET_THRESHOLD) {
+        const sb = tierSkillBonus(cls.id, set.tier);
+        const skill = sb && cls.skills.find((s) => s.id === sb.skill);
+        if (skill) {
+          const line = el('span', 'set-row-skill'
+            + (equipped.has(skill.id) ? '' : ' off'));
+          line.textContent = tierSkillDesc(cls.id, set.tier, skill.name)
+            + (equipped.has(skill.id) ? '' : `  — ${skill.name} is not equipped`);
+          body.appendChild(line);
+        }
+      }
+      row.appendChild(body);
+      box.appendChild(row);
+    }
+    return box;
+  }
+
   buildArmoury() {
     const wrap = el('div', 'screen');
     const charId = this.charId();
@@ -1900,6 +1960,7 @@ export class Menus {
         `T${nxt.tier} ${nxt.name} at level ${nxt.level} — ${nxt.raid}`));
     }
     p.appendChild(bar);
+    p.appendChild(this.setPanel(cls, gear, charId));
 
     const grid = el('div', 'forge-grid');
     p.appendChild(this.paged('armoury', GEAR_SLOTS, byHeight(3, 4, 6), grid, (def) => {

@@ -106,6 +106,27 @@ export const EFFECT_INFO = {
   pierce: { label: 'Extra targets pierced', kind: 'flat' },
   spread: { label: 'Extra enemies infected', kind: 'flat' },
 
+  // --- set-only mechanics -------------------------------------------------
+  //
+  // These appear on set bonuses rather than on talents, and they are here for
+  // the same reason everything else is: the Armoury prints the numbers from
+  // this table, so a set bonus retuned in armor.js moves its own description
+  // with it. They used to live only in hand-written sentences beside the
+  // effect, which is exactly the arrangement that let five talent tooltips
+  // drift away from what their talents did.
+  //
+  // `cond` is the condition the bonus is paid on. It is not a number and does
+  // not scale, so it is printed as written rather than computed.
+  bloodsurge: { label: 'Melee damage', kind: 'pct', cond: 'scaling with the Rage you hold' },
+  bleedBurst: { label: 'Bleed detonation', kind: 'pct', cond: 'when a bleeding enemy dies' },
+  spellEcho: { label: 'Chance a damaging skill casts itself again', kind: 'pct' },
+  dotBurst: { label: 'Rot detonation', kind: 'pct', cond: 'when it runs its full course' },
+  wardedDamage: { label: 'Spell damage', kind: 'pct', cond: 'while a shield of yours holds' },
+  exposeWeakness: { label: 'Damage', kind: 'pct', cond: 'to a poisoned target' },
+  momentumDamage: { label: 'Damage', kind: 'pct', cond: 'for 4s after a dash' },
+  zeal: { label: 'Melee damage per hit taken', kind: 'pct', cond: 'stacking 5 times' },
+  sharpshooter: { label: 'Damage', kind: 'pct', cond: 'beyond 12 blocks' },
+
   // --- mechanics with no dial at all --------------------------------------
   // Single-rank switches: they happen or they do not. There is no number to
   // show, and the node's own sentence already says what happens — so these
@@ -159,6 +180,36 @@ export function talentLines(node, rank, skillName) {
     out.push({ label, value: `${negative ? '−' : '+'}${amount(info, total)}` });
   }
   return out;
+}
+
+/**
+ * A set bonus as one sentence, at the tier it is being worn at.
+ *
+ * Generated rather than written beside the effect, and that is the whole
+ * point: set bonuses are now multiplied by the tier, so a hand-written "+10%
+ * melee damage" would tell a player in a full Frostwrought set the number from
+ * the Battleworn set they wore at level 1. There is one number and it is the
+ * one the game reads.
+ *
+ * `scale` multiplies everything except counts — an extra demon is an extra
+ * demon at every tier.
+ */
+const COUNTS = new Set(['jumps', 'pierce', 'maxPets', 'extraProjectiles']);
+
+export function setBonusLine(effect, scale = 1) {
+  const parts = [];
+  for (const [key, per] of Object.entries(effect || {})) {
+    const info = EFFECT_INFO[key];
+    if (!info || info.kind === 'unique') continue;
+    const total = COUNTS.has(key) ? per : per * scale;
+    const negative = info.down || total < 0;
+    const sign = negative ? '−' : '+';
+    const label = info.label.charAt(0).toLowerCase() + info.label.slice(1);
+    parts.push(`${sign}${amount(info, total)} ${label}${info.cond ? ` ${info.cond}` : ''}`);
+  }
+  if (!parts.length) return '';
+  const s = parts.join(', ');
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 /**

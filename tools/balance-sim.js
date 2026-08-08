@@ -13,7 +13,7 @@
 
 import { Game } from '../src/game/game.js';
 import { CLASSES, CLASS_BY_ID, defaultLoadout, resolveLoadout } from '../src/data/classes.js';
-import { GEAR_SLOT_IDS, MAX_TIER } from '../src/data/armor.js';
+import { GEAR_SLOT_IDS, MAX_TIER, tierSkillBonus } from '../src/data/armor.js';
 import { PERMANENT, talentPointsForBestWave } from '../src/data/permanent.js';
 import { talentPointsForLevel } from '../src/data/levels.js';
 import { RAIDS } from '../src/data/raids.js';
@@ -61,6 +61,16 @@ function stubProfile(forgeLevel = 0, gearTier = -1, level = SIM_LEVEL) {
     for (const c of CLASSES) {
       classes[c.id].gear = Object.fromEntries(
         GEAR_SLOT_IDS.map((id) => [id, Math.min(MAX_TIER, gearTier)]));
+      // A set's four-piece empowers one named skill, and a bot fighting with
+      // the default kit would usually not have that skill equipped — so the
+      // measurement would say the bonus is worth nothing, which is true of a
+      // player who ignores it and false of the build the set is describing.
+      // The simulated player reads their own set and slots it, which is the
+      // build being balanced.
+      const focus = tierSkillBonus(c.id, Math.min(MAX_TIER, gearTier));
+      if (focus && !classes[c.id].loadout.includes(focus.skill)) {
+        classes[c.id].loadout = [focus.skill, ...classes[c.id].loadout].slice(0, 4);
+      }
     }
   }
   return {
