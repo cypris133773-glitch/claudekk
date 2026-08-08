@@ -2148,31 +2148,67 @@ check('a wave has a middle, and still ends', async () => {
   // twice, or one that releases enemies a wave then never spends, is a wave
   // that cannot end. That is a softlock, not a difficulty spike.
   const beats = [];
+  const perWave = new Map();
   const orig = game.notify.bind(game);
   game.notify = (t, d) => {
-    if (/REINFORCEMENTS|CLOSE IN/.test(t)) beats.push(t);
+    if (/REINFORCEMENTS|CLOSE IN/.test(t)) {
+      beats.push(t);
+      const key = `${game.wave}:${/REINFORCEMENTS/.test(t) ? 'r' : 'l'}`;
+      perWave.set(key, (perWave.get(key) || 0) + 1);
+    }
     return orig(t, d);
   };
 
   const p = game.player;
   const input = h.input();
+  let leaked = 0;
+  // Kills are dealt directly rather than swung for.
+  //
+  // Leaving it to the harness bot's damage put this check on a knife edge: a
+  // hundred and fifty seconds of a bot flailing at wave 1 only *just* got half
+  // the wave down, so whether the reinforcement beat fired at all came down to
+  // how the spawns happened to land. It failed about one run in seven while
+  // the director was working perfectly.
+  //
+  // What is under test is the director — when it holds a pack back, when it
+  // releases it, and that it always spends it — so the fight is replaced with
+  // a guaranteed one and the wave is allowed to actually progress. Several
+  // waves now run instead of most of one.
   for (let i = 0; i < 60 * 150; i++) {
     input.attack = true;
     game.update(1 / 60, input);
     p.hp = p.maxHp;               // measuring the wave, not the fight
+    if (i % 12 === 0) {
+      const victim = game.mobs.find((m) => !m.dead);
+      if (victim) game.dealDamage(p, victim, 999999, { silent: true });
+    }
+    // Clearing a wave offers a rank-up card and waits. Nothing picks one in a
+    // headless run, so without this the fixture sits on wave 1 forever with
+    // the card on screen — which is exactly what it did the first time.
+    if (game.pendingUpgrades) game.chooseUpgrade(game.pendingUpgrades[0]);
+    // Nothing may be held across a wave boundary. This is the softlock: a
+    // reserve that survives into the next wave is a pack the director has
+    // promised to spawn and will never spend. Sampled every frame the wave is
+    // over rather than once at the end, so it covers every wave the fixture
+    // played instead of whichever one it happened to stop in.
+    if (game.director.state === 'intermission' && game.director.reserve.length) {
+      leaked = Math.max(leaked, game.director.reserve.length);
+    }
     if (!game.running) break;
   }
 
+  assert(game.wave >= 3, `only reached wave ${game.wave}; the fixture is not clearing waves`);
   assert(beats.some((b) => /REINFORCEMENTS/.test(b)), 'no wave ever called reinforcements');
   assert(beats.some((b) => /CLOSE IN/.test(b)), 'the survivors never closed in');
 
   // Once each per wave. Both beats consume themselves, and a reinforcement
   // that can re-fire refills the wave forever.
+  const twice = [...perWave.entries()].filter(([, n]) => n > 1);
+  assert(twice.length === 0,
+    `a beat fired more than once in a wave: ${twice.map(([k, n]) => `${k}x${n}`).join(', ')}`);
+  assert(leaked === 0, `${leaked} reinforcements were still held after a wave ended`);
+
   const d = game.director;
-  assert(d.reinforced === true || d.state === 'intermission',
-    'the reinforcement beat did not record itself as spent');
-  assert(d.reserve.length === 0 || d.state === 'intermission',
-    `${d.reserve.length} reinforcements are still held after the wave ended`);
 
   // And the held-back pack comes out of the wave's own budget rather than on
   // top of it, or "a wave with a middle" is quietly "a harder wave".
@@ -2349,7 +2385,12 @@ check('the four new enemies each do the thing they exist for', async () => {
     const { game, h, p } = fresh();
     const l = game.spawnMob('lancer', p.x, p.y, p.z - 12);
     let charges = 0, was = l.state, firstAt = -1;
-    for (let i = 0; i < 60 * 20; i++) {
+    // Thirty seconds, not twenty. A Lancer that backs into a wall gives up on
+    // that attempt and waits out a normal cadence before trying again, which
+    // is correct behaviour and costs it one charge — over twenty seconds that
+    // was the difference between two and one, and the assertion was measuring
+    // the arena's furniture rather than the enemy.
+    for (let i = 0; i < 60 * 30; i++) {
       game.update(1 / 60, h.input());
       // Both held up: this measures the behaviour, not who wins the fight.
       p.hp = p.maxHp;
@@ -2363,7 +2404,7 @@ check('the four new enemies each do the thing they exist for', async () => {
     assert(firstAt >= 0 && firstAt < 9,
       `the Lancer's first charge came at ${firstAt < 0 ? 'never' : firstAt.toFixed(1) + 's'}`);
     assert(charges >= 2,
-      `the Lancer charged ${charges} time(s) in twenty seconds; it should keep disengaging`);
+      `the Lancer charged ${charges} time(s) in thirty seconds; it should keep disengaging`);
   }
 });
 
