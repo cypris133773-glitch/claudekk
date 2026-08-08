@@ -8,7 +8,7 @@
 
 import { CLASSES, CLASS_BY_ID, LOADOUT_SIZE, unlockOrder, unlockLevelOf, defaultLoadout } from '../data/classes.js';
 import {
-  PERMANENT, upgradeCost, talentPointsForBestWave, masteryProgress,
+  PERMANENT, upgradeCost, masteryProgress,
   permanentMods, masteryMods, masteryRank,
 } from '../data/permanent.js';
 import {
@@ -1228,12 +1228,18 @@ export class Menus {
     const cls = this.profile.classOf(charId);
     const cd = this.profile.character(charId);
     const avail = this.profile.availableTalentPoints(charId);
-    const total = talentPointsForBestWave(cd.bestWave);
+    // Points come from levels, not from waves, and have for a while. The line
+    // above this said so and the code below it still called the retired
+    // wave-based function, so the header read things like "29 of 19 points" —
+    // two numbers from two different systems, printed as if one contained the
+    // other.
+    const total = this.profile.totalTalentPoints(charId);
+    const spentAll = total - avail;
 
     const p = this.panel(`${cls.name} Talents`,
-      // Points come from levels, not from waves, and have for a while. The old
-      // line sent a player back to the arena to grind the wrong number.
-      `${avail} of ${total} points · one a level, and a tree costs far more`);
+      avail > 0
+        ? `${avail} point${avail === 1 ? '' : 's'} to spend · ${spentAll} of ${total} used`
+        : `All ${total} points spent · one more each level`);
     p.appendChild(this.masteryBar(charId));
 
     // Branch tabs. Three full columns do not fit a phone, and a tab is a
@@ -1335,32 +1341,55 @@ export class Menus {
     dhead.appendChild(el('b', null, sel.name));
     dhead.appendChild(el('span', 'tt-detail-rank', `${selRank} / ${sel.max}`));
     detail.appendChild(dhead);
-    detail.appendChild(el('p', 'tt-detail-desc', selLocked
-      ? `Requires ${selRequired} points in ${branch.name}.`
-      : sel.desc));
+    // What it does, always — locked or not.
+    //
+    // This is the whole complaint about the talent screen, and it was exactly
+    // backwards: a locked node printed its unlock requirement *instead of* its
+    // description, and the numbers below were skipped entirely. So the talents
+    // you could read were the ones you had already bought, and the ones you
+    // were saving eighteen points for were blank boxes.
+    //
+    // A locked talent is the one that most needs explaining. It is the thing
+    // being decided about.
+    detail.appendChild(el('p', 'tt-detail-desc', sel.desc));
 
     // The numbers, derived from the same effect table the game reads, so the
-    // tooltip cannot drift away from what the talent does. Two columns: what
-    // the points already spent are worth, and what one more would add — which
-    // is the only question being asked at the moment this is read.
-    if (!selLocked) {
-      const lines = talentLines(sel, selRank, selTarget && selTarget.name);
-      if (lines.length) {
-        const table = el('div', 'tt-effects');
-        for (const line of lines) {
-          const row = el('div', 'tt-effect');
-          row.appendChild(el('span', 'tt-effect-label', line.label));
-          if (line.value) row.appendChild(el('span', 'tt-effect-value', line.value));
-          table.appendChild(row);
-        }
-        table.firstChild.classList.add('tt-effect-first');
-        detail.appendChild(el('div', 'tt-effects-head',
-          selRank ? `At rank ${selRank}` : 'Per rank'));
-        detail.appendChild(table);
+    // tooltip cannot drift away from what the talent does. What the points
+    // already spent are worth, and what one more would add — which is the only
+    // question being asked at the moment this is read.
+    const lines = talentLines(sel, selRank, selTarget && selTarget.name);
+    if (lines.length) {
+      const table = el('div', 'tt-effects');
+      for (const line of lines) {
+        const row = el('div', 'tt-effect');
+        row.appendChild(el('span', 'tt-effect-label', line.label));
+        if (line.value) row.appendChild(el('span', 'tt-effect-value', line.value));
+        table.appendChild(row);
       }
+      table.firstChild.classList.add('tt-effect-first');
+      // A locked node has no ranks, so "at rank 0" would be a lie dressed as a
+      // number. It shows what one point buys, which is what it is for.
+      detail.appendChild(el('div', 'tt-effects-head',
+        selLocked || !selRank ? 'Per rank' : `At rank ${selRank}`));
+      detail.appendChild(table);
+    }
+    if (!selLocked) {
       const gain = selRank > 0 && talentNextGain(sel, selRank, selTarget && selTarget.name);
       if (gain) detail.appendChild(el('p', 'tt-next', `Next rank → ${gain}`));
       else if (selRank >= sel.max) detail.appendChild(el('p', 'tt-next maxed', 'Maxed out.'));
+    }
+
+    // The lock, said last rather than first: it is the price, and a price only
+    // means something once you know what it buys.
+    //
+    // How far off you are, not the threshold. "Needs 18 points" and "7 more
+    // points" are different amounts of information and only one of them is
+    // about the character on screen — and on one line, because two lines here
+    // pushed the panel off a 320px phone.
+    if (selLocked) {
+      const short = selRequired - spent;
+      detail.appendChild(el('p', 'tt-locked-note',
+        `Locked · ${short} more point${short === 1 ? '' : 's'} in ${branch.name}`));
     }
 
     if (selTarget && !selLocked) {

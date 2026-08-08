@@ -814,6 +814,15 @@ button:disabled { opacity: 0.35; cursor: default; }
 .tt-effect-value { margin-left: auto; font-weight: 800; color: var(--gold); font-variant-numeric: tabular-nums; }
 /* What one more point buys — the only question being asked here. */
 .tt-next { margin: 2px 0 0; font-size: 11.5px; font-weight: 700; color: var(--accent); line-height: 1.4; }
+/* The price of a talent you cannot buy yet, said after what it does rather
+   than instead of it. Amber and not red: it is a thing to work toward, not an
+   error. */
+.tt-locked-note {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--gold);
+}
 .tt-next.maxed { color: var(--gold); }
 
 .tt-btns { display: flex; gap: 8px; margin-top: 2px; }
@@ -823,7 +832,7 @@ button:disabled { opacity: 0.35; cursor: default; }
   .talent-tree { --cell: 36px; --tgap: 8px; margin: 6px 0 2px; }
   .tt-detail { padding: 7px 10px; }
   .tt-detail-desc { font-size: 11px; }
-  .tt-effect, .tt-next { font-size: 10.5px; }
+  .tt-effect, .tt-next, .tt-locked-note { font-size: 10.5px; }
   .tt-effects { padding: 4px 7px; }
   .tt-btns .tiny-btn { height: 30px; }
 }
@@ -2632,4 +2641,18 @@ body.show-popout-btn #popout-btn { display: block; }
   .duel-roster { margin: 6px 0 2px; }
   .duel-seat { padding: 4px 7px; margin-bottom: 3px; }
   .duel-seat-name { font-size: 12px; }
+}
+
+/* Tall, narrow phones — the 390x844 class of device.
+   The existing tightening rules key on a *short* viewport, so a tall portrait
+   phone got the full-size tree and the full-size detail strip, and the two
+   together ran past the fold once the detail strip started carrying what a
+   locked talent does as well as what it costs. Four pixels off the cell and
+   four off the gap is 60px back across six rows, which is the whole overflow,
+   and the tree stays well above the 32px cells a 360px phone already uses. */
+@media (min-width: 361px) and (max-width: 430px) and (min-height: 601px) {
+  .talent-tree { --cell: 40px; --tgap: 10px; }
+  .tt-detail { gap: 3px; }
+  .tt-effects-head { margin-top: 1px; }
+  .tt-locked-note { margin-top: 2px; }
 }

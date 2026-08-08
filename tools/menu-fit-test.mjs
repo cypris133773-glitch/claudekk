@@ -86,6 +86,21 @@ const SCREENS = [
   // state before it is measured: an 850-character invite code in a textarea
   // and a six-seat 3v3 roster is the widest this screen ever gets, and it is
   // the state a host actually stares at.
+  // A locked talent, which is now the tallest the detail panel gets: it shows
+  // what the talent does, the per-rank numbers, and the unlock cost. It used
+  // to show only the cost, so this case did not exist to measure.
+  // ...and it must still say what the talent does. A locked node used to print
+  // its unlock cost *instead of* its description and skip the numbers
+  // entirely, so the talents you could read were the ones you had already
+  // bought. `wants` is checked against the rendered text, because that bug was
+  // invisible to a layout measurement — the panel fitted perfectly, it was
+  // just empty of the thing it exists to say.
+  {
+    name: 'talents', prime: 'lockedTalent', label: 'talents:lock',
+    // Lower-case: the uppercasing is a CSS text-transform, and textContent
+    // reports what is in the DOM.
+    wants: ['LOCKED_DESC', 'Per rank', 'more point'],
+  },
   { name: 'duel', prime: 'start', label: 'duel:start' },
   { name: 'duel', prime: 'host', label: 'duel:host' },
   { name: 'duel', prime: 'join', label: 'duel:join' },
@@ -155,6 +170,14 @@ function primeRun() {
 async function primeDuel(which) {
   const B = window.CRAFTARENA;
   const charId = B.profile.characters[0].id;
+  if (which === 'lockedTalent') {
+    // The deepest node in the first branch: the one nobody has the points for.
+    const cls = B.profile.classOf(charId);
+    const branch = cls.talents[0];
+    B.menus.talentBranch = 0;
+    B.menus.talentNode = branch.nodes[branch.nodes.length - 1].id;
+    return;
+  }
   B.lobby.leave();
   B.menus.selectedChar = charId;
   if (which === 'start') { B.lobby.mode = '3v3'; return; }
@@ -292,9 +315,27 @@ async function run() {
       const label = typeof entry === 'string' ? entry : entry.label;
       if (typeof entry !== 'string') await frame.evaluate(primeDuel, entry.prime);
       const r = await frame.evaluate(probeScreen, name);
+      // Content the screen must actually carry, not just have room for.
+      const wants = (typeof entry !== 'string' && entry.wants) || [];
+      const missing = wants.length ? await frame.evaluate((list) => {
+        const B = window.CRAFTARENA;
+        const text = document.getElementById('ui').textContent;
+        return list.filter((w) => {
+          // A sentinel, resolved in the frame: the exact description of
+          // whichever node is selected, so the check cannot pass on a
+          // hard-coded string that no longer appears anywhere.
+          if (w === 'LOCKED_DESC') {
+            const cls = B.profile.classOf(B.profile.characters[0].id);
+            const nodes = cls.talents[0].nodes;
+            return !text.includes(nodes[nodes.length - 1].desc);
+          }
+          return !text.includes(w);
+        });
+      }, wants) : [];
       // One CSS pixel of slack: sub-pixel layout rounding is not a scrollbar.
       const ok = r.overflowY <= 1 && r.overflowX <= 1 && r.offscreen.length === 0
-        && r.scale >= MIN_SCALE && r.brokenIcons.length === 0 && r.covered.length === 0;
+        && r.scale >= MIN_SCALE && r.brokenIcons.length === 0 && r.covered.length === 0
+        && missing.length === 0;
       if (!ok) failures++;
       results.push({ vp: vp.name, name: label, ok });
       const fit = r.scale < 1 ? ` (scaled to ${r.scale.toFixed(2)})` : '';
@@ -307,6 +348,7 @@ async function run() {
           r.offscreen.length ? `offscreen: ${r.offscreen.join(', ')}` : '',
           r.brokenIcons.length ? `icons out of layout: ${r.brokenIcons.slice(0, 3).join(', ')}` : '',
           r.covered.length ? `hidden under the corner button: ${r.covered.join(', ')}` : '',
+          missing.length ? `screen never says: ${missing.join(', ')}` : '',
         ].filter(Boolean).join('; ');
       console.log(`  [${ok ? 'PASS' : 'FAIL'}] ${label.padEnd(11)} ${detail}`);
     }
