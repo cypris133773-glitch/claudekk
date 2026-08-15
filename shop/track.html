@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Order Lookup — CryptoPeptides</title>
+  <meta name="description" content="Look up a CryptoPeptides order by order number." />
+  <link rel="icon" href="assets/img/favicon.svg" />
+  <link rel="stylesheet" href="assets/css/site.css" />
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<div id="site-header"></div>
+
+<main id="main" class="section-sm">
+  <div class="wrap" style="max-width:720px">
+    <h1>Order lookup</h1>
+    <p class="muted">Enter the order number from your confirmation email, e.g. <code>CP-260814-K7QX</code>.</p>
+    <form id="lookup" class="card" style="margin-top:18px">
+      <div class="form-field">
+        <label class="lbl" for="oid">Order number</label>
+        <input class="input" id="oid" placeholder="CP-260814-K7QX" />
+      </div>
+      <button class="btn btn-primary btn-block" type="submit">Find my order</button>
+    </form>
+    <div id="result" style="margin-top:18px"></div>
+    <div class="card" style="margin-top:18px">
+      <h3>Can't find it?</h3>
+      <p class="small muted" style="margin:0">
+        Order records are kept in the browser you ordered from. If you have cleared site data or ordered from
+        another device, email <a href="mailto:support@cryptopeptides.com">support@cryptopeptides.com</a> with your
+        order number or the transaction ID you paid from and we will pull it up.
+      </p>
+    </div>
+  </div>
+</main>
+
+<div id="site-footer"></div>
+<script type="module" src="assets/js/pages/track.js"></script>
+</body>
+</html>

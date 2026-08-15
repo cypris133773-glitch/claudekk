@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Contact — CryptoPeptides</title>
+  <meta name="description" content="Reach the CryptoPeptides support and lab desks." />
+  <link rel="icon" href="assets/img/favicon.svg" />
+  <link rel="stylesheet" href="assets/css/site.css" />
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<div id="site-header"></div>
+
+<main id="main" class="section-sm">
+  <div class="wrap" style="max-width:900px">
+    <div class="eyebrow">Support</div>
+    <h1>Contact us</h1>
+    <p class="muted">Email is the fastest route. We answer most messages the same working day.</p>
+
+    <div class="checkout-grid" style="margin-top:22px">
+      <form class="card" id="contact-form" novalidate>
+        <h3>Send a message</h3>
+        <div class="form-row">
+          <div class="form-field">
+            <label class="lbl" for="cname">Name</label>
+            <input class="input" id="cname" />
+            <div class="err">Required.</div>
+          </div>
+          <div class="form-field">
+            <label class="lbl" for="cemail">Email</label>
+            <input class="input" id="cemail" type="email" />
+            <div class="err">Enter a valid email.</div>
+          </div>
+        </div>
+        <div class="form-field">
+          <label class="lbl" for="ctopic">Topic</label>
+          <select class="input" id="ctopic">
+            <option>Order status</option>
+            <option>Payment question</option>
+            <option>Lab report or batch query</option>
+            <option>Shipping problem</option>
+            <option>Wholesale enquiry</option>
+            <option>Something else</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label class="lbl" for="corder">Order number <span class="muted">(optional)</span></label>
+          <input class="input" id="corder" placeholder="CP-260814-K7QX" />
+        </div>
+        <div class="form-field">
+          <label class="lbl" for="cmsg">Message</label>
+          <textarea class="input" id="cmsg" rows="6"></textarea>
+          <div class="err">Required.</div>
+        </div>
+        <button class="btn btn-primary btn-block" type="submit">Open in email client</button>
+        <p class="tiny muted" style="margin:10px 0 0">
+          This form has no server behind it — it composes the message in your own email client, so nothing you type
+          is stored here.
+        </p>
+      </form>
+
+      <aside>
+        <div class="card">
+          <h3>Direct</h3>
+          <p class="small" style="margin:0 0 10px"><b>Support</b><br /><a href="mailto:support@cryptopeptides.com">support@cryptopeptides.com</a><br /><span class="muted tiny">Orders, payments, shipping · same-day reply</span></p>
+          <p class="small" style="margin:0 0 10px"><b>Lab desk</b><br /><a href="mailto:lab@cryptopeptides.com">lab@cryptopeptides.com</a><br /><span class="muted tiny">Batch reports, retests, technical questions</span></p>
+          <p class="small" style="margin:0"><b>Wholesale</b><br /><a href="mailto:wholesale@cryptopeptides.com">wholesale@cryptopeptides.com</a><br /><span class="muted tiny">Institutional and volume pricing</span></p>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <h3>Before you write</h3>
+          <ul class="small muted" style="padding-left:18px;margin:0">
+            <li>Order status → <a href="track.html">order lookup</a></li>
+            <li>Payment issues → <a href="how-to-pay.html">payment guide</a></li>
+            <li>Batch reports → <a href="lab-tests.html">lab tests</a></li>
+          </ul>
+        </div>
+        <div class="note" style="margin-top:14px">
+          We cannot advise on dosing, administration or personal use. Technical questions about purity, solubility,
+          storage and handling are welcome.
+        </div>
+      </aside>
+    </div>
+  </div>
+</main>
+
+<div id="site-footer"></div>
+<script type="module">
+  import { initShell, $, toast } from './assets/js/app.js';
+  initShell();
+
+  $('#contact-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const name = $('#cname');
+    const email = $('#cemail');
+    const msg = $('#cmsg');
+    let ok = true;
+    const flag = (field, good) => {
+      field.closest('.form-field').classList.toggle('is-invalid', !good);
+      ok = ok && good;
+    };
+    flag(name, name.value.trim().length > 0);
+    flag(email, /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.value.trim()));
+    flag(msg, msg.value.trim().length > 0);
+    if (!ok) return toast('Check the highlighted fields.');
+
+    const subject = `${$('#ctopic').value}${$('#corder').value.trim() ? ` — ${$('#corder').value.trim()}` : ''}`;
+    const body = `${msg.value.trim()}\n\n—\n${name.value.trim()}\n${email.value.trim()}`;
+    location.href = `mailto:support@cryptopeptides.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  });
+</script>
+</body>
+</html>

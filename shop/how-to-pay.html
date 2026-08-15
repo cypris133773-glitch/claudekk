@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>How to Pay With Crypto — CryptoPeptides</title>
+  <meta name="description" content="Step-by-step guide to paying for a CryptoPeptides order with Bitcoin, Solana or Ethereum, including addresses, networks and what to do if something goes wrong." />
+  <link rel="icon" href="assets/img/favicon.svg" />
+  <link rel="stylesheet" href="assets/css/site.css" />
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<div id="site-header"></div>
+
+<main id="main" class="section-sm">
+  <div class="wrap" style="max-width:880px">
+    <div class="eyebrow">Payment</div>
+    <h1>How to pay with crypto</h1>
+    <p class="muted">
+      We take Bitcoin, Solana and Ethereum — nothing else. There are no cards, no PayPal and no bank transfers,
+      which means no payment processor sits between you and the order and no card data exists to be leaked.
+    </p>
+
+    <div class="card" style="margin-top:22px">
+      <h2 style="font-size:1.25rem">The short version</h2>
+      <ol class="stack small muted" style="padding-left:18px;margin:0">
+        <li>Add items to the cart and enter a shipping address at checkout.</li>
+        <li>Pick BTC, SOL or ETH. We quote the exact coin amount and lock it for 30 minutes.</li>
+        <li>Send that exact amount, in one transaction, to the address shown.</li>
+        <li>Press <b>I have sent the payment</b> so your transfer can be matched to your order.</li>
+        <li>We dispatch on confirmation and email tracking the same day.</li>
+      </ol>
+    </div>
+
+    <h2 style="margin-top:34px">Our receiving addresses</h2>
+    <p class="small muted">
+      These are the only addresses we publish. They also appear at checkout with a QR code — if an address you were
+      given anywhere else does not match one of these, do not send to it.
+    </p>
+
+    <div class="grid" style="gap:14px" id="addr-list">
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+          <span class="coin btc">BTC</span>
+          <div><b>Bitcoin</b><span class="tiny muted" style="display:block">Bitcoin mainnet · native SegWit / Taproot</span></div>
+        </div>
+        <div class="addr"><span>bc1ptjhs8akhd7jv3tec4exh2e07w4cw7dh5jjm3tt0r5hvgl0a9yfpsumw3x5</span></div>
+        <p class="tiny muted" style="margin:10px 0 0">Send only BTC on the Bitcoin network. Wrapped BTC (BEP-20, ERC-20) is not credited.</p>
+      </div>
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+          <span class="coin sol">SOL</span>
+          <div><b>Solana</b><span class="tiny muted" style="display:block">Solana mainnet · SPL</span></div>
+        </div>
+        <div class="addr"><span>jFS98zya6uTUrJT2DY4J3fMDqRksZjcnsStrrYWe3j3</span></div>
+        <p class="tiny muted" style="margin:10px 0 0">Send only SOL, or USDC-SPL, on the Solana network.</p>
+      </div>
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+          <span class="coin eth">ETH</span>
+          <div><b>Ethereum</b><span class="tiny muted" style="display:block">Ethereum mainnet · ERC-20</span></div>
+        </div>
+        <div class="addr"><span>0x91eeba40c1683a7c8bea25dfec4bdb81d2d6bfd2</span></div>
+        <p class="tiny muted" style="margin:10px 0 0">Send only ETH or ERC-20 stablecoins on Ethereum mainnet. Layer-2 deposits (Arbitrum, Base, Optimism) are not credited automatically.</p>
+      </div>
+    </div>
+
+    <h2 style="margin-top:34px">If something goes wrong</h2>
+    <details class="acc"><summary>I sent slightly too little</summary><div class="acc-body">
+      Network fees sometimes come out of the amount rather than on top of it. We credit whatever arrives; if the
+      shortfall is under 2% we ship anyway, and above that we email you with the difference to top up.
+    </div></details>
+    <details class="acc"><summary>I sent too much</summary><div class="acc-body">
+      Tell us and we either refund the excess to an address you give us, or hold it as credit against your next
+      order — your choice.
+    </div></details>
+    <details class="acc"><summary>I sent on the wrong network</summary><div class="acc-body">
+      Email us immediately with the transaction ID. Recovery depends on the network and the asset, and it is not
+      always possible — this is why the checkout page names the network for each coin.
+    </div></details>
+    <details class="acc"><summary>The quote expired before I sent</summary><div class="acc-body">
+      Nothing is lost. Reload checkout for a fresh quote, or send the old amount and we will settle the difference at
+      the rate when the transfer confirms.
+    </div></details>
+    <details class="acc"><summary>The rate moved between quote and confirmation</summary><div class="acc-body">
+      The USD total is what you owe. We absorb normal movement between the quote and confirmation — you only hear
+      from us if a transfer lands far below the order total.
+    </div></details>
+    <details class="acc"><summary>I want a refund</summary><div class="acc-body">
+      Refunds go back in the coin you paid with, to an address you nominate, at the rate on the day the refund is
+      sent. See the <a href="terms.html">terms of sale</a> for what is refundable.
+    </div></details>
+
+    <div class="note" style="margin-top:26px">
+      We will never email you a different payment address or ask you to re-send a payment to a "corrected" wallet.
+      If you get a message like that, it is not from us — check the addresses on this page.
+    </div>
+
+    <div class="center" style="margin-top:26px">
+      <a class="btn btn-primary btn-lg" href="shop.html">Start an order</a>
+    </div>
+  </div>
+</main>
+
+<div id="site-footer"></div>
+<script type="module" src="assets/js/pages/static.js"></script>
+</body>
+</html>

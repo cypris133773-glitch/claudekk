@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lab Tests &amp; Batch Reports — CryptoPeptides</title>
+  <meta name="description" content="Third-party analysis for every lot: purity by RP-HPLC, identity by LC-MS and water content by Karl Fischer. Search reports by batch number." />
+  <link rel="icon" href="assets/img/favicon.svg" />
+  <link rel="stylesheet" href="assets/css/site.css" />
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<div id="site-header"></div>
+
+<main id="main">
+  <section class="section-sm">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">Verification</div>
+        <h1>Lab tests</h1>
+        <p class="muted">
+          Samples from every production lot are sent to an independent analytical laboratory before the lot is
+          released. Find the batch number printed on your vial below to open the report filed against it.
+        </p>
+      </div>
+
+      <div class="grid grid-3" style="margin-bottom:28px">
+        <div class="card">
+          <h3>Purity</h3>
+          <p class="small muted" style="margin:0">RP-HPLC-UV at 214 nm, reported as area percent against the main peak.</p>
+        </div>
+        <div class="card">
+          <h3>Identity</h3>
+          <p class="small muted" style="margin:0">High-resolution mass spectrometry confirming the observed mass against theoretical.</p>
+        </div>
+        <div class="card">
+          <h3>Content</h3>
+          <p class="small muted" style="margin:0">Net peptide content and residual water by Karl Fischer titration.</p>
+        </div>
+      </div>
+
+      <div class="shop-toolbar">
+        <div class="field grow">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+          <input id="bq" type="search" placeholder="Search by batch number or compound, e.g. CP-2508-BPC157-42" aria-label="Search batch reports" />
+        </div>
+        <div class="field">
+          <label class="tiny muted" for="bcat">Category</label>
+          <select id="bcat" aria-label="Filter by category"><option value="">All</option></select>
+        </div>
+      </div>
+      <div class="result-count" id="bcount" style="margin-bottom:12px"></div>
+      <div class="card" style="padding:0;overflow:auto">
+        <table class="spec-table" style="min-width:680px">
+          <thead>
+            <tr><th style="width:28%">Batch</th><th>Compound</th><th>Tested</th><th>Purity</th><th>Report</th></tr>
+          </thead>
+          <tbody id="btable"></tbody>
+        </table>
+      </div>
+
+      <div class="grid grid-2" style="margin-top:28px;gap:20px">
+        <div class="card">
+          <h3>Verifying a report independently</h3>
+          <p class="small muted">
+            Reports are issued by <b id="lab-name"></b> and carry the laboratory's own report number. That number can be
+            checked directly with the lab rather than taken on our word — a report is only meaningful if it was
+            issued for the sample it claims to describe.
+          </p>
+          <a class="btn btn-ghost btn-sm" id="verify-link" href="#" target="_blank" rel="noopener">Open the lab's verification page →</a>
+        </div>
+        <div class="card">
+          <h3>Requesting a retest</h3>
+          <p class="small muted">
+            If your own assay disagrees with the report for a lot, email us the chromatogram and the batch number.
+            We pull a retain sample from the same lot, send it for reanalysis and publish the result whichever way it
+            comes back. Anything that fails is refunded in the coin you paid with.
+          </p>
+          <a class="btn btn-ghost btn-sm" href="contact.html">Contact the lab desk →</a>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div id="site-footer"></div>
+<script type="module" src="assets/js/pages/lab-tests.js"></script>
+</body>
+</html>

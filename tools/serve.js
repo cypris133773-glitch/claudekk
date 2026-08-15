@@ -23,7 +23,8 @@ const TYPES = {
 
 const server = http.createServer((req, res) => {
   const url = decodeURIComponent((req.url || '/').split('?')[0]);
-  let rel = url === '/' ? '/index.html' : url;
+  // A trailing slash means a directory: serve its index so /shop/ works.
+  let rel = url === '/' || url.endsWith('/') ? url + 'index.html' : url;
   const filePath = path.join(ROOT, path.normalize(rel).replace(/^(\.\.[/\\])+/, ''));
 
   if (!filePath.startsWith(ROOT)) {
