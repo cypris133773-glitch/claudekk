@@ -10,10 +10,59 @@ export const SITE = {
   short: 'CP',
   tagline: 'Research-grade peptides, third-party tested, crypto-only checkout.',
   email: 'support@cryptopeptides.com',
-  lab: 'Janoshik Analytical',
   freeShippingOver: 150,
   currency: 'USD',
+  // Everything below is a tunable the UI reads — no magic numbers in page code.
+  maxQty: 99, // per cart line
+  maxStoredOrders: 30, // browser-local order history depth
+  orderRetentionDays: 90, // matches the retention promised on privacy.html
+  toastMs: 4200,
+  announceMs: 4500,
+  quoteMinutes: 30,
+  shortfallTolerance: 0.02, // 2% — the single source for the tolerance copy
 };
+
+/* Shipping.
+ *
+ * Rates must match the published table on shipping.html. `other` is the
+ * "Elsewhere — quoted at checkout" row: the quote is this rate, shown on the
+ * checkout summary as soon as the country is picked. */
+export const SHIPPING = {
+  zones: [
+    { id: 'us', label: 'United States', rate: 14.95, transit: '2–4 business days', freeOver: SITE.freeShippingOver },
+    { id: 'ca', label: 'Canada', rate: 19.95, transit: '5–9 business days', freeOver: SITE.freeShippingOver },
+    { id: 'eu', label: 'Europe & UK', rate: 19.95, transit: '5–10 business days', freeOver: SITE.freeShippingOver },
+    { id: 'anz', label: 'Australia & New Zealand', rate: 24.95, transit: '7–12 business days', freeOver: SITE.freeShippingOver },
+    { id: 'other', label: 'Elsewhere', rate: 29.95, transit: '7–15 business days', freeOver: null },
+  ],
+  countries: {
+    'United States': 'us',
+    Canada: 'ca',
+    'United Kingdom': 'eu',
+    Germany: 'eu',
+    Netherlands: 'eu',
+    France: 'eu',
+    Spain: 'eu',
+    Italy: 'eu',
+    Poland: 'eu',
+    Sweden: 'eu',
+    Australia: 'anz',
+    'New Zealand': 'anz',
+    Other: 'other',
+  },
+  defaultCountry: 'United States',
+};
+
+export const shippingZone = (country) =>
+  SHIPPING.zones.find((z) => z.id === (SHIPPING.countries[country] || 'other')) ||
+  SHIPPING.zones[SHIPPING.zones.length - 1];
+
+/** Shipping cost for a destination and cart subtotal. */
+export function shippingCost(country, subtotal) {
+  const zone = shippingZone(country);
+  if (zone.freeOver !== null && subtotal >= zone.freeOver) return 0;
+  return zone.rate;
+}
 
 export const CRYPTO = [
   {
@@ -61,6 +110,15 @@ export const CATEGORIES = [
 
 // v(size, msrp) — a purchasable variant. `id` is derived in `normalise()`.
 const v = (size, msrp) => ({ size, msrp });
+
+/* SAMPLE DATA WARNING — `rating` and `reviews` below.
+ *
+ * These figures are placeholder catalogue seed data. No customer review has
+ * ever been collected by this store, and nothing here was written by a buyer.
+ * Every surface that renders them says so in the UI ("sample data"), and no
+ * synthetic review text, reviewer name or "verified buyer" mark is generated
+ * anywhere in the codebase. Delete these two fields the moment real, attributed
+ * reviews exist — do not top them up with invented ones. */
 
 const RAW = [
   // ── GLP-1 & Metabolic ────────────────────────────────────────────────
@@ -148,7 +206,7 @@ const RAW = [
   {
     slug: 'aod-9604',
     name: 'AOD-9604',
-    category: 'glp1',
+    category: 'gh',
     cas: '221231-10-3',
     purity: '99.2%',
     summary: 'C-terminal hGH fragment (176-191) analogue studied for lipolytic signalling without GH activity.',
@@ -159,7 +217,7 @@ const RAW = [
   {
     slug: 'tesamorelin',
     name: 'Tesamorelin',
-    category: 'glp1',
+    category: 'gh',
     cas: '218949-48-5',
     purity: '99.3%',
     summary: 'Stabilised GHRH(1-44) analogue with a strong body-composition literature base.',
@@ -205,9 +263,8 @@ const RAW = [
   },
   {
     slug: 'tb-500',
-    name: 'TB-500 (Thymosin Beta-4)',
+    name: 'TB-500 (Thymosin Beta-4 fragment)',
     category: 'healing',
-    cas: '77591-33-4',
     purity: '99.4%',
     badges: ['bestseller'],
     summary: 'Actin-sequestering peptide fragment studied for cell migration and tissue remodelling.',
@@ -298,7 +355,6 @@ const RAW = [
     slug: 'cjc-1295-no-dac',
     name: 'CJC-1295 no DAC (Mod GRF 1-29)',
     category: 'gh',
-    cas: '863288-34-0',
     purity: '99.3%',
     summary: 'Tetra-substituted GHRH(1-29) analogue with a short pulse profile.',
     research: ['GHRH receptor binding', 'Pulsatile GH release models', 'Synergy studies with ghrelin mimetics'],
@@ -656,7 +712,7 @@ const RAW = [
   },
   {
     slug: 'glow-stack',
-    name: 'Glow Stack',
+    name: 'Dermal Research Kit',
     category: 'blends',
     purity: '99.4%',
     badges: ['bestseller'],
@@ -667,7 +723,7 @@ const RAW = [
   },
   {
     slug: 'repair-stack',
-    name: 'Repair Stack',
+    name: 'Tissue Repair Research Kit',
     category: 'blends',
     purity: '99.4%',
     summary: 'Three-vial recovery kit: BPC-157 10mg, TB-500 10mg and KPV 10mg.',
@@ -681,7 +737,7 @@ const RAW = [
     slug: 'bacteriostatic-water',
     name: 'Bacteriostatic Water 30ml',
     category: 'supplies',
-    purity: '0.9% benzyl alcohol',
+    spec: '0.9% benzyl alcohol',
     badges: ['bestseller'],
     summary: 'Multi-dose sterile diluent for reconstituting lyophilised material.',
     research: ['Reconstitution diluent', 'Multi-draw compatible', 'Sealed sterile vial'],
@@ -692,7 +748,7 @@ const RAW = [
     slug: 'sterile-water',
     name: 'Sterile Water 10ml',
     category: 'supplies',
-    purity: 'USP grade',
+    spec: 'USP grade',
     summary: 'Preservative-free sterile water, five 10ml vials per pack.',
     research: ['Single-draw diluent', 'Preservative-free', 'USP grade'],
     variants: [v('5 x 10ml', 14.99)],
@@ -702,7 +758,7 @@ const RAW = [
     slug: 'insulin-syringes',
     name: 'Insulin Syringes 31G 1ml',
     category: 'supplies',
-    purity: 'sterile, single use',
+    spec: 'Sterile, single use',
     summary: 'Individually wrapped 31-gauge 1ml syringes, 100 per box.',
     research: ['1ml graduated barrel', '31G x 8mm needle', 'Individually sealed'],
     variants: [v('100 count', 24.99)],
@@ -712,7 +768,7 @@ const RAW = [
     slug: 'alcohol-pads',
     name: 'Alcohol Prep Pads',
     category: 'supplies',
-    purity: '70% isopropyl',
+    spec: '70% isopropyl',
     summary: 'Saturated 70% isopropyl pads, 200 per box.',
     research: ['Vial septum prep', 'Individually sealed', '200 count'],
     variants: [v('200 count', 9.99)],
@@ -722,7 +778,7 @@ const RAW = [
     slug: 'vial-case',
     name: 'Insulated Vial Storage Case',
     category: 'supplies',
-    purity: 'holds 20 vials',
+    spec: 'Holds 20 vials',
     summary: 'Foam-lined case with a reusable cold pack for transport and cold storage.',
     research: ['Holds 20 x 2ml vials', 'Reusable cold pack', 'Shock-absorbing foam'],
     variants: [v('1 case', 19.99)],
@@ -732,7 +788,7 @@ const RAW = [
     slug: 'starter-kit',
     name: 'Reconstitution Starter Kit',
     category: 'supplies',
-    purity: 'complete kit',
+    spec: 'Complete kit',
     badges: ['bestseller'],
     summary: 'Everything needed to reconstitute and store a vial: 2 x bacteriostatic water, 50 syringes, 100 pads and a storage case.',
     research: ['2 x 30ml bacteriostatic water', '50 x 31G syringes', '100 alcohol pads + case'],
@@ -755,9 +811,13 @@ function normalise(p) {
     productName: p.name,
   }));
   const prices = variants.map((variant) => variant.price);
+  const isSupply = p.category === 'supplies';
   return {
     ...p,
-    purity: p.purity || '99%+',
+    // Consumables are not assayed peptides. They carry a `spec` line instead of
+    // a purity figure, so nothing renders "Assayed purity: holds 20 vials".
+    purity: isSupply ? null : p.purity || '99%+',
+    spec: p.spec || null,
     badges: p.badges || [],
     variants,
     minPrice: Math.min(...prices),

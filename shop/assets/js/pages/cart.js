@@ -12,7 +12,7 @@ function render() {
 
   if (!lines.length) {
     root.innerHTML = `<div class="empty" style="margin-top:24px">
-      <h3>Your cart is empty</h3>
+      <h2>Your cart is empty</h2>
       <p class="muted">Every vial in the catalogue is already 15% below list price.</p>
       <a class="btn btn-primary" href="shop.html">Browse the catalogue</a>
     </div>
@@ -30,11 +30,11 @@ function render() {
       ${
         toFree > 0
           ? `<div class="card" style="padding:14px 18px;margin-bottom:16px">
-               <div class="small">Add <b>${money(toFree)}</b> more for free tracked shipping</div>
+               <div class="small">Add <b>${money(toFree)}</b> more for free tracked shipping to most destinations</div>
                <div class="ship-bar"><i style="width:${Math.min(100, (subtotal / SITE.freeShippingOver) * 100)}%"></i></div>
              </div>`
-          : `<div class="card" style="padding:14px 18px;margin-bottom:16px;color:var(--ok)">
-               <b class="small">✓ Free tracked shipping applied</b>
+          : `<div class="card ok-text" style="padding:14px 18px;margin-bottom:16px">
+               <b class="small">✓ Free tracked shipping to most destinations</b>
              </div>`
       }
       ${lines
@@ -43,12 +43,12 @@ function render() {
             <a class="thumb" href="product.html?p=${l.product.slug}">${vialSVG(l.product, l.variant.size)}</a>
             <div>
               <a href="product.html?p=${l.product.slug}"><b>${esc(l.product.name)}</b></a>
-              <span class="sz">${esc(l.variant.size)} · ${esc(l.product.purity)} purity</span>
+              <span class="sz">${esc(l.variant.size)}${l.product.purity ? ` · ${esc(l.product.purity)} target purity` : ''}</span>
               <div class="li-actions">
-                <button data-dec="${l.id}" aria-label="Decrease quantity">−</button>
-                <span class="small" style="min-width:22px;text-align:center">${l.qty}</span>
-                <button data-inc="${l.id}" aria-label="Increase quantity">+</button>
-                <button class="link-btn" data-rm="${l.id}" style="margin-left:8px">Remove</button>
+                <button class="qty-btn" data-dec="${l.id}" aria-label="Decrease quantity of ${esc(l.product.name)}">−</button>
+                <span class="small qty-val">${l.qty}</span>
+                <button class="qty-btn" data-inc="${l.id}" aria-label="Increase quantity of ${esc(l.product.name)}">+</button>
+                <button class="link-btn" data-rm="${l.id}">Remove<span class="visually-hidden"> ${esc(l.product.name)}</span></button>
               </div>
             </div>
             <div style="text-align:right">
@@ -62,15 +62,15 @@ function render() {
     </div>
 
     <aside class="card sticky-summary">
-      <h3>Order summary</h3>
-      <div class="summary-row"><span>Items (${count})</span><span>${money(subtotal)}</span></div>
-      <div class="summary-row" style="color:var(--ok)"><span>Site-wide discount</span><span>−${money(saved)}</span></div>
-      <div class="summary-row"><span>Shipping</span><span>${shipping ? money(shipping) : 'Free'}</span></div>
-      <div class="summary-row total"><span>Total</span><span>${money(total)}</span></div>
+      <h2>Order summary</h2>
+      <div class="summary-row"><span>Items (${count}) at list price</span><span>${money(subtotal + saved)}</span></div>
+      <div class="summary-row ok-text"><span>Site-wide 15% discount</span><span>−${money(saved)}</span></div>
+      <div class="summary-row"><span>Shipping</span><span>calculated at checkout</span></div>
+      <div class="summary-row total"><span>Subtotal</span><span>${money(subtotal)}</span></div>
       <a class="btn btn-primary btn-block btn-lg" style="margin-top:14px" href="checkout.html">Checkout with crypto</a>
       <div class="pay-chips" style="margin-top:12px;justify-content:center"><span>BTC</span><span>SOL</span><span>ETH</span></div>
       <p class="tiny muted center" style="margin:12px 0 0">
-        Prices in USD. The exact coin amount is quoted and locked at checkout.
+        Priced in USD. Shipping depends on destination and the coin figure is worked out at checkout.
       </p>
     </aside>
   </div>`;

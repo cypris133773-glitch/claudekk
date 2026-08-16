@@ -1,8 +1,8 @@
-import { initShell, money, $, esc, ORDERS_KEY } from '../app.js';
+import { initShell, money, $, esc, readOrders } from '../app.js';
 
 initShell();
 
-const orders = JSON.parse(localStorage.getItem(ORDERS_KEY) || '[]');
+const orders = readOrders();
 const result = $('#result');
 
 // The most recent order is offered up front — most lookups are for that one.
@@ -29,7 +29,7 @@ $('#lookup').addEventListener('submit', (e) => {
   result.innerHTML = `<div class="card">
     <div class="summary-row"><span>Order</span><b>${esc(order.id)}</b></div>
     <div class="summary-row"><span>Placed</span><span>${new Date(order.created).toLocaleString()}</span></div>
-    <div class="summary-row"><span>Status</span><b style="color:var(--warn)">Awaiting confirmation</b></div>
+    <div class="summary-row"><span>Status</span><b class="warn-text">Awaiting your payment email</b></div>
     <div class="summary-row"><span>Paid</span><span>${esc(order.amount)} ${esc(order.coinSymbol)} (${money(order.usd)})</span></div>
     <a class="btn btn-primary btn-block" style="margin-top:12px" href="order.html?id=${encodeURIComponent(order.id)}">Open full order</a>
   </div>`;

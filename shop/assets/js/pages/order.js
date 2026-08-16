@@ -1,53 +1,77 @@
-import { initShell, money, $, esc, toast, SITE, ORDERS_KEY } from '../app.js';
+import { initShell, money, $, esc, toast, SITE, readOrders } from '../app.js';
 
 initShell();
 
 const id = new URLSearchParams(location.search).get('id');
-const orders = JSON.parse(localStorage.getItem(ORDERS_KEY) || '[]');
-const order = orders.find((o) => o.id === id) || orders[0];
+const orders = readOrders();
+// An unknown id is a miss, not an excuse to show somebody else's order. Only a
+// missing id falls back to the newest.
+const order = id ? orders.find((o) => o.id === id) : orders[0];
 const root = $('#order-root');
 
 if (!order) {
   root.innerHTML = `<div class="empty">
-    <h1>No order found</h1>
-    <p class="muted">Order records live in this browser only. If you cleared site data, email us and we will look it up.</p>
-    <a class="btn btn-primary" href="shop.html">Back to the shop</a>
+    <h1>No order found${id ? ` for ${esc(id)}` : ''}</h1>
+    <p class="muted">
+      Order records live in this browser only. If you cleared site data or ordered from another device,
+      email us with the order number or the transaction ID you paid from.
+    </p>
+    <a class="btn btn-primary" href="mailto:${esc(SITE.email)}">Email support</a>
+    <a class="btn btn-ghost" href="shop.html">Back to the shop</a>
   </div>`;
 } else {
   const created = new Date(order.created);
+  const mailBody =
+    `Order ${order.id}\n` +
+    `Amount: ${money(order.usd)} (sent as ${order.coinSymbol})\n` +
+    `To address: ${order.address}\n` +
+    `Transaction ID: \n\n` +
+    order.items.map((i) => `${i.qty} × ${i.name} ${i.size}`).join('\n');
+  const mailto = `mailto:${SITE.email}?subject=${encodeURIComponent(`Payment for order ${order.id}`)}&body=${encodeURIComponent(mailBody)}`;
+
   root.innerHTML = `
-  <div class="center" style="margin-bottom:26px">
-    <div class="brand-mark" style="width:52px;height:52px;border-radius:16px;margin:0 auto 16px;font-size:1.3rem">✓</div>
-    <h1 style="margin-bottom:6px">Order received</h1>
-    <p class="muted">We are watching the ${esc(order.coinSymbol)} address for your transfer. You will get an email as soon as it confirms.</p>
+  <div class="center order-head">
+    <div class="brand-mark order-tick" aria-hidden="true">✓</div>
+    <h1>Order recorded</h1>
+    <p class="muted">Keep the order number below — it is how we match your payment to your parcel.</p>
+  </div>
+
+  <div class="note note-strong">
+    <b>This order has not been sent to us yet.</b> It exists in this browser only. Email us the order number and
+    your transaction ID and we will confirm receipt and dispatch; without that we cannot tell which payment on the
+    address is yours.
+    <a class="btn btn-primary btn-block" style="margin-top:12px" href="${esc(mailto)}">Email order ${esc(order.id)} to ${esc(SITE.email)}</a>
   </div>
 
   <div class="card">
-    <div style="display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between">
-      <div><span class="tiny muted">Order number</span><div><b>${esc(order.id)}</b></div></div>
-      <div><span class="tiny muted">Placed</span><div><b>${created.toLocaleString()}</b></div></div>
-      <div><span class="tiny muted">Status</span><div><b style="color:var(--warn)">Awaiting confirmation</b></div></div>
-      <div><span class="tiny muted">Total</span><div><b>${money(order.usd)}</b></div></div>
+    <div class="order-facts">
+      <div><span class="tiny muted">Order number</span><b class="mono">${esc(order.id)}</b></div>
+      <div><span class="tiny muted">Placed</span><b>${created.toLocaleString()}</b></div>
+      <div><span class="tiny muted">Status</span><b class="warn-text">Awaiting your payment email</b></div>
+      <div><span class="tiny muted">Total</span><b>${money(order.usd)}</b></div>
     </div>
   </div>
 
-  <div class="card" style="margin-top:16px">
-    <h3>Payment</h3>
-    <div class="summary-row"><span>Amount sent</span><b>${esc(order.amount)} ${esc(order.coinSymbol)}</b></div>
-    <div class="summary-row"><span>Quoted rate</span><span>${money(order.rate)} per ${esc(order.coinSymbol)}</span></div>
+  <div class="card">
+    <h2>Payment</h2>
+    <div class="summary-row"><span>Amount owed</span><b>${money(order.usd)}</b></div>
+    <div class="summary-row"><span>Sent as</span><span>${esc(order.amount)} ${esc(order.coinSymbol)}${
+      order.rateLive ? '' : ' (approximate — converted at a reference rate)'
+    }</span></div>
+    <div class="summary-row"><span>Network</span><span>${esc(order.network || order.coinSymbol)}</span></div>
     <div class="addr" style="margin-top:10px">
-      <span>${esc(order.address)}</span>
+      <span class="mono">${esc(order.address)}</span>
       <button class="btn btn-sm btn-ghost copy-btn" id="copy-addr" type="button">Copy</button>
     </div>
     <p class="small muted" style="margin-top:12px">
-      Haven't sent it yet? Send exactly <b>${esc(order.amount)} ${esc(order.coinSymbol)}</b> to the address above and
-      quote order <b>${esc(order.id)}</b> if you email us. Sending a different amount is fine — we credit what arrives
-      and email you about any shortfall.
+      Not sent it yet? Send the ${money(order.usd)} equivalent to the address above on ${esc(order.network || 'the network shown')},
+      then use the email button. Shortfalls under ${Math.round(SITE.shortfallTolerance * 100)}% are absorbed;
+      anything larger we will email you about.
     </p>
   </div>
 
-  <div class="card" style="margin-top:16px">
-    <h3>Items</h3>
+  <div class="card">
+    <h2>Items</h2>
     ${order.items
       .map(
         (i) => `<div class="summary-row">
@@ -56,11 +80,11 @@ if (!order) {
         </div>`,
       )
       .join('')}
-    <div class="summary-row total"><span>Total paid</span><span>${money(order.usd)}</span></div>
+    <div class="summary-row total"><span>Order total</span><span>${money(order.usd)}</span></div>
   </div>
 
-  <div class="card" style="margin-top:16px">
-    <h3>Shipping to</h3>
+  <div class="card">
+    <h2>Shipping to</h2>
     <p class="small" style="margin:0">
       ${esc(order.ship.first)} ${esc(order.ship.last)}<br />
       ${esc(order.ship.address)}${order.ship.address2 ? `<br />${esc(order.ship.address2)}` : ''}<br />
@@ -70,28 +94,27 @@ if (!order) {
     </p>
   </div>
 
-  <div class="card" style="margin-top:16px">
-    <h3>What happens next</h3>
-    <ol class="small muted" style="padding-left:18px;margin:0">
-      <li>Your transfer confirms on-chain — usually minutes, occasionally up to an hour for Bitcoin.</li>
-      <li>We pack the order in an insulated mailer with a gel pack and hand it to the carrier.</li>
-      <li>Tracking is emailed to ${esc(order.ship.email)}. Orders placed before 2pm ship the same day.</li>
+  <div class="card">
+    <h2>What happens next</h2>
+    <ol class="small muted numbered">
+      <li>You email the order number and transaction ID.</li>
+      <li>We match it against the address and confirm by reply.</li>
+      <li>The order is packed in an insulated mailer and handed to the carrier, and we send the tracking number.</li>
     </ol>
-    <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
-      <a class="btn btn-ghost" href="track.html">Look up this order</a>
-      <a class="btn btn-ghost" href="mailto:${esc(SITE.email)}?subject=Order%20${encodeURIComponent(order.id)}">Email support</a>
-      <a class="btn btn-primary" href="shop.html">Continue shopping</a>
+    <div class="btn-row">
+      <a class="btn btn-ghost" href="track.html">Order lookup</a>
+      <a class="btn btn-ghost" href="shop.html">Continue shopping</a>
     </div>
   </div>
 
   <p class="tiny muted center" style="margin-top:20px">
-    Order details are stored in this browser only — we do not create an account for you.
+    Records are kept in this browser for ${SITE.orderRetentionDays} days and then dropped.
   </p>`;
 
   $('#copy-addr').addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(order.address);
-      toast('Address copied');
+      toast(`Address copied — ${order.network || order.coinSymbol}`);
     } catch {
       toast('Copy failed — select the text manually');
     }
