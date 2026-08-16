@@ -5,6 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Shop All Peptides — CryptoPeptides</title>
   <meta name="description" content="Browse the full CryptoPeptides catalogue: GLP-1 and metabolic, healing, growth hormone secretagogues, longevity, blends and lab supplies. 15% off every vial." />
+  <meta name="theme-color" content="#6d4aff" />
+  <link rel="canonical" href="https://cryptopeptides.com/shop.html" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="CryptoPeptides" />
+  <meta property="og:title" content="Shop All Peptides — CryptoPeptides" />
+  <meta property="og:description" content="Browse the full CryptoPeptides catalogue: GLP-1 and metabolic, healing, growth hormone secretagogues, longevity, blends and lab supplies. 15% off every vial." />
+  <meta property="og:url" content="https://cryptopeptides.com/shop.html" />
+  <meta property="og:image" content="https://cryptopeptides.com/assets/img/favicon.svg" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Shop All Peptides — CryptoPeptides" />
+  <meta name="twitter:description" content="Browse the full CryptoPeptides catalogue: GLP-1 and metabolic, healing, growth hormone secretagogues, longevity, blends and lab supplies. 15% off every vial." />
   <link rel="icon" href="assets/img/favicon.svg" />
   <link rel="stylesheet" href="assets/css/site.css" />
 </head>
@@ -16,7 +27,7 @@
   <div class="wrap">
     <nav class="tiny muted" style="margin-bottom:12px"><a href="index.html">Home</a> / <span id="crumb">Shop</span></nav>
     <h1 id="page-title" style="margin-bottom:6px">All products</h1>
-    <p class="muted" id="page-sub">Every vial is 15% below list price — the discount is already applied.</p>
+    <p class="muted" id="page-sub">Every vial is 15% below its list price — the discount is already in the price you see.</p>
 
     <div class="shop-layout" style="margin-top:26px">
       <aside class="filters">
@@ -36,9 +47,10 @@
           </div>
           <div class="filter-group">
             <h4>Tags</h4>
-            <label class="check"><input type="checkbox" id="f-best" /> <span>Bestsellers</span></label>
+            <label class="check"><input type="checkbox" id="f-best" /> <span>Popular</span></label>
             <label class="check"><input type="checkbox" id="f-new" /> <span>New arrivals</span></label>
-            <label class="check"><input type="checkbox" id="f-tested" /> <span>Has published lab report</span></label>
+            <label class="check"><input type="checkbox" id="f-cert" /> <span>Certificate published</span><span class="n"></span></label>
+            <p class="tiny muted" id="f-lots-note"></p>
           </div>
           <div class="filter-group">
             <button class="btn btn-ghost btn-block btn-sm" id="reset-filters">Reset filters</button>

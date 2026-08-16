@@ -20,7 +20,7 @@
   --ink: #0f172a;
   --ink-soft: #475569;
   --ink-mute: #5b6679;
-  --ink-faint: #7c869b;
+  --ink-faint: #64748b; /* 4.76:1 on white — the floor for body-size text */
   --accent: var(--violet);
   --accent-ink: #ffffff;
   --ok: #0a7d58;
@@ -928,4 +928,19 @@ label.lbl { display: block; font-size: var(--fs-sm); font-weight: var(--fw-sub);
 @media (max-width: 640px) {
   .order-facts { gap: var(--sp-3); }
   .order-facts > div { min-width: 45%; }
+}
+
+/* A class selector beats the UA rule for [hidden], so the closed drawer would
+   otherwise stay laid out — off-screen to the right, extending the document's
+   scroll width on narrow viewports and keeping its buttons in the tab order. */
+.drawer[hidden],
+.drawer-scrim[hidden],
+.mobile-nav[hidden] { display: none; }
+
+/* Grid children default to min-width:auto, so a long word or a wide table cell
+   pushes the track wider than its share and the page scrolls sideways. */
+.grid > * { min-width: 0; }
+
+@media (max-width: 480px) {
+  .grid-4, .grid-3, .grid-2 { grid-template-columns: 1fr; }
 }
