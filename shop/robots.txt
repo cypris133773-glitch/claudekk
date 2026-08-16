@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+# Order pages are per-visitor and hold nothing worth indexing.
+Disallow: /order.html
+Disallow: /checkout.html
+Disallow: /track.html
+
+Sitemap: https://cryptopeptides.com/sitemap.xml

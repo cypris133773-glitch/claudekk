@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lot Registry &amp; Lab Tests — CryptoPeptides</title>
+  <meta name="description" content="Every lot numbered and recorded. Search a lot number for its record and, once issued, its certificate of analysis from an independent laboratory." />
+  <meta name="theme-color" content="#6d4aff" />
+  <link rel="canonical" href="https://cryptopeptides.com/lab-tests.html" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="CryptoPeptides" />
+  <meta property="og:title" content="Lot Registry &amp; Lab Tests — CryptoPeptides" />
+  <meta property="og:description" content="Every lot numbered and recorded. Search a lot number for its record and, once issued, its certificate of analysis from an independent laboratory." />
+  <meta property="og:url" content="https://cryptopeptides.com/lab-tests.html" />
+  <meta property="og:image" content="https://cryptopeptides.com/assets/img/favicon.svg" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Lot Registry &amp; Lab Tests — CryptoPeptides" />
+  <meta name="twitter:description" content="Every lot numbered and recorded. Search a lot number for its record and, once issued, its certificate of analysis from an independent laboratory." />
+  <link rel="icon" href="assets/img/favicon.svg" />
+  <link rel="stylesheet" href="assets/css/site.css" />
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<div id="site-header"></div>
+
+<main id="main">
+  <section class="section-sm">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">Verification</div>
+        <h1>Lot registry &amp; lab tests</h1>
+        <p class="muted">
+          Every lot we fill is numbered, labelled and listed here. Samples go to an independent analytical
+          laboratory, and the certificate is published against the lot number once it is issued. Find the number
+          printed on your vial to open its record.
+        </p>
+        <p class="note" id="lab-status"></p>
+      </div>
+
+      <div class="grid grid-3" style="margin-bottom:28px">
+        <div class="card">
+          <h2>Purity</h2>
+          <p class="small muted" style="margin:0">RP-HPLC-UV at 214 nm, reported as area percent against the main peak.</p>
+        </div>
+        <div class="card">
+          <h2>Identity</h2>
+          <p class="small muted" style="margin:0">High-resolution mass spectrometry confirming the observed mass against theoretical.</p>
+        </div>
+        <div class="card">
+          <h2>Content</h2>
+          <p class="small muted" style="margin:0">Net peptide content and residual water by Karl Fischer titration.</p>
+        </div>
+      </div>
+
+      <div class="shop-toolbar">
+        <div class="field grow">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+          <input id="bq" type="search" placeholder="Search by lot number or compound" aria-label="Search batch reports" />
+        </div>
+        <div class="field">
+          <label class="tiny muted" for="bcat">Category</label>
+          <select id="bcat" aria-label="Filter by category"><option value="">All</option></select>
+        </div>
+        <label class="check"><input type="checkbox" id="b-published" /> <span class="small">Certificate issued only</span></label>
+      </div>
+      <div class="result-count" id="bcount" style="margin-bottom:12px"></div>
+      <div class="card" style="padding:0;overflow:auto">
+        <table class="spec-table" style="min-width:680px">
+          <thead>
+            <tr><th style="width:26%">Lot</th><th>Compound</th><th>Filled</th><th>Certificate</th><th></th></tr>
+          </thead>
+          <tbody id="btable"></tbody>
+        </table>
+      </div>
+
+      <div class="grid grid-2" style="margin-top:28px;gap:20px">
+        <div class="card">
+          <h2>Verifying a report independently</h2>
+          <p class="small muted">
+            A certificate we publish names the laboratory that issued it and carries that laboratory's own report
+            number, so it can be checked with them directly rather than taken on our word. A report is only
+            meaningful if it was issued for the sample it claims to describe — which is why we publish nothing
+            against a lot until a certificate for that lot exists.
+          </p>
+          <p class="small muted">Analyses requested per lot: <span id="lab-methods"></span>.</p>
+        </div>
+        <div class="card">
+          <h2>Requesting a retest</h2>
+          <p class="small muted">
+            If your own assay disagrees with a published certificate, email us the chromatogram and the lot number.
+            We pull a retain sample from the same lot, send it for reanalysis and publish the result whichever way
+            it comes back. Anything that fails is refunded in the coin you paid with.
+          </p>
+          <a class="btn btn-ghost btn-sm" href="contact.html">Contact the lab desk →</a>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div id="site-footer"></div>
+<script type="module" src="assets/js/pages/lab-tests.js"></script>
+</body>
+</html>
